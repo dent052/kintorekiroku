@@ -1,4 +1,7 @@
-import { localDate, parseImport } from './logic.js';
+import {
+  localDate, parseImport, value, recent, advice, prefill, rows,
+  prKind, sessionEvents, weekStats
+} from './logic.js';
 
 /** @typedef {import('./logic.js').Data} Data */
 
@@ -96,8 +99,354 @@ function renderHome() {
   view.innerHTML = '<h1>ホーム</h1>';
 }
 
+let workout = null;
+let summaryId = null;
+let wakeLock = null;
+let endAt = null;
+let timerInterval;
+const timerElement = document.querySelector('#timer');
+
+function workoutCard(exerciseId, count) {
+  const filled = prefill(state, exerciseId, localDate(new Date()));
+  return {
+    exerciseId,
+    rows: (count === undefined ? filled : rows(filled, count))
+      .map(set => ({ set: { ...set }, done: false, kind: null }))
+  };
+}
+
+function startWorkout({ templateId, light = false, same = false } = {}) {
+  const today = localDate(new Date());
+  const template = state.templates.find(item => item.id === templateId);
+  let exerciseIds = [];
+  if (template) {
+    exerciseIds = template.exerciseIds;
+  } else if (light || same) {
+    const previous = state.sessions
+      .filter(session => session.date < today && (light || !session.light))
+      .sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (!previous) {
+      renderStartChoices(light);
+      return;
+    }
+    exerciseIds = state.exercises
+      .filter(ex => previous.sets.some(set => set.exerciseId === ex.id))
+      .map(ex => ex.id);
+  }
+  workout = {
+    light,
+    cards: exerciseIds
+      .filter(id => state.exercises.some(ex => ex.id === id))
+      .map(id => workoutCard(id, light ? 1 : template?.sets)),
+    sessionId: null,
+    note: state.sessions.find(session => session.date === today)?.note ?? ''
+  };
+  summaryId = null;
+  requestWakeLock();
+  go('train');
+}
+
+async function requestWakeLock() {
+  if (!workout || wakeLock || document.visibilityState !== 'visible') return;
+  const activeWorkout = workout;
+  try {
+    const lock = await navigator.wakeLock?.request('screen');
+    if (!lock) return;
+    if (workout !== activeWorkout) {
+      await lock.release();
+      return;
+    }
+    wakeLock = lock;
+    lock.addEventListener('release', () => {
+      if (wakeLock === lock) wakeLock = null;
+    });
+  } catch {}
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && workout) requestWakeLock();
+});
+
+function renderStartChoices(light = false) {
+  view.replaceChildren(element('h1', 'トレーニング'));
+  const section = settingsSection('テンプレート');
+  for (const template of state.templates) {
+    section.append(action(template.name, () =>
+      startWorkout({ templateId: template.id, light }), 'settings-item'));
+  }
+  if (light) return;
+  section.append(
+    action('前回と同じ', () => startWorkout({ same: true })),
+    action('種目を選んで始める', () => {
+      startWorkout();
+      pickWorkoutExercise();
+    }),
+    action('軽めの日', () => startWorkout({ light: true }), 'primary')
+  );
+}
+
+function pickWorkoutExercise() {
+  view.replaceChildren(element('h1', '種目を追加'));
+  const section = settingsSection('種目');
+  for (const ex of state.exercises) {
+    if (ex.archived) continue;
+    section.append(action(ex.name, () => {
+      workout.cards.push(workoutCard(ex.id));
+      render();
+    }, 'settings-item'));
+  }
+}
+
+function previousText(ex, session) {
+  const groups = [];
+  for (const set of session.sets.filter(set => set.exerciseId === ex.id)) {
+    const prefix = ex.type === 'band'
+      ? state.bands.find(band => band.id === set.bandId)?.name ?? 'なし'
+      : ex.type === 'weight' ? `${set.kg ?? 0}kg` : '';
+    const last = groups[groups.length - 1];
+    if (last && last.prefix === prefix) last.values.push(value(ex, set));
+    else groups.push({ prefix, values: [value(ex, set)] });
+  }
+  return groups.map(group =>
+    `${group.prefix ? `${group.prefix} ` : ''}${group.values.join('・')}`
+  ).join(' / ');
+}
+
+function completeRow(row) {
+  if (row.done) return;
+  const today = localDate(new Date());
+  let session = state.sessions.find(item => item.date === today);
+  if (!session) {
+    session = {
+      id: uid('s'), date: today, light: workout.light,
+      note: workout.note, sets: []
+    };
+    state.sessions.push(session);
+  } else {
+    session.light = session.light && workout.light;
+    session.note = workout.note;
+  }
+  workout.sessionId = session.id;
+  row.kind = prKind(state, row.set, session.id);
+  session.sets.push({ ...row.set });
+  row.done = true;
+  save();
+  if (row.kind) navigator.vibrate?.(80);
+  startTimer(state.settings.restSec);
+  render();
+}
+
 function renderTrain() {
-  view.innerHTML = '<h1>トレーニング</h1>';
+  if (!workout) {
+    if (summaryId) renderSummary();
+    else renderStartChoices();
+    return;
+  }
+  view.replaceChildren(element('h1', 'トレーニング'));
+  for (const card of workout.cards) {
+    const ex = state.exercises.find(item => item.id === card.exerciseId);
+    const section = element('section', '', 'ex stack');
+    const head = element('div', '', 'head');
+    head.append(element('span', ex.name, 'name'));
+    const previous = recent(state, ex.id, localDate(new Date()), 1)[0];
+    if (previous) {
+      head.append(element('span', `前回 ${previousText(ex, previous)}`, 'dim'));
+    }
+    section.append(head);
+    const tip = advice(state, ex.id, localDate(new Date()));
+    if (tip) section.append(element('span', tip.text, 'advice'));
+    card.rows.forEach((row, index) => {
+      const group = element('div', '', 'stack');
+      const update = (key, next) => {
+        if (row.done) return;
+        row.set[key] = next;
+        render();
+      };
+      if (ex.type === 'band') {
+        const chips = element('div', '', 'chips');
+        const bands = [...state.bands].sort((a, b) => a.order - b.order);
+        if (!bands.some(band => band.id === row.set.bandId)) {
+          chips.append(element('span', 'なし', 'chip on'));
+        }
+        for (const band of bands) {
+          const selected = row.set.bandId === band.id;
+          const button = action(band.name, () => update('bandId', band.id),
+            `chip${selected ? ' on' : ''}`);
+          button.disabled = row.done;
+          button.setAttribute('aria-pressed', String(selected));
+          chips.append(button);
+        }
+        group.append(chips);
+      }
+      if (ex.type === 'weight') {
+        const weight = stepper('重り', row.set.kg ?? 0, 0, Infinity, 0.5,
+          next => update('kg', next), 'kg');
+        for (const button of weight.querySelectorAll('button')) {
+          button.disabled = row.done || button.disabled;
+        }
+        group.append(weight);
+      }
+      const time = ex.type === 'time';
+      const control = stepper(`${ex.name} ${index + 1}セット`,
+        value(ex, row.set), 0, Infinity, time ? 5 : 1,
+        next => update(time ? 'sec' : 'reps', next), time ? '秒' : '回');
+      const counter = control.querySelector('.stepper');
+      for (const button of counter.querySelectorAll('button')) {
+        button.disabled = row.done || button.disabled;
+      }
+      counter.className = 'set';
+      counter.prepend(element('span', String(index + 1), 'k num'));
+      const complete = action(row.done ? '済' : '完了',
+        () => completeRow(row), `ok${row.done ? ' d' : ''}`);
+      complete.disabled = row.done;
+      counter.append(complete);
+      group.append(counter);
+      if (row.kind) {
+        group.append(element('p',
+          row.kind === 'pr' ? '自己ベスト！' : '負荷アップ！', 'pr'));
+      }
+      section.append(group);
+    });
+    section.append(action('セットを追加', () => {
+      const last = card.rows[card.rows.length - 1];
+      card.rows.push({ set: { ...last.set }, done: false, kind: null });
+      render();
+    }));
+    if (ex.nextId && state.exercises.some(item => item.id === ex.nextId)) {
+      section.append(action('次の段階へ切り替え', () => {
+        const index = workout.cards.indexOf(card);
+        workout.cards[index] = workoutCard(ex.nextId);
+        render();
+      }));
+    }
+    view.append(section);
+  }
+  const bottom = element('div', '', 'workout-actions stack');
+  const label = element('label', '', 'stack');
+  const note = element('textarea');
+  note.value = workout.note;
+  note.addEventListener('change', () => {
+    workout.note = note.value;
+    const session = state.sessions.find(item =>
+      item.id === workout.sessionId || item.date === localDate(new Date()));
+    if (session) {
+      session.note = workout.note;
+      save();
+    }
+  });
+  label.append(element('span', 'メモ'), note);
+  bottom.append(
+    action('種目を追加', pickWorkoutExercise),
+    label,
+    action('終了', finishWorkout, 'primary')
+  );
+  view.append(bottom);
+}
+
+function finishWorkout() {
+  const session = state.sessions.find(item => item.id === workout.sessionId);
+  if (session) {
+    session.note = workout.note;
+    save();
+  }
+  summaryId = session?.id ?? null;
+  workout = null;
+  stopTimer();
+  const lock = wakeLock;
+  wakeLock = null;
+  lock?.release().catch(() => {});
+  if (summaryId) render();
+  else go('home');
+}
+
+function totalReps(session) {
+  return session.sets.reduce((total, set) => {
+    const ex = state.exercises.find(item => item.id === set.exerciseId);
+    return total + (ex && ex.type !== 'time' ? value(ex, set) : 0);
+  }, 0);
+}
+
+function renderSummary() {
+  const session = state.sessions.find(item => item.id === summaryId);
+  const [year, month, day] = session.date.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  const heading = `${month}月${day}日（${'日月火水木金土'[date.getDay()]}）のトレーニング`;
+  const section = element('div', '', 'summary stack');
+  section.append(element('p', heading, 'dim'));
+  const total = totalReps(session);
+  const amount = element('p');
+  amount.append(element('span', String(total), 'num big'), element('span', ' 回', 'dim'));
+  section.append(amount);
+  const previous = state.sessions
+    .filter(item => item.date < session.date)
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+  let totalText = '合計回数';
+  // Only show growth: a negative diff on a short day reads as blame (spec anti-goal).
+  const diff = previous ? total - totalReps(previous) : 0;
+  if (diff > 0) totalText += `　前回より +${diff}`;
+  section.append(element('p', totalText, 'dim'));
+  const events = element('div');
+  for (const event of sessionEvents(state, session.id)) {
+    const row = element('div', '', `ev ${event.kind}`);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2.5');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', event.kind === 'pr' ? 'M5 13l4 4 10-10'
+      : event.kind === 'load' ? 'M12 19V5M5 12l7-7 7 7'
+        : 'M4 20h4v-4h4v-4h4V8h4');
+    svg.append(path);
+    row.append(svg, element('p', event.text));
+    events.append(row);
+  }
+  section.append(events);
+  const stats = weekStats(state, localDate(new Date()));
+  section.append(element('p',
+    `今週 ${stats.days}/${stats.goal}日${stats.achieved ? ' 達成。' : ''}`, 'dim'));
+  const home = action('ホームへ', () => {
+    summaryId = null;
+    go('home');
+  }, 'primary');
+  view.replaceChildren(section, home);
+}
+
+function stopTimer() {
+  clearInterval(timerInterval);
+  timerInterval = undefined;
+  endAt = null;
+  timerElement.hidden = true;
+}
+
+function startTimer(sec) {
+  stopTimer();
+  endAt = Date.now() + sec * 1000;
+  const display = element('output', '', 'num');
+  display.setAttribute('aria-label', '休憩の残り時間');
+  const adjust = offset => {
+    endAt = Math.max(Date.now(), endAt + offset * 1000);
+    tick();
+  };
+  timerElement.replaceChildren(
+    action('−15', () => adjust(-15), 'pm'),
+    display,
+    action('+15', () => adjust(15), 'pm'),
+    action('スキップ', stopTimer, 'skip')
+  );
+  function tick() {
+    const remaining = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
+    if (remaining === 0) {
+      stopTimer();
+      navigator.vibrate?.([300, 100, 300]);
+      return;
+    }
+    display.textContent = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`;
+  }
+  timerElement.hidden = false;
+  timerInterval = setInterval(tick, 250);
+  tick();
 }
 
 function renderHistory() {

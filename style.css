@@ -334,3 +334,134 @@ button:disabled {
 .danger {
   color: var(--danger);
 }
+
+.advice {
+  align-self: flex-start;
+  margin: 6px 0 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--advice);
+  color: var(--primary);
+}
+
+.set {
+  display: grid;
+  grid-template-columns: 22px 48px minmax(0, 1fr) 48px 56px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.set .k {
+  color: var(--fg2);
+  text-align: center;
+}
+
+.set .val {
+  text-align: center;
+}
+
+.ok {
+  height: 52px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 700;
+}
+
+.ok.d {
+  border: 2px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+}
+
+.ok.d:disabled {
+  opacity: 1;
+}
+
+.pr {
+  color: var(--accent);
+  font-weight: 700;
+  text-align: center;
+}
+
+.workout-actions {
+  margin-top: 14px;
+}
+
+.workout-actions > button,
+#view > .primary {
+  width: 100%;
+  min-height: 56px;
+  font-size: 18px;
+}
+
+textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--muted);
+  color: var(--fg);
+  font: inherit;
+  resize: vertical;
+}
+
+textarea:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+#timer {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px 72px;
+  align-items: center;
+  gap: 8px;
+}
+
+#timer .pm {
+  font-size: 20px;
+}
+
+#timer .skip {
+  background: transparent;
+  color: var(--fg2);
+  white-space: nowrap;
+}
+
+.summary {
+  min-height: calc(100% - 76px);
+  gap: 20px;
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+
+.big {
+  font-size: 96px;
+  line-height: .9;
+}
+
+.ev {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ev svg {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  color: var(--primary);
+}
+
+.ev.pr svg {
+  color: var(--accent);
+}
+
+.ev p {
+  color: var(--fg);
+  font-weight: 400;
+  text-align: left;
+}
