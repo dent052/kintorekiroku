@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { fixture } from './fixture.mjs';
-import { localDate, line, menuExercises } from '../logic.js';
+import { localDate, line, menuExercises, prefill } from '../logic.js';
 
 const root = path.resolve(import.meta.dirname, '..');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
@@ -72,6 +72,14 @@ const settings = async page => {
   await press(page, '設定').click();
 };
 
+async function leaveTraining(page) {
+  await press(page, 'メモ・その他').click();
+  await sheet(page).getByRole('button', { name: 'トレーニングをやめる', exact: true }).click();
+  assert.equal(await page.getAttribute('.app', 'data-mode'), 'summary');
+  await principles(page);
+  await press(page, '今日へ戻る').click();
+}
+
 async function principles(page) {
   assert.deepEqual(await page.$$eval('button, a[href], select, input, textarea, [role=slider]', elements =>
     elements.filter(element => !element.closest('.press, dialog.sheet, .slab'))
@@ -117,11 +125,11 @@ test('paper/slab principles hold on both phone sizes, modes, editors and open sh
     await press(page, '始める').click();
     assert.equal(await page.getAttribute('.app', 'data-mode'), 'train');
     await principles(page);
-    await press(page, '戻る').click();
+    await leaveTraining(page);
     await press(page, '軽めの日').click();
-    assert.match(await page.textContent('.see'), /軽めの日/);
+    assert.equal(await page.getAttribute('.app', 'data-mode'), 'train');
     await principles(page);
-    await press(page, '戻る').click();
+    await leaveTraining(page);
     await press(page, '成長').click();
     await principles(page);
     await press(page, '新着').click();
@@ -240,7 +248,7 @@ test('first use adds an exercise without creating a session; an empty menu opens
   await sheet(page).getByRole('button', { name: '決定' }).click();
   assert.equal(await page.getAttribute('.app', 'data-mode'), 'train');
   assert.equal((await stored(page)).sessions.length, 0);
-  await press(page, '戻る').click();
+  await leaveTraining(page);
   assert.equal(await page.locator('.ln .word').textContent(), '初回');
   assert.deepEqual(errors, []);
   await close();
@@ -345,5 +353,223 @@ test('GitHub restore requires confirmation and preserves the remote data', async
   await page.locator('#confirm-dialog button[value=confirm]').click();
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('kintore:data')).exercises[0].name === '復元した種目');
   assert.equal((await stored(page)).sessions.length, remote.sessions.length);
+  await close();
+});
+
+test('today posts put the single coach or record label in the text block', async () => {
+  const data = fixture();
+  const last = data.sessions.at(-1);
+  last.sets[0].reps = 19;
+  const { page, close } = await open({ data, extra: {
+    'kintore:posts': [{ id: 'reply', at: '2099-01-01', kind: 'reply', text: '肩を休める。' }]
+  } });
+  assert.deepEqual(await page.locator('.feed .post').evaluateAll(posts =>
+    posts.map(post => ({
+      labels: [...post.querySelectorAll('b')].map(b => b.textContent),
+      separate: post.querySelectorAll('.k').length,
+      blocks: post.children.length
+    }))), [
+    { labels: ['コーチ'], separate: 0, blocks: 1 },
+    { labels: ['記録'], separate: 0, blocks: 1 }
+  ]);
+  assert.equal(await page.locator('.feed .post').first().textContent(), 'コーチ肩を休める。');
+  await close();
+});
+
+test('ruler renders every tick, moves with the finger, supports thirds and arrow keys', async () => {
+  const data = fixture();
+  const { page, errors, close } = await open({ data });
+  const today = localDate(new Date());
+  await press(page, '始める').click();
+  const slider = page.getByRole('slider', { name: '腕立て伏せ 回数' });
+  const initial = prefill(data, 'e1', today)[0].reps;
+  const target = line(data, 'e1', today).value;
+  assert.equal(await slider.getAttribute('aria-valuenow'), String(initial));
+  assert.equal(await slider.getAttribute('aria-valuemin'), '0');
+  assert.equal(await slider.getAttribute('aria-valuemax'), '200');
+  assert.equal(await slider.locator('.t').count(), 201);
+  assert.equal(await slider.locator('.line b').textContent(), 'ライン' + target);
+  assert.equal(await slider.locator('.t.over').count(), 201 - target);
+  assert.deepEqual(await slider.locator('.t').evaluateAll(ticks =>
+    ticks.map((tick, i) => tick.classList.contains('over') === (i >= Number(
+      document.querySelector('.line b').textContent.replace('ライン', '')))).every(Boolean)), true);
+  const box = await slider.boundingBox();
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x - 60, y, { steps: 6 });
+  await page.mouse.up();
+  assert.equal(await slider.getAttribute('aria-valuenow'), String(initial + 2));
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 30, y, { steps: 3 });
+  await page.mouse.up();
+  assert.equal(await slider.getAttribute('aria-valuenow'), String(initial + 1));
+  await slider.click({ position: { x: 10, y: 30 } });
+  assert.equal(await slider.getAttribute('aria-valuenow'), String(initial));
+  await slider.click({ position: { x: box.width - 10, y: 30 } });
+  await slider.press('ArrowRight');
+  assert.equal(await slider.getAttribute('aria-valuenow'), String(initial + 2));
+  await slider.press('ArrowLeft');
+  assert.equal(await page.locator('.big .num').textContent(), String(initial + 1));
+  const center = await slider.evaluate(el => {
+    const bounds = el.getBoundingClientRect();
+    const n = Number(el.getAttribute('aria-valuenow'));
+    const tick = el.querySelectorAll('.t')[n].getBoundingClientRect();
+    return Math.abs(tick.x + tick.width / 2 - bounds.x - bounds.width / 2);
+  });
+  assert.ok(center < 1, 'selected tick is centered');
+  const name = await page.textContent('.exname');
+  await swipe(page, -100, 0, '.ruler');
+  assert.equal(await page.textContent('.exname'), name);
+  await swipe(page, -100);
+  assert.equal(await page.textContent('.exname'), 'バンドロウ');
+  await swipe(page, 100);
+  assert.equal(await page.textContent('.exname'), name);
+  await principles(page);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('time ruler uses five-second steps, all 121 ticks, and clamps at both ends', async () => {
+  const { page, close } = await open({ data: fixture(), extra: {
+    'kintore:menu': { kind: 'custom', exerciseIds: ['e3'] }
+  } });
+  await press(page, '始める').click();
+  const slider = page.getByRole('slider', { name: 'プランク 秒数' });
+  assert.equal(await slider.locator('.t').count(), 121);
+  assert.equal(await slider.getAttribute('aria-valuemax'), '600');
+  const initial = Number(await slider.getAttribute('aria-valuenow'));
+  await slider.press('ArrowRight');
+  assert.equal(await slider.getAttribute('aria-valuenow'), String(initial + 5));
+  const box = await slider.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 30, box.y + 30);
+  await page.mouse.up();
+  assert.equal(await slider.getAttribute('aria-valuenow'), String(initial + 10));
+  await slider.evaluate(el => {
+    for (let i = 0; i < 140; i++) el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+  });
+  assert.equal(await slider.getAttribute('aria-valuenow'), '0');
+  await slider.evaluate(el => {
+    for (let i = 0; i < 140; i++) el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+  });
+  assert.equal(await slider.getAttribute('aria-valuenow'), '600');
+  await close();
+});
+
+test('complete immediately saves, shows first-set verdict and ring, then summary', async () => {
+  const data = fixture();
+  const { page, errors, close } = await open({ data });
+  await page.clock.install();
+  await page.evaluate(() => {
+    window.vibrations = [];
+    navigator.vibrate = value => { window.vibrations.push(value); return true; };
+  });
+  await press(page, '始める').click();
+  assert.equal((await stored(page)).sessions.length, data.sessions.length);
+  const slider = page.getByRole('slider');
+  const target = line(data, 'e1', localDate(new Date())).value;
+  await slider.press('ArrowRight');
+  const reps = Number(await slider.getAttribute('aria-valuenow'));
+  await press(page, '完了').click();
+  const session = (await stored(page)).sessions.at(-1);
+  assert.equal(session.sets[0].reps, reps);
+  assert.equal(session.date, localDate(new Date()));
+  assert.equal(await page.locator('.verdict b').textContent(), reps >= target ? '突破' : 'あと' + (target - reps));
+  assert.equal(await page.locator('.verdict .num').textContent(), String(reps));
+  assert.equal(await page.locator('.ring .num').textContent(), '1:30');
+  const progress = () => page.locator('.ring').evaluate(el => parseFloat(el.style.getPropertyValue('--p')));
+  const initialProgress = await progress();
+  await page.clock.runFor(3000);
+  assert.equal(await page.locator('.verdict').count(), 0);
+  assert.ok(await progress() < initialProgress);
+  await press(page, '+15秒').click();
+  assert.equal(await page.locator('.ring .num').textContent(), '1:42');
+  await press(page, '休憩を終える').click();
+  assert.equal(await page.locator('.ring').count(), 0);
+  assert.match(await page.textContent('.see'), /今日 /);
+  await press(page, '完了').click();
+  assert.equal(await page.locator('.verdict').count(), 0);
+  await page.clock.runFor(90000);
+  assert.equal(await page.locator('.ring').count(), 0);
+  assert.ok(await page.evaluate(() => window.vibrations.some(v => JSON.stringify(v) === '[300,100,300]')));
+  for (let i = 0; i < 3; i++) {
+    await press(page, '完了').click();
+    await press(page, '休憩を終える').click();
+  }
+  assert.equal((await stored(page)).sessions.at(-1).sets.length, 5, 'extra sets are added automatically');
+  await press(page, '次の種目 ▶').click();
+  await press(page, '次の種目 ▶').click();
+  await press(page, '終了').click();
+  assert.equal(await page.getAttribute('.app', 'data-mode'), 'summary');
+  assert.match(await page.textContent('.see'), /今日の記録.*ライン突破 [01] \/ 1.*合計回数/s);
+  await principles(page);
+  await press(page, '今日へ戻る').click();
+  await press(page, '始める').click();
+  await press(page, '完了').click();
+  assert.equal((await stored(page)).sessions.length, data.sessions.length + 1, 'same-day restart appends');
+  assert.equal(await page.locator('.verdict').count(), 0, 'same-day first set is not judged again');
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('training sheet keeps notes, coach opt-in, sets, additions and stage switching', async () => {
+  const data = fixture();
+  const { page, close } = await open({ data, extra: {
+    'kintore:menu': { kind: 'custom', exerciseIds: ['e1'] }
+  } });
+  await press(page, '始める').click();
+  await press(page, 'メモ・その他').click();
+  await principles(page);
+  await sheet(page).getByLabel('メモ', { exact: true }).fill('肩が重い');
+  await sheet(page).getByRole('button', { name: 'コーチに送る：オフ', exact: true }).click();
+  await sheet(page).getByRole('button', { name: 'セットを追加', exact: true }).click();
+  assert.equal((await stored(page)).sessions.length, data.sessions.length);
+  await press(page, '完了').click();
+  let session = (await stored(page)).sessions.at(-1);
+  assert.equal(session.note, '肩が重い');
+  assert.equal(session.toCoach, true);
+  await press(page, '休憩を終える').click();
+  await press(page, 'メモ・その他').click();
+  await sheet(page).getByRole('button', { name: '次の段階へ切り替え', exact: true }).click();
+  assert.equal(await page.textContent('.exname'), '足上げ腕立て');
+  await press(page, 'メモ・その他').click();
+  await sheet(page).getByRole('button', { name: '種目を追加', exact: true }).click();
+  await sheet(page).getByRole('button', { name: 'バンドロウ', exact: true }).click();
+  assert.equal(await page.textContent('.exname'), 'バンドロウ');
+  await press(page, '黒').click();
+  await press(page, '完了').click();
+  session = (await stored(page)).sessions.at(-1);
+  assert.equal(session.sets.at(-1).bandId, 'k');
+  await principles(page);
+  await leaveTraining(page);
+  await close();
+});
+
+test('light mode and weight controls fit the small viewport, including rest and summary', async () => {
+  const data = fixture();
+  data.exercises.push({ id: 'weight', name: 'ダンベル', type: 'weight', part: '腕', nextId: null, archived: false });
+  const { page, errors, close } = await open({ data, extra: {
+    'kintore:menu': { kind: 'custom', exerciseIds: ['weight'] }
+  } });
+  await page.setViewportSize({ width: 360, height: 640 });
+  await press(page, '軽めの日').click();
+  await principles(page);
+  await press(page, '重さを増やす').click();
+  await press(page, '完了').click();
+  await principles(page);
+  const session = (await stored(page)).sessions.at(-1);
+  assert.equal(session.light, true);
+  assert.equal(session.sets[0].kg, 5.5);
+  assert.equal(await page.locator('.verdict b').textContent(), '基準');
+  await press(page, 'メモ・その他').click();
+  await principles(page);
+  await sheet(page).getByRole('button', { name: '閉じる', exact: true }).click();
+  await press(page, '終了').click();
+  await principles(page);
+  assert.deepEqual(errors, []);
   await close();
 });

@@ -1,6 +1,7 @@
 import {
   localDate, parseImport, value, recent, totalDays, feed, mergeFeed,
-  firstSet, line, lineResult, menuExercises, toBase64Utf8, consultText, parsePosts
+  firstSet, line, lineResult, lineText, prefill, rows, sessionEvents,
+  menuExercises, toBase64Utf8, consultText, parsePosts
 } from './logic.js';
 
 /** @typedef {import('./logic.js').Data} Data */
@@ -272,6 +273,7 @@ app.addEventListener('touchend', event => {
   if (elapsed > 700 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
   if (currentMode === 'today' && dx < 0) go('growth');
   else if (currentMode === 'growth' && dx > 0) go('today');
+  else if (currentMode === 'train') moveExercise(dx < 0 ? 1 : -1);
   else return;
   view.classList.remove('slide-next', 'slide-prev');
   void view.offsetWidth;
@@ -288,6 +290,7 @@ function render() {
   if (currentMode === 'today') renderToday();
   else if (currentMode === 'growth') renderGrowth();
   else if (currentMode === 'settings') renderSettings();
+  else if (currentMode === 'summary') renderSummary();
   else renderTrain();
 }
 
@@ -332,13 +335,8 @@ function appendFeed(parent, items, full = false) {
   for (const item of items) {
     const post = element('article', '', 'post');
     const coach = ['reply', 'weekly', 'finding', 'reading'].includes(item.kind);
-    const labels = {
-      reply: '返信', weekly: '週次', finding: '発見', reading: '読み物',
-      clear: '突破', pr: '自己ベスト', load: '負荷アップ', stage: '段階アップ', near: '節目'
-    };
-    post.append(element('p', coach ? 'コーチ' : '記録', 'k'));
     const body = element('p', '', full ? '' : 'preview');
-    body.append(element('b', labels[item.kind]), document.createTextNode(item.text));
+    body.append(element('b', coach ? 'コーチ' : '記録'), document.createTextNode(item.text));
     post.append(body);
     if (full && item.kind === 'reply' && typeof item.quote === 'string') {
       post.prepend(element('blockquote', item.quote, 'dim'));
@@ -496,21 +494,439 @@ function changeMenu(onSelect) {
 }
 
 let training = null;
+let rest = null;
+let restInterval;
+let wakeLock = null;
+
+function trainingEntry(id, count) {
+  const sets = prefill(state, id, training.date);
+  const planned = rows(sets, training.light ? 1 : count ?? sets.length);
+  return { id, sets: planned, cursor: 0, goal: planned.length };
+}
+
 function startWorkout(light) {
-  const ids = menuExercises(state, menu, localDate(new Date()));
+  const date = localDate(new Date());
+  const ids = menuExercises(state, menu, date);
   if (!ids.length) {
     changeMenu(() => startWorkout(light));
     return;
   }
-  training = { exerciseIds: ids, light };
+  const session = state.sessions.find(item => item.date === date);
+  const template = menu.kind === 'template'
+    ? state.templates.find(item => item.id === menu.templateId) : null;
+  training = { date, light, index: 0, entries: [],
+    note: session?.note ?? '', toCoach: session?.toCoach === true };
+  training.entries = ids.map(id => trainingEntry(id, template?.sets));
   go('train');
+  requestWakeLock();
+}
+
+async function requestWakeLock() {
+  if (!navigator.wakeLock || currentMode !== 'train' || wakeLock) return;
+  try {
+    const lock = await navigator.wakeLock.request('screen');
+    if (currentMode !== 'train') {
+      await lock.release();
+      return;
+    }
+    wakeLock = lock;
+    lock.addEventListener('release', () => {
+      if (wakeLock === lock) wakeLock = null;
+    });
+  } catch {}
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    requestWakeLock();
+    updateRest();
+  }
+});
+
+function trainingSession() {
+  return state.sessions.find(item => item.date === training.date);
+}
+
+function currentEntry() {
+  return training.entries[training.index];
+}
+
+function dismissVerdict() {
+  if (rest) rest.verdict = null;
+  view.querySelector('.verdict')?.remove();
+}
+
+function moveExercise(offset) {
+  const next = training.index + offset;
+  if (next < 0 || next >= training.entries.length) return;
+  dismissVerdict();
+  training.index = next;
+  render();
+}
+
+function trainingTop(resting) {
+  const top = element('div', '', 'tr-top');
+  const dots = element('div', '', 'dots');
+  training.entries.forEach((entry, index) => {
+    dots.append(element('i', '', index === training.index ? 'on' :
+      entry.cursor >= entry.goal ? 'done' : ''));
+  });
+  const ex = state.exercises.find(item => item.id === currentEntry().id);
+  const count = trainingSession()?.sets.filter(set => set.exerciseId === ex.id).length ?? 0;
+  top.append(dots, element('span',
+    (training.index + 1) + ' / ' + training.entries.length +
+    (resting ? ' ・ ' + (count + 1) + 'セット目へ' : ''), 'k'));
+  return top;
+}
+
+function renderTrainPaper() {
+  view.replaceChildren(trainingTop(Boolean(rest)));
+  if (rest) {
+    if (rest.verdict && Date.now() < rest.verdictUntil) {
+      const verdict = element('div', '', 'verdict');
+      const detail = element('div');
+      detail.append(element('b', rest.verdict.title));
+      if (rest.verdict.small) detail.append(element('small', rest.verdict.small));
+      verdict.append(element('span', String(rest.verdict.value), 'num'), detail);
+      view.append(verdict);
+    }
+    const ring = element('div', '', 'ring');
+    ring.append(element('span', '休憩', 'k'), element('span', '', 'num'));
+    view.append(ring);
+    updateRest();
+    return;
+  }
+  const entry = currentEntry();
+  const ex = state.exercises.find(item => item.id === entry.id);
+  view.append(element('h1', ex.name, 'exname'));
+  const [previous] = recent(state, ex.id, training.date, 1);
+  if (previous) {
+    const sets = previous.sets.filter(set => set.exerciseId === ex.id);
+    view.append(element('p', '前回　' + sets.map(set => setText(ex, set)).join(' ・ '), 'prev'));
+  }
+  const target = element('div', '', 'target');
+  const done = trainingSession()?.sets.filter(set => set.exerciseId === ex.id) ?? [];
+  if (!done.length) {
+    const l = line(state, ex.id, training.date);
+    if (l.value !== undefined) {
+      target.append(element('span', 'ライン'), element('span', String(l.value), 'num'));
+      if (ex.type === 'time') target.append(element('span', '秒'));
+    }
+    if (l.kind !== 'line') target.append(element('span', lineText(l, ex)));
+  }
+  view.append(target);
+  if (done.length) {
+    view.append(element('p', '今日 ' + done.map(set => setText(ex, set)).join(' ・ '), 'prev'));
+  }
+  view.append(element('p', (done.length + 1) + 'セット目', 'k'));
+}
+
+function setText(ex, set) {
+  const prefix = ex.type === 'band'
+    ? state.bands.find(band => band.id === set.bandId)?.name ?? 'なし'
+    : ex.type === 'weight' ? set.kg + 'kg' : '';
+  return (prefix ? prefix + ' ' : '') + value(ex, set) + (ex.type === 'time' ? '秒' : '');
 }
 
 function renderTrain() {
-  view.append(element('h1', training?.light ? '軽めの日' : 'トレーニング', 'exname'));
-  const sub = element('div', '', 'sub');
-  sub.append(action('戻る', () => go('today')));
-  dock.append(sub);
+  renderTrainPaper();
+  const entry = currentEntry();
+  const ex = state.exercises.find(item => item.id === entry.id);
+  const set = entry.sets[entry.cursor];
+  if (rest) {
+    const sub = element('div', '', 'sub');
+    sub.append(action('+15秒', () => {
+      dismissVerdict();
+      rest.end += 15000;
+      rest.duration += 15000;
+      updateRest();
+    }), action('休憩を終える', () => endRest(false)));
+    dock.append(sub);
+  }
+  if (ex.type === 'weight') {
+    dock.append(stepper('重さ', set.kg ?? 0, 0, Infinity, 0.5, kg => {
+      dismissVerdict();
+      set.kg = kg;
+      render();
+    }, 'kg'));
+  }
+  if (ex.type === 'band') {
+    const chips = element('div', '', 'chips');
+    for (const band of [...state.bands].sort((a, b) => a.order - b.order)) {
+      const button = action(band.name, () => {
+        dismissVerdict();
+        set.bandId = band.id;
+        render();
+      }, 'chip' + (band.id === set.bandId ? ' on' : ''));
+      button.setAttribute('aria-pressed', String(band.id === set.bandId));
+      chips.append(button);
+    }
+    dock.append(chips);
+  }
+  const big = element('div', '', 'big');
+  const number = element('span', String(value(ex, set)), 'num');
+  big.append(number, element('small', ex.type === 'time' ? '秒' : '回'));
+  dock.append(big, ruler(ex, set, number), action('完了', completeSet, 'go'));
+  const nav = element('div', '', 'nav3');
+  const previous = action('◀ 前の種目', () => moveExercise(-1));
+  previous.disabled = training.index === 0;
+  nav.append(previous, action('メモ・その他', trainingMore),
+    training.index === training.entries.length - 1
+      ? action('終了', finishWorkout) : action('次の種目 ▶', () => moveExercise(1)));
+  dock.append(nav);
+}
+
+function ruler(ex, set, number) {
+  const step = ex.type === 'time' ? 5 : 1;
+  const max = ex.type === 'time' ? 600 : 200;
+  const key = ex.type === 'time' ? 'sec' : 'reps';
+  const l = line(state, ex.id, training.date);
+  const slider = element('div', '', 'ruler');
+  slider.tabIndex = 0;
+  slider.setAttribute('role', 'slider');
+  slider.setAttribute('aria-label', ex.name + (ex.type === 'time' ? ' 秒数' : ' 回数'));
+  slider.setAttribute('aria-valuemin', '0');
+  slider.setAttribute('aria-valuemax', String(max));
+  const ticks = element('div', '', 'ticks');
+  for (let n = 0; n <= max; n += step) {
+    const tick = element('div', '', 't' + (n % (step * 5) === 0 ? ' major' : '') +
+      (l.value !== undefined && n >= l.value ? ' over' : ''));
+    tick.append(element('i'));
+    if (n % (step * 5) === 0) tick.append(element('em', String(n)));
+    ticks.append(tick);
+  }
+  slider.append(ticks);
+  let marker;
+  if (l.value !== undefined) {
+    marker = element('div', '', 'line');
+    marker.append(element('b', 'ライン' + l.value));
+    slider.append(marker);
+  }
+  slider.append(element('div', '', 'center'));
+  function draw(position = set[key]) {
+    number.textContent = String(set[key]);
+    slider.setAttribute('aria-valuenow', String(set[key]));
+    ticks.style.transform = 'translateX(calc(50% - ' + (position / step * 30 + 15) + 'px))';
+    if (marker) marker.style.left = 'calc(50% + ' + ((l.value - position) / step * 30) + 'px)';
+  }
+  function change(next) {
+    next = Math.max(0, Math.min(max, next));
+    if (next === set[key]) return;
+    set[key] = next;
+    navigator.vibrate?.(5);
+    draw();
+  }
+  let pointer = null;
+  slider.addEventListener('pointerdown', event => {
+    if (!event.isPrimary || event.button !== 0) return;
+    dismissVerdict();
+    pointer = { id: event.pointerId, x: event.clientX, value: set[key], moved: false };
+    slider.setPointerCapture(event.pointerId);
+    slider.focus({ preventScroll: true });
+  });
+  slider.addEventListener('pointermove', event => {
+    if (!pointer || event.pointerId !== pointer.id) return;
+    const dx = event.clientX - pointer.x;
+    if (Math.abs(dx) >= 5) pointer.moved = true;
+    if (pointer.moved) {
+      change(pointer.value - Math.round(dx / 30) * step);
+      draw(Math.max(0, Math.min(max, pointer.value - dx / 30 * step)));
+    }
+  });
+  slider.addEventListener('pointerup', event => {
+    if (!pointer || event.pointerId !== pointer.id) return;
+    if (!pointer.moved) {
+      const rect = slider.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      if (x < rect.width / 3) change(set[key] - step);
+      else if (x > rect.width * 2 / 3) change(set[key] + step);
+    }
+    draw();
+    pointer = null;
+    slider.releasePointerCapture(event.pointerId);
+  });
+  slider.addEventListener('pointercancel', () => { pointer = null; draw(); });
+  slider.addEventListener('lostpointercapture', () => { pointer = null; });
+  slider.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    dismissVerdict();
+    change(set[key] + (event.key === 'ArrowRight' ? step : -step));
+  });
+  draw();
+  return slider;
+}
+
+function completeSet() {
+  const entry = currentEntry();
+  const ex = state.exercises.find(item => item.id === entry.id);
+  const set = { ...entry.sets[entry.cursor] };
+  let session = trainingSession();
+  const first = !session?.sets.some(item => item.exerciseId === ex.id);
+  const l = line(state, ex.id, training.date);
+  if (!session) {
+    session = { id: uid('s'), date: training.date, light: training.light,
+      note: training.note, toCoach: training.toCoach, sets: [] };
+    state.sessions.push(session);
+  }
+  session.sets.push(set);
+  save();
+  entry.cursor++;
+  if (entry.cursor === entry.sets.length) entry.sets.push({ ...set });
+  let verdict = null;
+  if (first) {
+    const result = lineResult(l, value(ex, set));
+    let title = '基準';
+    let small = '';
+    if (result.kind === 'clear') {
+      title = '突破';
+      const date = new Date(training.date + 'T12:00:00');
+      date.setDate(date.getDate() + 1);
+      const next = line(state, ex.id, localDate(date));
+      small = next.value === undefined ? lineText(next, ex) :
+        '次のライン ' + next.value + (ex.type === 'time' ? '秒' : '');
+      navigator.vibrate?.(60);
+    } else if (result.kind === 'short') {
+      title = 'あと' + result.diff;
+      small = 'ラインは次回へ';
+    } else if (result.kind === 'newload') {
+      title = '新しい基準';
+      small = (ex.type === 'band'
+        ? state.bands.find(band => band.id === set.bandId)?.name ?? 'なし'
+        : ex.type === 'weight' ? set.kg + 'kg' : ex.name) + 'の1本目';
+    }
+    verdict = { value: value(ex, set), title, small };
+  }
+  clearInterval(restInterval);
+  const duration = state.settings.restSec * 1000;
+  rest = { end: Date.now() + duration, duration, verdict, verdictUntil: Date.now() + 2500 };
+  render();
+  restInterval = setInterval(updateRest, 250);
+}
+
+function updateRest() {
+  if (!rest) return;
+  const remaining = Math.max(0, Math.ceil((rest.end - Date.now()) / 1000));
+  if (!remaining) {
+    endRest(true);
+    return;
+  }
+  if (rest.verdict && Date.now() >= rest.verdictUntil) dismissVerdict();
+  const ring = view.querySelector('.ring');
+  if (ring) {
+    ring.style.setProperty('--p', Math.max(0, Math.min(100,
+      (rest.end - Date.now()) / rest.duration * 100)) + '%');
+    ring.querySelector('.num').textContent =
+      Math.floor(remaining / 60) + ':' + String(remaining % 60).padStart(2, '0');
+  }
+}
+
+function endRest(vibrate) {
+  clearInterval(restInterval);
+  rest = null;
+  if (vibrate) navigator.vibrate?.([300, 100, 300]);
+  if (currentMode === 'train') render();
+}
+
+function trainingMore() {
+  dismissVerdict();
+  const { sheet, content } = homeSheet('メモ・その他');
+  const label = element('label', '', 'stack');
+  const note = element('textarea');
+  note.value = training.note;
+  function saveNote() {
+    const session = trainingSession();
+    if (session) {
+      session.note = training.note;
+      session.toCoach = training.toCoach;
+      save();
+    }
+  }
+  note.addEventListener('input', () => {
+    training.note = note.value;
+    saveNote();
+  });
+  label.append(element('span', 'メモ'), note);
+  const coach = action('', () => {
+    training.toCoach = !training.toCoach;
+    saveNote();
+    drawCoach();
+  }, 'chip');
+  function drawCoach() {
+    coach.textContent = 'コーチに送る：' + (training.toCoach ? 'オン' : 'オフ');
+    coach.setAttribute('aria-pressed', String(training.toCoach));
+  }
+  drawCoach();
+  content.append(label, coach, action('種目を追加', () => {
+    content.replaceChildren();
+    for (const ex of state.exercises.filter(item => !item.archived &&
+        !training.entries.some(entry => entry.id === item.id))) {
+      content.append(action(ex.name, () => {
+        training.entries.push(trainingEntry(ex.id));
+        training.index = training.entries.length - 1;
+        sheet.close();
+        render();
+      }));
+    }
+  }), action('セットを追加', () => {
+    const entry = currentEntry();
+    entry.sets.push({ ...entry.sets[entry.sets.length - 1] });
+    entry.goal++;
+    sheet.close();
+    render();
+  }));
+  const ex = state.exercises.find(item => item.id === currentEntry().id);
+  if (ex.nextId && state.exercises.some(item => item.id === ex.nextId)) {
+    content.append(action('次の段階へ切り替え', () => {
+      const index = training.entries.findIndex(entry => entry.id === ex.nextId);
+      if (index >= 0) training.index = index;
+      else training.entries[training.index] = trainingEntry(ex.nextId);
+      sheet.close();
+      render();
+    }));
+  }
+  content.append(action('トレーニングをやめる', () => {
+    sheet.close();
+    finishWorkout();
+  }));
+}
+
+function finishWorkout() {
+  endRest(false);
+  wakeLock?.release().catch(() => {});
+  wakeLock = null;
+  go('summary');
+}
+
+function renderSummary() {
+  view.append(element('h1', '今日の記録', 'exname'));
+  const session = trainingSession();
+  const sets = session?.sets ?? [];
+  const ids = [...new Set(sets.map(set => set.exerciseId))];
+  const results = ids.map(id => {
+    const ex = state.exercises.find(item => item.id === id);
+    return lineResult(line(state, id, training.date), value(ex, firstSet(state, ex, session)));
+  }).filter(result => ['clear', 'short'].includes(result.kind));
+  view.append(element('p', 'ライン突破 ' +
+    results.filter(result => result.kind === 'clear').length + ' / ' + results.length, 'lines'));
+  const total = sets.reduce((sum, set) => sum + (set.reps ?? 0), 0);
+  const [previous] = state.sessions.filter(item => item.date < training.date)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const sum = element('div', '', 'ln');
+  sum.append(element('span', '合計回数', 'name'), element('span', String(total), 'num'));
+  view.append(sum);
+  if (previous) {
+    const diff = total - previous.sets.reduce((sum, set) => sum + (set.reps ?? 0), 0);
+    view.append(element('p', '前回より ' + (diff >= 0 ? '+' : '') + diff,
+      diff > 0 ? 'summary-up' : 'k'));
+  }
+  if (session) {
+    for (const event of sessionEvents(state, session.id)) view.append(element('p', event.text, 'post'));
+  }
+  dock.append(action('今日へ戻る', () => {
+    training = null;
+    go('today');
+  }, 'go'));
 }
 
 function renderGrowth() {
@@ -873,7 +1289,7 @@ function renderGithubSettings() {
   section.append(
     form,
     link,
-    element('p', '対象はデータ用リポジトリ1つ、権限は Contents の Read and write だけ', 'dim'),
+    element('p', '対象はデータ用リポジトリ1つ、権限は Contents の Read and Write だけ', 'dim'),
     buttons,
     status
   );
