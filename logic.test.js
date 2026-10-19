@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   localDate, value, load, recent, top, advice, prefill, rows,
-  prKind, isStageUp, sessionEvents, totals
+  prKind, isStageUp, sessionEvents, totals,
+  weekStart, weekStats, calendar, compare, bodyAvg7, consultText,
+  parseImport, toBase64Utf8
 } from './logic.js';
 
 const ex = (o) => ({ id: 'e1', name: '腕立て', type: 'reps', part: '胸', min: 8, max: 15, nextId: null, archived: false, ...o });
@@ -518,4 +520,332 @@ test('totals includes archived exercises, light sessions, every load and seconds
   assert.deepEqual(totals(d), { e1: 30, e2: 70, e3: 17, e4: 13 });
   assert.deepEqual(totals(data()), {});
   assert.deepEqual(d, before);
+});
+
+test('weekStart returns Monday across weekdays and year boundaries', () => {
+  for (const date of ['2026-10-22', '2026-10-19', '2026-10-25']) {
+    assert.equal(weekStart(date), '2026-10-19');
+  }
+  assert.equal(weekStart('2027-01-01'), '2026-12-28');
+});
+
+test('weekStats preserves streak through illness but not fatigue', () => {
+  const d = data({
+    sessions: ['2026-10-12', '2026-10-14', '2026-10-16', '2026-10-05']
+      .map(date => ses(date, [set({ reps: 10 })])),
+    skips: [{ date: '2026-10-06', reason: '風邪' }]
+  });
+  assert.deepEqual(weekStats(d, today), {
+    days: 0, goal: 3, achieved: false, streak: 2, partSets: {}, marks: {}
+  });
+  d.skips[0].reason = '疲れ';
+  assert.equal(weekStats(d, today).streak, 1);
+});
+
+test('weekStats counts light days, archived parts and the full current week', () => {
+  const d = data({
+    exercises: [ex({ archived: true }), ex({ id: 'e2', part: '背中' })],
+    sessions: [
+      ses('2026-10-18', [set({ reps: 10 })]),
+      ses('2026-10-19', [set({ reps: 10 }), set({ reps: 9 })]),
+      ses(today, [set({ exerciseId: 'e2', reps: 8 })], { light: true }),
+      ses('2026-10-25', [set({ reps: 11 })], { light: true }),
+      ses('2026-10-26', [set({ reps: 12 })])
+    ],
+    skips: [{ date: today, reason: '風邪' }, { date: '2026-10-21', reason: '予定' }]
+  });
+  const before = structuredClone(d);
+  assert.deepEqual(weekStats(d, today), {
+    days: 3, goal: 3, achieved: true, streak: 1,
+    partSets: { 胸: 3, 背中: 1 },
+    marks: {
+      '2026-10-19': 'done', '2026-10-20': 'light',
+      '2026-10-21': 'rest', '2026-10-25': 'light'
+    }
+  });
+  assert.deepEqual(d, before);
+});
+
+test('calendar includes twelve full weeks and gives sessions priority over skips', () => {
+  const d = data({
+    sessions: [
+      ses('2026-08-02', [set({ reps: 1 })]),
+      ses('2026-08-03', [set({ reps: 1 })], { light: true }),
+      ses('2026-10-25', [set({ reps: 1 })]),
+      ses('2026-10-25', [set({ reps: 1 })], { id: 'other', light: true }),
+      ses('2026-10-26', [set({ reps: 1 })])
+    ],
+    skips: [
+      { date: '2026-08-03', reason: '疲れ' },
+      { date: '2026-10-19', reason: 'その他' }
+    ]
+  });
+  assert.deepEqual(calendar(d, today), {
+    '2026-08-03': 'light', '2026-10-19': 'rest', '2026-10-25': 'done'
+  });
+  assert.deepEqual(calendar(d, today, 1), {
+    '2026-10-19': 'rest', '2026-10-25': 'done'
+  });
+});
+
+test('bodyAvg7 uses inclusive seven-day bounds and ignores null waist', () => {
+  const body = [
+    { date: '2026-10-13', kg: 100, waist: 100 },
+    { date: '2026-10-14', kg: 68, waist: 80 },
+    { date: today, kg: 69, waist: null },
+    { date: '2026-10-21', kg: 100, waist: 100 }
+  ];
+  assert.equal(bodyAvg7(body, today, 'kg'), 68.5);
+  assert.equal(bodyAvg7(body, today, 'waist'), 80);
+  assert.equal(bodyAvg7([], today, 'kg'), null);
+  assert.equal(bodyAvg7([{ date: today, kg: 68, waist: null }], today, 'waist'), null);
+});
+
+test('compare returns null when the old period has no sessions', () => {
+  assert.equal(compare(data(), today), null);
+  assert.equal(compare(data({
+    sessions: [
+      ses('2026-09-15', [set({ reps: 10 })]),
+      ses('2026-09-23', [set({ reps: 10 })]),
+      ses(today, [set({ reps: 12 })])
+    ]
+  }), today), null);
+});
+
+test('compare includes light and archived records and uses the strongest load', () => {
+  const d = data({
+    exercises: [
+      ex({ type: 'band', archived: true }),
+      ex({ id: 'e2', type: 'time', name: 'プランク' })
+    ],
+    bands,
+    sessions: [
+      ses('2026-09-16', [
+        set({ bandId: 'r', reps: 12 }), set({ exerciseId: 'e2', sec: 30 })
+      ]),
+      ses('2026-09-22', [set({ bandId: 'y', reps: 100 })]),
+      ses('2026-10-14', [
+        set({ bandId: 'r', reps: 100 }), set({ exerciseId: 'e2', sec: 45 })
+      ]),
+      ses(today, [set({ bandId: 'k', reps: 10 })], { light: true }),
+      ses('2026-10-21', [set({ bandId: 'k', reps: 999 })])
+    ],
+    body: [
+      { date: '2026-09-16', kg: 69, waist: 81 },
+      { date: '2026-09-22', kg: 69.2, waist: null },
+      { date: '2026-10-14', kg: 68, waist: 80.5 },
+      { date: today, kg: 68.1, waist: 80 }
+    ]
+  });
+  const before = structuredClone(d);
+  assert.deepEqual(compare(d, today), {
+    items: [
+      { exerciseId: 'e1', kind: 'load', text: '腕立て 赤→黒' },
+      { exerciseId: 'e2', kind: 'value', text: 'プランク 最高 30→45秒' }
+    ],
+    totalPct: -2, bodyKg: -1, waist: -0.7
+  });
+  assert.deepEqual(d, before);
+});
+
+test('compare sorts load increases then value rates with stable exercise ties and a three-item limit', () => {
+  const exercises = [
+    ex({ id: 'v1' }), ex({ id: 'w1', type: 'weight' }),
+    ex({ id: 'w2', type: 'weight' }), ex({ id: 'w3', type: 'weight' }),
+    ex({ id: 'v2' })
+  ];
+  const d = data({
+    exercises,
+    sessions: [
+      ses('2026-09-22', exercises.map(ex => set({ exerciseId: ex.id, reps: 10, kg: 5 }))),
+      ses(today, [
+        set({ exerciseId: 'w3', reps: 1, kg: 6 }),
+        set({ exerciseId: 'w2', reps: 1, kg: 7 }),
+        set({ exerciseId: 'w1', reps: 1, kg: 6 }),
+        set({ exerciseId: 'v2', reps: 30 }),
+        set({ exerciseId: 'v1', reps: 20 })
+      ])
+    ]
+  });
+  assert.deepEqual(compare(d, today).items.map(item => item.exerciseId), ['w2', 'w1', 'w3']);
+  d.exercises = exercises.filter(ex => ex.type !== 'weight');
+  d.sessions.forEach(session => {
+    session.sets = session.sets.filter(set => ['v1', 'v2'].includes(set.exerciseId));
+  });
+  assert.deepEqual(compare(d, today).items.map(item => item.exerciseId), ['v2', 'v1']);
+  d.sessions[1].sets[0].reps = 20;
+  assert.deepEqual(compare(d, today).items.map(item => item.exerciseId), ['v1', 'v2']);
+});
+
+test('compare omits decreases, unchanged values and zero baselines', () => {
+  const exercises = [
+    ex(), ex({ id: 'e2', type: 'weight' }), ex({ id: 'e3' }), ex({ id: 'e4' })
+  ];
+  const d = data({
+    exercises,
+    sessions: [
+      ses('2026-09-22', [
+        set({ reps: 12 }), set({ exerciseId: 'e2', reps: 10, kg: 6 }),
+        set({ exerciseId: 'e3', reps: 0 }), set({ exerciseId: 'e4', reps: 10 })
+      ]),
+      ses(today, [
+        set({ reps: 10 }), set({ exerciseId: 'e2', reps: 20, kg: 5 }),
+        set({ exerciseId: 'e3', reps: 10 }), set({ exerciseId: 'e4', reps: 10 })
+      ])
+    ]
+  });
+  assert.deepEqual(compare(d, today).items, []);
+  assert.equal(compare(d, today).bodyKg, null);
+  assert.equal(compare(d, today).waist, null);
+  assert.deepEqual(compare(data({
+    sessions: [ses('2026-09-22', [set({ reps: 0 })])]
+  }), today), { items: [], totalPct: null, bodyKg: null, waist: null });
+});
+
+test('compare displays missing bands and null kg in load changes', () => {
+  for (const bandId of [null, 'missing']) {
+    const d = data({
+      exercises: [ex({ type: 'band' })],
+      bands,
+      sessions: [
+        ses('2026-09-22', [set({ reps: 12, bandId })]),
+        ses(today, [set({ reps: 5, bandId: 'y' })])
+      ]
+    });
+    assert.equal(compare(d, today).items[0].text, '腕立て なし→黄');
+  }
+  const d = data({
+    exercises: [ex({ type: 'weight' })],
+    sessions: [
+      ses('2026-09-22', [set({ reps: 12 })]),
+      ses(today, [set({ reps: 5, kg: 6 })])
+    ]
+  });
+  assert.equal(compare(d, today).items[0].text, '腕立て 0→6kg');
+});
+
+test('consultText uses the specified sections, grouping, dates and target ordering', () => {
+  const d = data({
+    exercises: [
+      ex({ name: '腕立て伏せ' }),
+      ex({ id: 'e2', type: 'time', name: 'プランク', min: 20, max: 60 }),
+      ex({ id: 'e3', type: 'band', name: 'バンドロウ', archived: true }),
+      ex({ id: 'e4', name: '未記録' })
+    ],
+    bands,
+    sessions: [
+      ses('2026-10-16', [set({ exerciseId: 'e2', sec: 40 }), set({ exerciseId: 'e2', sec: 35 })]),
+      ses('2026-10-13', [
+        set({ reps: 15 }), set({ reps: 15 }), set({ reps: 14 }),
+        set({ exerciseId: 'e3', bandId: 'r', reps: 15 }),
+        set({ exerciseId: 'e3', bandId: 'r', reps: 15 }),
+        set({ exerciseId: 'e3', bandId: 'k', reps: 10 })
+      ], { light: true, note: '少し疲れていた' })
+    ],
+    skips: [{ date: '2026-10-14', reason: '風邪' }],
+    body: [
+      { date: '2026-10-16', kg: 68, waist: null },
+      { date: '2026-10-13', kg: 68.2, waist: 80.5 }
+    ]
+  });
+  const before = structuredClone(d);
+  assert.equal(consultText(d, today), [
+    '自宅で自重とバンド中心に筋トレしています。以下の記録を見て、①伸びている点 ②停滞・偏り ③来週の具体的なメニュー提案 を短く教えてください。',
+    '',
+    '【記録】',
+    '10/13 軽め',
+    '  腕立て伏せ: 15・15・14回',
+    '  バンドロウ: 赤 15・15 / 黒 10回',
+    '  メモ: 少し疲れていた',
+    '10/16',
+    '  プランク: 40・35秒',
+    '',
+    '【休み】',
+    '10/14 風邪',
+    '',
+    '【体】',
+    '10/13 68.2kg ウエスト80.5cm',
+    '10/16 68.0kg',
+    '',
+    '【目標範囲】',
+    '腕立て伏せ 8〜15回',
+    'プランク 20〜60秒'
+  ].join('\n'));
+  assert.deepEqual(d, before);
+});
+
+test('consultText includes exactly the last 28 days and omits empty sections', () => {
+  const d = data({
+    sessions: [
+      ses('2026-09-22', [set({ reps: 999 })]),
+      ses('2026-09-23', [set({ reps: 8 })]),
+      ses(today, [set({ reps: 10 })]),
+      ses('2026-10-21', [set({ reps: 999 })])
+    ],
+    skips: [{ date: '2026-09-22', reason: '風邪' }],
+    body: [{ date: '2026-10-21', kg: 70, waist: null }]
+  });
+  const text = consultText(d, today);
+  assert.ok(text.startsWith('自宅で自重とバンド中心に筋トレしています。'));
+  assert.ok(text.includes('9/23\n  腕立て: 8回'));
+  assert.ok(text.includes('10/20\n  腕立て: 10回'));
+  assert.ok(!text.includes('999'));
+  assert.ok(!text.includes('【休み】'));
+  assert.ok(!text.includes('【体】'));
+  assert.equal(consultText(data(), today),
+    '自宅で自重とバンド中心に筋トレしています。以下の記録を見て、①伸びている点 ②停滞・偏り ③来週の具体的なメニュー提案 を短く教えてください。');
+});
+
+test('consultText keeps exercise set order and consecutive load groups with missing-load prefixes', () => {
+  const d = data({
+    exercises: [
+      ex({ type: 'band' }), ex({ id: 'e2', type: 'weight', name: '重り' })
+    ],
+    bands,
+    sessions: [ses(today, [
+      set({ exerciseId: 'e2', kg: null, reps: 8 }),
+      set({ reps: 9, bandId: null }),
+      set({ exerciseId: 'e2', kg: 6, reps: 10 }),
+      set({ exerciseId: 'e2', kg: 6, reps: 10 }),
+      set({ exerciseId: 'e2', kg: null, reps: 7 }),
+      set({ reps: 8, bandId: 'missing' }),
+      set({ reps: 7, bandId: 'r' }),
+      set({ reps: 6, bandId: null })
+    ])]
+  });
+  const text = consultText(d, today);
+  assert.ok(text.includes(
+    '  重り: 0kg 8 / 6kg 10・10 / 0kg 7回\n  腕立て: なし 9・8 / 赤 7 / なし 6回'
+  ));
+  assert.ok(text.endsWith('【目標範囲】\n腕立て 8〜15回\n重り 8〜15回'));
+});
+
+test('parseImport rejects malformed JSON and invalid top-level shapes without changing current data', () => {
+  const current = data();
+  const before = structuredClone(current);
+  for (const text of ['{}', 'not json', 'null', '[]', '1']) {
+    assert.throws(() => parseImport(text), { message: '読み込めないファイルです' });
+  }
+  for (const key of ['exercises', 'bands', 'templates', 'sessions', 'skips', 'body']) {
+    const invalid = data({ [key]: {} });
+    assert.throws(() => parseImport(JSON.stringify(invalid)), {
+      message: '読み込めないファイルです'
+    });
+  }
+  for (const settings of [null, [], 'settings', 1]) {
+    assert.throws(() => parseImport(JSON.stringify(data({ settings }))), {
+      message: '読み込めないファイルです'
+    });
+  }
+  assert.throws(() => parseImport(JSON.stringify(data({ version: 2 }))), {
+    message: '読み込めないファイルです'
+  });
+  assert.deepEqual(parseImport(JSON.stringify(current)), current);
+  assert.deepEqual(current, before);
+});
+
+test('toBase64Utf8 encodes Japanese and large UTF-8 payloads without argument-limit errors', () => {
+  for (const text of ['', '腕立て', '筋トレ💪', '腕'.repeat(3_000_000)]) {
+    assert.equal(toBase64Utf8(text), Buffer.from(text).toString('base64'));
+  }
 });

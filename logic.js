@@ -234,3 +234,236 @@ export function totals(data) {
   }
   return result;
 }
+
+function dateOffset(date, days) {
+  const [year, month, day] = date.split('-').map(Number);
+  return localDate(new Date(year, month - 1, day + days, 12));
+}
+
+/** @param {string} date */
+export function weekStart(date) {
+  const [year, month, day] = date.split('-').map(Number);
+  const weekday = new Date(year, month - 1, day, 12).getDay();
+  return dateOffset(date, -((weekday + 6) % 7));
+}
+
+function inRange(entries, start, end) {
+  return entries.filter(entry => entry.date >= start && entry.date <= end);
+}
+
+function marksInRange(data, start, end) {
+  const marks = {};
+  for (const skip of inRange(data.skips, start, end)) {
+    marks[skip.date] = 'rest';
+  }
+  for (const session of inRange(data.sessions, start, end)) {
+    if (marks[session.date] !== 'done') {
+      marks[session.date] = session.light ? 'light' : 'done';
+    }
+  }
+  return marks;
+}
+
+/** @param {Data} data @param {string} today */
+export function weekStats(data, today) {
+  const start = weekStart(today);
+  const end = dateOffset(start, 6);
+  const sessions = inRange(data.sessions, start, end);
+  const goal = data.settings.weeklyGoal;
+  const days = new Set(sessions.map(session => session.date)).size;
+  const achieved = days >= goal;
+  let streak = achieved ? 1 : 0;
+
+  for (let week = dateOffset(start, -7); ; week = dateOffset(week, -7)) {
+    const last = dateOffset(week, 6);
+    const count = new Set(inRange(data.sessions, week, last)
+      .map(session => session.date)).size;
+    const restWeek = inRange(data.skips, week, last)
+      .some(skip => skip.reason === '風邪');
+    if (count < goal && !restWeek) break;
+    streak++;
+  }
+
+  const partSets = {};
+  for (const ex of data.exercises) {
+    const count = sessions.reduce((sum, session) =>
+      sum + session.sets.filter(set => set.exerciseId === ex.id).length, 0);
+    if (count > 0) partSets[ex.part] = (partSets[ex.part] ?? 0) + count;
+  }
+  return {
+    days, goal, achieved, streak, partSets,
+    marks: marksInRange(data, start, end)
+  };
+}
+
+/** @param {Data} data @param {string} today */
+export function calendar(data, today, weeks = 12) {
+  const start = weekStart(today);
+  return marksInRange(data, dateOffset(start, -7 * (weeks - 1)), dateOffset(start, 6));
+}
+
+function average(entries, key) {
+  const values = entries.filter(entry => entry[key] !== null);
+  return values.length === 0
+    ? null
+    : values.reduce((sum, entry) => sum + entry[key], 0) / values.length;
+}
+
+/** @param {Body[]} body @param {string} date @param {'kg'|'waist'} key */
+export function bodyAvg7(body, date, key) {
+  return average(inRange(body, dateOffset(date, -6), date), key);
+}
+
+/** @param {Data} data @param {string} today */
+export function compare(data, today) {
+  const a = inRange(data.sessions, dateOffset(today, -6), today);
+  const b = inRange(data.sessions, dateOffset(today, -34), dateOffset(today, -28));
+  if (b.length === 0) return null;
+
+  const items = [];
+  for (const ex of data.exercises) {
+    const aSets = a.flatMap(session => session.sets)
+      .filter(set => set.exerciseId === ex.id);
+    const bSets = b.flatMap(session => session.sets)
+      .filter(set => set.exerciseId === ex.id);
+    if (aSets.length === 0 || bSets.length === 0) continue;
+    const current = top(data, ex, { sets: aSets });
+    const previous = top(data, ex, { sets: bSets });
+    if (current.load > previous.load) {
+      const bandName = order => data.bands.find(band => band.order === order)?.name ?? 'なし';
+      const change = ex.type === 'band'
+        ? `${bandName(previous.load)}→${bandName(current.load)}`
+        : `${previous.load}→${current.load}kg`;
+      items.push({
+        exerciseId: ex.id, kind: 'load', text: `${ex.name} ${change}`,
+        increase: current.load - previous.load
+      });
+    } else if (
+      current.load === previous.load &&
+      previous.value !== 0 &&
+      current.value > previous.value
+    ) {
+      items.push({
+        exerciseId: ex.id,
+        kind: 'value',
+        text: `${ex.name} 最高 ${previous.value}→${current.value}${ex.type === 'time' ? '秒' : '回'}`,
+        increase: (current.value - previous.value) / previous.value
+      });
+    }
+  }
+  items.sort((a, b) =>
+    (a.kind === b.kind ? b.increase - a.increase : a.kind === 'load' ? -1 : 1));
+
+  const sumReps = sessions => sessions.reduce((sum, session) =>
+    sum + session.sets.reduce((total, set) => {
+      const ex = data.exercises.find(ex => ex.id === set.exerciseId);
+      return total + (ex.type === 'time' ? 0 : set.reps);
+    }, 0), 0);
+  const oldTotal = sumReps(b);
+  const difference = key => {
+    const current = bodyAvg7(data.body, today, key);
+    const previous = bodyAvg7(data.body, dateOffset(today, -28), key);
+    return current === null || previous === null
+      ? null
+      : Math.round((current - previous) * 10) / 10;
+  };
+  return {
+    items: items.slice(0, 3).map(({ exerciseId, text, kind }) => ({ exerciseId, text, kind })),
+    totalPct: oldTotal === 0 ? null : Math.round((sumReps(a) - oldTotal) / oldTotal * 100),
+    bodyKg: difference('kg'),
+    waist: difference('waist')
+  };
+}
+
+/** @param {Data} data @param {string} today */
+export function consultText(data, today) {
+  const start = dateOffset(today, -27);
+  const sorted = entries => inRange(entries, start, today)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const shortDate = date => date.slice(5).split('-').map(Number).join('/');
+  const sections = [
+    '自宅で自重とバンド中心に筋トレしています。以下の記録を見て、①伸びている点 ②停滞・偏り ③来週の具体的なメニュー提案 を短く教えてください。'
+  ];
+  const sessions = sorted(data.sessions);
+  if (sessions.length > 0) {
+    const lines = ['【記録】'];
+    for (const session of sessions) {
+      lines.push(`${shortDate(session.date)}${session.light ? ' 軽め' : ''}`);
+      const ids = [...new Set(session.sets.map(set => set.exerciseId))];
+      for (const id of ids) {
+        const ex = data.exercises.find(ex => ex.id === id);
+        const sets = session.sets.filter(set => set.exerciseId === id);
+        const groups = [];
+        for (const set of sets) {
+          const prefix = ex.type === 'band'
+            ? data.bands.find(band => band.id === set.bandId)?.name ?? 'なし'
+            : ex.type === 'weight' ? `${set.kg ?? 0}kg` : '';
+          const previous = groups[groups.length - 1];
+          if (previous && previous.prefix === prefix) {
+            previous.values.push(value(ex, set));
+          } else {
+            groups.push({ prefix, values: [value(ex, set)] });
+          }
+        }
+        const values = groups.map(group =>
+          `${group.prefix ? `${group.prefix} ` : ''}${group.values.join('・')}`).join(' / ');
+        lines.push(`  ${ex.name}: ${values}${ex.type === 'time' ? '秒' : '回'}`);
+      }
+      if (session.note) lines.push(`  メモ: ${session.note}`);
+    }
+    sections.push(lines.join('\n'));
+  }
+
+  const skips = sorted(data.skips);
+  if (skips.length > 0) {
+    sections.push(['【休み】', ...skips.map(skip =>
+      `${shortDate(skip.date)} ${skip.reason}`)].join('\n'));
+  }
+
+  const body = sorted(data.body);
+  if (body.length > 0) {
+    sections.push(['【体】', ...body.map(entry =>
+      `${shortDate(entry.date)} ${entry.kg.toFixed(1)}kg${entry.waist === null ? '' : ` ウエスト${entry.waist.toFixed(1)}cm`}`
+    )].join('\n'));
+  }
+
+  const ids = new Set(sessions.flatMap(session => session.sets.map(set => set.exerciseId)));
+  const exercises = data.exercises.filter(ex => !ex.archived && ids.has(ex.id));
+  if (exercises.length > 0) {
+    sections.push(['【目標範囲】', ...exercises.map(ex =>
+      `${ex.name} ${ex.min}〜${ex.max}${ex.type === 'time' ? '秒' : '回'}`
+    )].join('\n'));
+  }
+  return sections.join('\n\n');
+}
+
+/** @param {string} text @returns {Data} */
+export function parseImport(text) {
+  try {
+    const result = JSON.parse(text);
+    if (
+      result === null ||
+      result.version !== 1 ||
+      !['exercises', 'bands', 'templates', 'sessions', 'skips', 'body']
+        .every(key => Array.isArray(result[key])) ||
+      result.settings === null ||
+      typeof result.settings !== 'object' ||
+      Array.isArray(result.settings)
+    ) {
+      throw new Error();
+    }
+    return result;
+  } catch {
+    throw new Error('読み込めないファイルです');
+  }
+}
+
+/** @param {string} s */
+export function toBase64Utf8(s) {
+  const bytes = new TextEncoder().encode(s);
+  const chunks = [];
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    chunks.push(String.fromCharCode(...bytes.subarray(i, i + 0x8000)));
+  }
+  return btoa(chunks.join(''));
+}
