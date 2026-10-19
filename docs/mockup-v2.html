@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>画面イメージ v2</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--num:'Barlow Condensed',system-ui,sans-serif}
+.t-orange{--bg:#F5F6F8;--surface:#FFFFFF;--fg:#111827;--fg2:#4B5563;--line:#D9DEE5;--btn:#E9ECF1;--primary:#EA580C;--primary-d:#C2410C;--on:#FFFFFF;--good:#15803D;--good-bg:#DCFCE7;--tip:#FFF1E6;--tip-fg:#9A3412;--page:#E2E6EC}
+.t-blue{--bg:#F4F7FB;--surface:#FFFFFF;--fg:#0F172A;--fg2:#475569;--line:#D6DEEA;--btn:#E6EDF6;--primary:#2563EB;--primary-d:#1D4ED8;--on:#FFFFFF;--good:#15803D;--good-bg:#DCFCE7;--tip:#E8F0FE;--tip-fg:#1E40AF;--page:#DFE6F0}
+.t-green{--bg:#F3F6F2;--surface:#FFFFFF;--fg:#14211A;--fg2:#4A5A50;--line:#D3DDD5;--btn:#E4EBE5;--primary:#0F766E;--primary-d:#115E59;--on:#FFFFFF;--good:#B45309;--good-bg:#FEF3C7;--tip:#E0F2EF;--tip-fg:#115E59;--page:#DCE4DD}
+*{box-sizing:border-box;margin:0}
+body{background:#fff;color:#111;font:16px/1.5 system-ui,sans-serif;padding:20px 16px}
+.theme{margin:0 auto 40px;max-width:1180px}
+.theme>h2{font:700 24px system-ui;margin:0 0 4px}
+.theme>p{color:#555;margin-bottom:12px}
+.wall{display:flex;flex-wrap:wrap;gap:20px;justify-content:center;background:var(--page);padding:20px;border-radius:16px}
+figure{width:360px;max-width:100%}
+figcaption{font-size:14px;color:#333;margin:0 4px 8px}
+.phone{background:var(--bg);color:var(--fg);border-radius:28px;height:760px;overflow:hidden;display:flex;flex-direction:column;border:1px solid var(--line)}
+.scroll{flex:1;overflow:hidden;padding:18px 16px 8px;display:flex;flex-direction:column;gap:12px}
+.num{font-family:var(--num);font-weight:600;line-height:1}
+.dim{color:var(--fg2);font-size:14px}
+h3{font-size:15px;color:var(--fg2);font-weight:600}
+.card{background:var(--surface);border-radius:14px;padding:12px 14px;border:1px solid var(--line)}
+/* buttons: always filled or outlined, with a label */
+.b{display:flex;align-items:center;justify-content:center;gap:6px;min-height:52px;border-radius:14px;font-weight:700;font-size:17px;border:2px solid transparent}
+.b.p{background:var(--primary);color:var(--on);box-shadow:0 3px 0 var(--primary-d)}
+.b.s{background:var(--surface);color:var(--fg);border-color:var(--line);box-shadow:0 2px 0 var(--line)}
+.b.big{min-height:64px;font-size:20px}
+.dock{background:var(--surface);border-top:1px solid var(--line);padding:10px 16px 12px;display:flex;flex-direction:column;gap:8px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.row21{display:grid;grid-template-columns:2fr 1fr;gap:8px}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);background:var(--surface);border-top:1px solid var(--line)}
+.tabs span{display:flex;flex-direction:column;align-items:center;padding:6px 0 10px;font-size:12px;color:var(--fg2)}
+.tabs span.on{color:var(--primary);font-weight:700}
+.tabs svg{width:22px;height:22px}
+.coach{border-left:4px solid var(--good);background:var(--surface)}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.day{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:12px;color:var(--fg2)}
+.bar{width:100%;height:30px;border-radius:6px;background:var(--btn)}
+.bar.done{background:var(--primary)}
+.bar.light{background:linear-gradient(to top,var(--primary) 50%,var(--btn) 50%)}
+.bar.rest{background:repeating-linear-gradient(135deg,var(--btn) 0 5px,var(--line) 5px 8px)}
+.bar.today{outline:2px solid var(--fg);outline-offset:1px}
+.gain{display:grid;grid-template-columns:72px 1fr;row-gap:4px;align-items:baseline}
+.gain .num{font-size:26px;color:var(--good);text-align:right;padding-right:10px}
+.gain .num.up{color:var(--primary);font-size:20px}
+/* training */
+.tip{display:inline-block;background:var(--tip);color:var(--tip-fg);border-radius:8px;padding:4px 10px;font-size:14px;font-weight:600}
+.done-sets{display:flex;gap:6px;flex-wrap:wrap}
+.done-sets span{background:var(--good-bg);color:var(--good);border-radius:8px;padding:4px 10px;font-weight:700;font-size:15px}
+.done-sets span.todo{background:var(--btn);color:var(--fg2);font-weight:500}
+.current{display:grid;grid-template-columns:72px 1fr 72px;gap:8px;align-items:center}
+.pm{height:72px;border-radius:16px;background:var(--surface);border:2px solid var(--line);box-shadow:0 3px 0 var(--line);font:600 36px var(--num);display:flex;align-items:center;justify-content:center;color:var(--fg)}
+.val{text-align:center;font-size:72px}
+.val small{font-size:18px;color:var(--fg2)}
+.chips{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.chip{min-height:44px;display:flex;align-items:center;justify-content:center;border-radius:12px;border:2px solid var(--line);background:var(--surface);font-weight:600}
+.chip.on{border-color:var(--primary);background:var(--tip);color:var(--tip-fg)}
+.timerbar{display:flex;align-items:center;justify-content:space-between;background:var(--tip);border-radius:12px;padding:6px 12px}
+.timerbar .num{font-size:40px;color:var(--tip-fg)}
+.mini{min-height:44px;padding:0 12px;border-radius:10px;background:var(--surface);border:2px solid var(--line);display:flex;align-items:center;font-weight:700}
+/* history */
+.seg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--btn);border-radius:12px;padding:4px;gap:4px}
+.seg span{text-align:center;padding:10px 0;border-radius:9px;font-weight:600;color:var(--fg2)}
+.seg span.on{background:var(--surface);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.log{display:grid;grid-template-columns:48px 1fr;row-gap:6px;font-size:15px}
+.log b{font-family:var(--num);font-size:19px;font-weight:600}
+.tag{font-size:12px;border-radius:6px;padding:1px 6px;margin-right:6px;background:var(--btn);font-family:system-ui}
+</style>
+</head>
+<body>
+<h1 style="max-width:1180px;margin:0 auto 6px;font:700 28px system-ui">画面イメージ v2</h1>
+<p style="max-width:1180px;margin:0 auto 20px;color:#555">押すボタンはすべて画面の下にまとめ、色の付いたボタンの形にしました。配色は3案です。</p>
+<div id="themes"></div>
+<template id="screens">
+<figure><figcaption><b>ホーム</b>：見るものは上、押すものは下</figcaption>
+<div class="phone">
+  <div class="scroll">
+    <div class="card coach"><h3 style="color:var(--good)">コーチより 10/18</h3><p style="font-size:15px">バンドロウが3週連続で伸びています。来週は脚を1セット増やしましょう。</p></div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><h3>今週</h3><span><b class="num" style="font-size:26px">2</b><span class="dim"> / 3日　継続 </span><b class="num" style="font-size:20px">5</b><span class="dim">週</span></span></div>
+      <div class="week"><div class="day"><div class="bar done"></div>月</div><div class="day"><div class="bar rest"></div>火</div><div class="day"><div class="bar light"></div>水</div><div class="day"><div class="bar today"></div>木</div><div class="day"><div class="bar"></div>金</div><div class="day"><div class="bar"></div>土</div><div class="day"><div class="bar"></div>日</div></div>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:6px">4週間前と比べて</h3>
+      <div class="gain"><span class="num up">赤→黒</span><span>バンドロウ 負荷アップ</span><span class="num">+6</span><span>腕立て 最高 12→18回</span><span class="num">+40%</span><span>合計回数</span></div>
+    </div>
+  </div>
+  <div class="dock">
+    <div class="row21"><div class="b p big">始める</div><div class="b s big">軽めの日</div></div>
+    <div class="row2"><div class="b s">今日は休む</div><div class="b s">体重を記録</div></div>
+  </div>
+  <div class="tabs"><span class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9H3z"/></svg>ホーム</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9v6M8 7v10M16 7v10M20 9v6M8 12h8"/></svg>トレーニング</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19l5-6 4 3 7-9"/></svg>履歴</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>設定</span></div>
+</div></figure>
+
+<figure><figcaption><b>トレーニング中</b>：今のセットだけ大きく、完了は親指の位置</figcaption>
+<div class="phone">
+  <div class="scroll">
+    <div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="font-size:22px">バンドロウ</h2><span class="dim">2 / 4 種目</span></div>
+    <span class="tip">前回 黒 14回。1回でも超えよう</span>
+    <div class="card"><h3 style="margin-bottom:6px">今日のセット</h3><div class="done-sets"><span>黒 15</span><span>黒 13</span><span class="todo">3セット目</span></div></div>
+    <div class="timerbar"><span class="dim" style="color:var(--tip-fg)">休憩</span><span class="num">1:12</span><div style="display:flex;gap:6px"><span class="mini">+15秒</span><span class="mini">スキップ</span></div></div>
+    <div style="flex:1"></div>
+    <h3>3セット目</h3>
+    <div class="chips"><span class="chip">黄</span><span class="chip">赤</span><span class="chip on">黒</span><span class="chip">青</span></div>
+  </div>
+  <div class="dock">
+    <div class="current"><span class="pm">−</span><span class="num val">14<small>回</small></span><span class="pm">＋</span></div>
+    <div class="b p big">完了</div>
+    <div class="row2"><div class="b s">◀ 前の種目</div><div class="b s">次の種目 ▶</div></div>
+  </div>
+</div></figure>
+
+<figure><figcaption><b>履歴</b>：切り替えも下</figcaption>
+<div class="phone">
+  <div class="scroll">
+    <h2 style="font-size:22px">バンドロウ</h2>
+    <div class="card">
+      <svg viewBox="0 0 328 150" style="width:100%"><g stroke="var(--line)"><line x1="24" y1="15" x2="328" y2="15"/><line x1="24" y1="70" x2="328" y2="70"/><line x1="24" y1="125" x2="328" y2="125"/></g><g fill="var(--fg2)" font-size="11"><text x="0" y="19">20</text><text x="0" y="74">10</text><text x="6" y="129">0</text><text x="24" y="146">9/1</text><text x="290" y="146">10/19</text></g>
+      <polyline fill="none" stroke="var(--fg2)" stroke-width="3" points="30,55 60,50 90,44 120,38 150,33 180,28"/><polyline fill="none" stroke="var(--primary)" stroke-width="3" points="210,70 240,64 270,59 300,53 320,48"/>
+      <text x="34" y="74" fill="var(--fg2)" font-size="12">赤</text><text x="212" y="90" fill="var(--primary)" font-size="12" font-weight="700">黒に変更</text></svg>
+    </div>
+    <div class="card log"><span class="dim">10/19</span><span><span class="tag">黒</span><b>14・12・11</b></span><span class="dim">10/16</span><span><span class="tag">黒</span><b>13・12・10</b></span><span class="dim">10/13</span><span><span class="tag">黒</span><b>12・11・10</b></span><span class="dim">10/10</span><span><span class="tag">赤</span><b>25・22・20</b></span></div>
+  </div>
+  <div class="dock">
+    <div class="b s">種目を選ぶ：バンドロウ ▾</div>
+    <div class="seg"><span class="on">種目</span><span>体</span><span>日付</span></div>
+  </div>
+  <div class="tabs"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9H3z"/></svg>ホーム</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9v6M8 7v10M16 7v10M20 9v6M8 12h8"/></svg>トレーニング</span><span class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19l5-6 4 3 7-9"/></svg>履歴</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>設定</span></div>
+</div></figure>
+</template>
+<script>
+const themes=[['t-orange','案1：ホワイト × オレンジ','明るく元気。押すボタンがはっきり目立つ'],['t-blue','案2：ホワイト × ブルー','すっきり落ち着いた印象。誤タップしにくい安心感'],['t-green','案3：ホワイト × ティール','やわらかく続けやすい雰囲気。達成は金色']];
+const tpl=document.querySelector('#screens').innerHTML;
+document.querySelector('#themes').innerHTML=themes.map(([c,t,d])=>`<section class="theme ${c}"><h2>${t}</h2><p>${d}</p><div class="wall">${tpl}</div></section>`).join('');
+</script>
+</body>
+</html>
