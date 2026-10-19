@@ -1,12 +1,13 @@
 import {
-  localDate, parseImport, value, recent, advice, prefill, rows,
-  prKind, sessionEvents, weekStats, weekStart, compare,
+  localDate, parseImport, value, recent, prefill, rows,
+  prKind, sessionEvents, weekStats, weekStart, totalDays, feed, mergeFeed, firstSet, line, lineResult,
   top, load, totals, bodyAvg7, calendar, toBase64Utf8, consultText
 } from './logic.js';
 
 /** @typedef {import('./logic.js').Data} Data */
 
 const view = document.querySelector('#view');
+const dock = document.querySelector('#dock');
 const tabs = document.querySelectorAll('[data-tab]');
 const toastElement = document.querySelector('#toast');
 const dialog = document.querySelector('#confirm-dialog');
@@ -244,6 +245,8 @@ function go(tab) {
 }
 
 function render() {
+  dock.replaceChildren();
+  updateHomeBadge();
   for (const button of tabs) {
     if (button.dataset.tab === currentTab) {
       button.setAttribute('aria-current', 'page');
@@ -260,153 +263,189 @@ function render() {
   renders[currentTab]();
 }
 
-function renderHome() {
-  fetchFeedback();
-  view.replaceChildren();
-  if (!state.exercises.length) {
-    const section = settingsSection('まず種目を登録しましょう');
-    section.append(action('設定', () => go('settings'), 'primary'));
+function homeFeed() {
+  let posts = [];
+  let seen = [];
+  try {
+    const stored = JSON.parse(localStorage.getItem('kintore:posts'));
+    if (Array.isArray(stored)) {
+      posts = stored.filter(post => post && typeof post.id === 'string'
+        && typeof post.text === 'string' && typeof post.at === 'string'
+        && ['reply', 'weekly', 'finding', 'reading'].includes(post.kind));
+    }
+  } catch {}
+  try {
+    const stored = JSON.parse(localStorage.getItem('kintore:seen'));
+    if (Array.isArray(stored)) seen = stored.filter(id => typeof id === 'string');
+  } catch {}
+  return { items: mergeFeed(feed(state, localDate(new Date())), posts, seen), seen };
+}
+
+function updateHomeBadge() {
+  const button = document.querySelector('[data-tab="home"]');
+  button.querySelector('.badge')?.remove();
+  const { items, seen } = homeFeed();
+  let unread = items.filter(item => !seen.includes(item.id)).length;
+  const now = new Date();
+  const cutoff = localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 13));
+  const today = localDate(now);
+  if (!state.sessions.some(session => session.date >= cutoff && session.date <= today)) {
+    unread = Math.min(unread, 2);
+  }
+  if (!unread) {
+    button.removeAttribute('aria-label');
     return;
   }
+  const label = unread > 9 ? '9+' : String(unread);
+  const badge = element('span', label, 'badge');
+  badge.setAttribute('aria-hidden', 'true');
+  button.append(badge);
+  button.setAttribute('aria-label', `ホーム 未読${label}件`);
+}
 
+function markSeen(items) {
+  const { seen } = homeFeed();
+  const displayed = items.map(item => item.id);
+  const next = [...seen.filter(id => !displayed.includes(id)), ...displayed];
+  try {
+    localStorage.setItem('kintore:seen', JSON.stringify(next.slice(-500)));
+  } catch {
+    toast('保存できませんでした。容量を確認してください');
+  }
+  updateHomeBadge();
+}
+
+function appendFeed(parent, items, seen) {
+  const list = element('div', '', 'feed');
+  for (const item of items) {
+    const row = element('article', '', `item${seen.includes(item.id) ? '' : ' new'}`);
+    const bar = element('i');
+    bar.setAttribute('aria-hidden', 'true');
+    const content = element('div', '', 'stack');
+    const coach = ['reply', 'weekly', 'finding', 'reading'].includes(item.kind);
+    content.append(element('p', `${coach ? 'コーチ' : '記録'} ${shortDate(item.at.slice(0, 10))}`, 'k'));
+    if (item.kind === 'reply' && typeof item.quote === 'string') {
+      content.append(element('blockquote', item.quote, 'dim'));
+    }
+    content.append(element('p', item.text));
+    if (item.kind === 'reading' && typeof item.source?.title === 'string') {
+      try {
+        const url = new URL(item.source.url);
+        if (['https:', 'http:'].includes(url.protocol)) {
+          const link = element('a', item.source.title, 'source-link');
+          link.href = url.href;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          content.append(link);
+        }
+      } catch {}
+    }
+    row.append(bar, content);
+    list.append(row);
+  }
+  parent.append(list);
+}
+
+function renderHome() {
+  fetchFeedback();
+  dock.replaceChildren();
+  view.replaceChildren();
   const today = localDate(new Date());
   const home = element('div', '', 'home stack');
   view.append(home);
-  let feedback;
-  try {
-    feedback = JSON.parse(localStorage.getItem('kintore:feedback'));
-  } catch {}
-  if (typeof feedback?.date === 'string' && feedback.date && feedback.summary) {
-    const coach = element('section', '', 'coach stack');
-    const date = feedback.date.split('-').slice(1).map(Number).join('/');
-    coach.append(
-      element('h2', `コーチより ${date}`),
-      element('p', feedback.summary)
-    );
-    if (feedback.kind !== 'nudge') {
-      for (const items of [feedback.good, feedback.next]) {
-        if (!items?.length) continue;
-        const list = element('ul');
-        for (const text of items) list.append(element('li', text));
-        coach.append(list);
-      }
-    }
-    home.append(coach);
-  }
 
   const stats = weekStats(state, today);
-  const weekly = element('section', '', 'stack');
   const head = element('div', '', 'head');
-  const progress = element('p', '', 'dim');
-  progress.append(
-    element('span', String(stats.days), 'num week-days'),
-    element('span', ` / ${stats.goal}日　継続 `),
-    element('span', String(stats.streak), 'num week-streak'),
-    element('span', '週')
-  );
-  head.append(element('h2', '今週'), progress);
+  const total = element('div', '', 'total');
+  total.append(element('span', '通算'), element('br'),
+    element('span', String(totalDays(state)), 'num'), element('span', ' 日'));
+  const weekly = element('div', '', 'weekly stack');
+  weekly.append(element('p', `今週 ${stats.days}日`, 'dim'));
   const week = element('div', '', 'week');
   const [year, month, day] = weekStart(today).split('-').map(Number);
   for (let i = 0; i < 7; i++) {
     const date = localDate(new Date(year, month - 1, day + i));
     const mark = stats.marks[date];
-    const cell = element('div', '', 'day');
-    const bar = element('div', '',
-      `bar${mark ? ` ${mark}` : ''}${date === today ? ' today' : ''}`);
+    const cell = element('i', '', `bar${mark ? ` ${mark}` : ''}`);
     const status = { done: 'トレーニング', light: '軽めの日', rest: '休養' }[mark];
+    cell.setAttribute('role', 'img');
     cell.setAttribute('aria-label',
-      `${date}${date === today ? ' 今日' : ''}${status ? ` ${status}` : ''}`);
-    cell.append(bar, element('span', '月火水木金土日'[i]));
+      `${'月火水木金土日'[i]} ${date}${date === today ? ' 今日' : ''}${status ? ` ${status}` : ''}`);
     week.append(cell);
   }
-  weekly.append(head, week);
-  home.append(weekly);
+  weekly.append(week);
+  head.append(total, weekly);
+  home.append(head);
 
-  const comparison = element('section', '', 'stack');
-  comparison.append(element('h2', '4週間前と比べて'));
-  const result = compare(state, today);
-  if (!result) {
-    comparison.append(element('p', '4週間続けるとここに成長が出ます', 'dim'));
-  } else {
-    const gain = element('div', '', 'gain');
-    for (const item of result.items) {
-      const ex = state.exercises.find(ex => ex.id === item.exerciseId);
-      const change = item.text.slice(ex.name.length + 1);
-      if (item.kind === 'load') {
-        gain.append(
-          element('span', change, 'num up'),
-          element('span', `${ex.name}　負荷アップ`)
-        );
-      } else {
-        const numbers = change.match(/^最高 ([\d.]+)→([\d.]+)(回|秒)$/);
-        const increase = Number(numbers[2]) - Number(numbers[1]);
-        gain.append(
-          element('span', `+${increase}`, 'num'),
-          element('span', item.text)
-        );
-      }
-    }
-    const signed = number => `${number < 0 ? '−' : '+'}${Math.abs(number)}`;
-    // Growth only, like the summary: a falling total in green would read as blame.
-    if (result.totalPct > 0) {
-      gain.append(
-        element('span', `${signed(result.totalPct)}%`, 'num'),
-        element('span', '合計回数')
-      );
-    }
-    for (const [amount, label] of [
-      [result.bodyKg, '体重 kg（7日平均）'],
-      [result.waist, 'ウエスト cm（7日平均）']
-    ]) {
-      if (amount === null) continue;
-      gain.append(
-        element('span', signed(amount), 'num body-change'),
-        element('span', label)
-      );
-    }
-    comparison.append(gain);
+  if (!state.exercises.length) {
+    home.append(element('p', 'まず種目を登録しましょう', 'dim'));
+    dock.append(action('種目を追加', () => {
+      go('settings');
+      editExercise();
+    }, 'primary'));
+    dock.className = 'dock';
   }
-  home.append(comparison);
 
-  const partSection = element('section', '', 'parts stack');
-  partSection.append(element('h2', '今週の部位別セット数'));
-  const max = Math.max(0, ...Object.values(stats.partSets));
-  for (const part of parts) {
-    const count = stats.partSets[part];
-    if (!count) continue;
-    const row = element('div');
-    const bar = element('i');
-    bar.style.width = `${count / max * 100}%`;
-    bar.setAttribute('aria-hidden', 'true');
-    row.append(element('span', part), bar, element('span', String(count), 'num'));
-    partSection.append(row);
+  const { items, seen } = homeFeed();
+  const news = element('section', '', 'stack');
+  news.append(element('h2', '新着'));
+  const displayed = items.slice(0, 3);
+  if (displayed.length) appendFeed(news, displayed, seen);
+  else news.append(element('p', '新着なし', 'dim'));
+  if (items.length) {
+    news.append(action('すべて見る', () => {
+      const { items, seen } = homeFeed();
+      const ordered = [...items].sort((a, b) => b.at.localeCompare(a.at));
+      const { content } = homeSheet('新着');
+      appendFeed(content, ordered, seen);
+      markSeen(ordered);
+    }));
   }
-  if (max > 0) home.append(partSection);
+  home.append(news);
 
-  const cta = element('div', '', 'cta');
-  const buttons = element('div', '', 'row');
-  buttons.append(
-    action('始める', () => {
-      if (!workout) summaryId = null;
-      go('train');
-    }, 'primary'),
-    action('軽めの日', () => {
-      if (workout) {
+  const candidates = element('section', '', 'stack');
+  const carry = element('div', '', 'carry');
+  for (const ex of state.exercises) {
+    const session = state.sessions
+      .filter(session => !session.light && session.date <= today && firstSet(state, ex, session))
+      .sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (!session) continue;
+    const target = line(state, ex.id, session.date);
+    if (lineResult(target, value(ex, firstSet(state, ex, session))).kind !== 'short') continue;
+    carry.append(element('span', ex.name),
+      element('span', `ライン ${target.value}${ex.type === 'time' ? '秒' : ''}`, 'num'));
+  }
+  if (carry.childElementCount) {
+    candidates.append(element('h2', '次回の候補'), carry);
+    home.append(candidates);
+  }
+
+  if (state.exercises.length) {
+    const buttons = element('div', '', 'row21');
+    buttons.append(
+      action('始める', () => {
+        if (!workout) summaryId = null;
         go('train');
-        return;
-      }
-      summaryId = null;
-      go('train');
-      startWorkout({ light: true });
-    })
-  );
-  const links = element('div', '', 'links');
-  if (!state.sessions.some(session => session.date === today)) {
-    links.append(action('今日は休む', recordRest));
+      }, 'primary'),
+      action('軽めの日', () => {
+        if (workout) {
+          go('train');
+          return;
+        }
+        summaryId = null;
+        go('train');
+        startWorkout({ light: true });
+      })
+    );
+    const links = element('div', '', 'row2');
+    if (!state.sessions.some(session => session.date === today)) {
+      links.append(action('今日は休む', recordRest));
+    }
+    links.append(action('体重を記録', recordBody));
+    dock.className = 'dock';
+    dock.append(buttons, links);
   }
-  links.append(action('体重を記録', recordBody));
-  cta.append(buttons, links);
-  view.append(cta);
+  markSeen(displayed);
 }
 
 function homeSheet(title) {
@@ -666,8 +705,6 @@ function renderTrain() {
       head.append(element('span', `前回 ${previousText(ex, previous)}`, 'dim'));
     }
     section.append(head);
-    const tip = advice(state, ex.id, localDate(new Date()));
-    if (tip) section.append(element('span', tip.text, 'advice'));
     card.rows.forEach((row, index) => {
       const group = element('div', '', 'stack');
       const update = (key, next) => {
@@ -818,7 +855,7 @@ function renderSummary() {
   section.append(events);
   const stats = weekStats(state, localDate(new Date()));
   section.append(element('p',
-    `今週 ${stats.days}/${stats.goal}日${stats.achieved ? ' 達成。' : ''}`, 'dim'));
+    `今週 ${stats.days}日`, 'dim'));
   const home = action('ホームへ', () => {
     summaryId = null;
     go('home');
@@ -1018,7 +1055,7 @@ function renderExerciseHistory(parent) {
   const loads = [...new Set(sessions.flatMap(session => session.sets
     .filter(set => set.exerciseId === ex.id)
     .map(set => load(state, ex, set))))].sort((a, b) => a - b);
-  const palette = ['var(--fg2)', 'var(--primary)', 'var(--accent)', '#60A5FA'];
+  const palette = ['var(--fg2)', 'var(--primary)', 'var(--good)', '#60A5FA'];
   const loadName = amount => ex.type === 'band'
     ? state.bands.find(band => band.order === amount)?.name ?? 'なし'
     : ex.type === 'weight' ? `${amount}kg` : '';
@@ -1095,7 +1132,7 @@ function renderBodyHistory(parent) {
     if (key === 'waist' && !hasWaist) continue;
     const section = element('section', '', 'stack');
     const points = entries.filter(entry => entry[key] !== null)
-      .map(entry => ({ x: entry.date, y: entry[key], color: 'var(--muted)' }));
+      .map(entry => ({ x: entry.date, y: entry[key], color: 'var(--fg2)' }));
     const chart = element('div');
     chart.innerHTML = lineChart(points, {
       smooth: points.map(point => ({
