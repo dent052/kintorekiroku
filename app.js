@@ -242,6 +242,30 @@ function go(tab) {
   render();
 }
 
+// Horizontal swipe on the content switches tabs (ホーム ⇄ トレーニング ⇄ 履歴 ⇄ 設定).
+const tabOrder = ['home', 'train', 'history', 'settings'];
+let swipeStart = null;
+view.addEventListener('touchstart', event => {
+  const touch = event.touches[0];
+  swipeStart = event.touches.length === 1 && !event.target.closest('input, textarea, select')
+    ? { x: touch.clientX, y: touch.clientY, t: Date.now() } : null;
+}, { passive: true });
+view.addEventListener('touchend', event => {
+  if (!swipeStart) return;
+  const touch = event.changedTouches[0];
+  const dx = touch.clientX - swipeStart.x;
+  const dy = touch.clientY - swipeStart.y;
+  const quick = Date.now() - swipeStart.t < 700;
+  swipeStart = null;
+  if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
+  const next = tabOrder.indexOf(currentTab) + (dx < 0 ? 1 : -1);
+  if (next < 0 || next >= tabOrder.length) return;
+  go(tabOrder[next]);
+  view.classList.remove('slide-next', 'slide-prev');
+  void view.offsetWidth;
+  view.classList.add(dx < 0 ? 'slide-next' : 'slide-prev');
+}, { passive: true });
+
 function render() {
   hideResult();
   dock.replaceChildren();

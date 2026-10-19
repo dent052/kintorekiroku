@@ -75,8 +75,16 @@ async function contentActions(page) {
     .map(e => e.textContent.trim() || e.getAttribute('aria-label')));
 }
 
-async function noHorizontalScroll(page) {
-  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'page scrolls sideways');
+// The page itself must never scroll (only #view does), or the dock/tab bar slide out of sight.
+async function pageFits(page) {
+  const size = await page.evaluate(() => ({
+    w: document.scrollingElement.scrollWidth, h: document.scrollingElement.scrollHeight,
+    top: document.scrollingElement.scrollTop, iw: window.innerWidth, ih: window.innerHeight,
+    tabs: document.querySelector('.tabs').getBoundingClientRect().bottom
+  }));
+  assert.ok(size.w <= size.iw, `page scrolls sideways (${size.w} > ${size.iw})`);
+  assert.ok(size.h <= size.ih && size.top === 0, `page scrolls vertically (${size.h} > ${size.ih})`);
+  assert.ok(size.tabs <= size.ih, 'tab bar is cut off');
 }
 
 test('every main screen keeps its actions in the bottom dock', async () => {
@@ -95,9 +103,10 @@ test('every main screen keeps its actions in the bottom dock', async () => {
     await go();
     await page.waitForTimeout(150);
     assert.deepEqual(await contentActions(page), [], `${name}: actions above the dock`);
-    await noHorizontalScroll(page);
+    await pageFits(page);
   }
   await tab(page, 'settings');
+  await pageFits(page);
   for (const text of ['＋ 種目', '＋ バンド', '＋ テンプレ']) assert.ok(await dockBtn(page, text).isVisible(), text);
   assert.deepEqual(errors, []);
   await close();
@@ -281,4 +290,39 @@ test('GitHub: changes are pushed, failures retried, coach posts shown', async ()
   await page.waitForTimeout(1500);
   assert.ok(api.puts.length > count, 'retried on next start');
   await close();
+});
+
+test('swiping the content switches tabs in order', async () => {
+  const { page, errors, close } = await open({ data: fixture() });
+  const swipe = (from, to) => page.evaluate(([from, to]) => {
+    const target = document.querySelector('#view');
+    const touch = x => new Touch({ identifier: 1, target, clientX: x, clientY: 400 });
+    target.dispatchEvent(new TouchEvent('touchstart', { touches: [touch(from)], changedTouches: [touch(from)], bubbles: true }));
+    target.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [touch(to)], bubbles: true }));
+  }, [from, to]);
+  const current = () => page.getAttribute('[data-tab][aria-current=page]', 'data-tab');
+  await swipe(300, 80);
+  assert.equal(await current(), 'train');
+  await swipe(300, 80);
+  assert.equal(await current(), 'history');
+  await swipe(80, 300);
+  assert.equal(await current(), 'train');
+  await swipe(300, 270);
+  assert.equal(await current(), 'train', 'a short drag does not switch');
+  await pageFits(page);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('layout fits a short Android screen with the browser toolbar', async () => {
+  const context = await browser.newContext({ viewport: { width: 360, height: 640 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  await page.addInitScript(d => { if (!localStorage.getItem('kintore:data')) localStorage.setItem('kintore:data', JSON.stringify(d)); }, fixture());
+  await page.goto(base);
+  for (const name of ['home', 'train', 'history', 'settings']) {
+    await tab(page, name);
+    await page.waitForTimeout(100);
+    await pageFits(page);
+  }
+  await context.close();
 });

@@ -22,6 +22,13 @@
   margin: 0;
 }
 
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 body {
   background: var(--bg);
   color: var(--fg);
@@ -29,11 +36,12 @@ body {
 }
 
 .app {
+  /* Pinned to the visible viewport so the page itself never scrolls; only #view does. */
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
   max-width: 480px;
-  height: 100vh;
-  height: 100dvh;
   margin: 0 auto;
 }
 
@@ -41,6 +49,8 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   padding: 20px 16px;
 }
 
@@ -1036,4 +1046,20 @@ span.chip {
 
 .positive {
   color: var(--good);
+}
+
+#view.slide-next {
+  animation: slide-next 200ms ease-out;
+}
+
+#view.slide-prev {
+  animation: slide-prev 200ms ease-out;
+}
+
+@keyframes slide-next {
+  from { opacity: 0; transform: translateX(32px); }
+}
+
+@keyframes slide-prev {
+  from { opacity: 0; transform: translateX(-32px); }
 }
