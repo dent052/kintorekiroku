@@ -1,4 +1,4 @@
-import { parseImport } from './logic.js';
+import { localDate, parseImport } from './logic.js';
 
 /** @typedef {import('./logic.js').Data} Data */
 
@@ -104,8 +104,396 @@ function renderHistory() {
   view.innerHTML = '<h1>履歴</h1>';
 }
 
+const parts = ['胸', '背中', '脚', '肩', '腕', '体幹', '全身'];
+const exerciseTypes = [
+  ['reps', '自重'],
+  ['band', 'バンド'],
+  ['time', '時間'],
+  ['weight', '重り']
+];
+let showArchived = false;
+
+function element(tag, text = '', className = '') {
+  const node = document.createElement(tag);
+  node.textContent = text;
+  node.className = className;
+  return node;
+}
+
+function action(text, onClick, className = '') {
+  const button = element('button', text, className);
+  button.type = 'button';
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function settingsSection(title) {
+  const section = element('section', '', 'ex stack');
+  section.append(element('h2', title));
+  view.append(section);
+  return section;
+}
+
+function settingsEditor(title) {
+  view.replaceChildren(element('h1', title));
+  const form = element('form', '', 'ex stack');
+  form.addEventListener('submit', event => event.preventDefault());
+  view.append(form);
+  return form;
+}
+
+function textField(parent, title, value, onInput) {
+  const label = element('label', '', 'stack');
+  const input = element('input');
+  input.type = 'text';
+  input.value = value;
+  input.addEventListener('input', () => onInput(input.value));
+  label.append(element('span', title), input);
+  parent.append(label);
+  return input;
+}
+
+function choices(parent, title, options, selected, onSelect) {
+  const group = element('fieldset', '', 'stack');
+  const buttons = element('div', '', 'chips');
+  group.append(element('legend', title), buttons);
+  for (const [value, text] of options) {
+    const button = action(text, () => onSelect(value),
+      `chip${value === selected ? ' on' : ''}`);
+    button.setAttribute('aria-pressed', String(value === selected));
+    buttons.append(button);
+  }
+  parent.append(group);
+}
+
+function stepper(title, value, min, max, step, onChange, unit = '') {
+  const group = element('div', '', 'stack');
+  const row = element('div', '', 'stepper');
+  const minus = action('−', () => onChange(Math.max(min, value - step)), 'pm');
+  const plus = action('＋', () => onChange(Math.min(max, value + step)), 'pm');
+  minus.disabled = value <= min;
+  plus.disabled = value >= max;
+  minus.setAttribute('aria-label', `${title}を減らす`);
+  plus.setAttribute('aria-label', `${title}を増やす`);
+  const output = element('output', String(value), 'num val');
+  output.setAttribute('aria-label', title);
+  if (unit) output.append(element('small', unit));
+  row.append(minus, output, plus);
+  group.append(element('span', title), row);
+  return group;
+}
+
+function moveItem(items, index, offset) {
+  [items[index], items[index + offset]] = [items[index + offset], items[index]];
+}
+
 function renderSettings() {
-  view.innerHTML = '<h1>設定</h1>';
+  view.replaceChildren(element('h1', '設定'));
+
+  const exercises = settingsSection('種目');
+  exercises.append(action('種目を追加', () => editExercise()));
+  const toggle = action('アーカイブ済みを表示', () => {
+    showArchived = !showArchived;
+    render();
+  }, `chip${showArchived ? ' on' : ''}`);
+  toggle.setAttribute('aria-pressed', String(showArchived));
+  exercises.append(toggle);
+  for (const part of parts) {
+    const items = state.exercises.filter(ex =>
+      ex.part === part && (showArchived || !ex.archived));
+    if (!items.length) continue;
+    const group = element('div', '', 'stack');
+    group.append(element('h3', part));
+    for (const ex of items) {
+      const button = action('', () => editExercise(ex), 'settings-item');
+      button.append(element('span', ex.name, 'name'));
+      if (ex.archived) button.append(element('span', 'アーカイブ済み', 'dim'));
+      group.append(button);
+    }
+    exercises.append(group);
+  }
+
+  const bands = settingsSection('バンド');
+  bands.append(action('バンドを追加', () => editBand()));
+  const orderedBands = [...state.bands].sort((a, b) => a.order - b.order);
+  orderedBands.forEach((band, index) => {
+    const row = element('div', '', 'head');
+    const edit = action('', () => editBand(band), 'settings-item');
+    edit.append(element('span', band.name, 'name'));
+    if (band.note) edit.append(element('span', band.note, 'dim'));
+    const controls = element('div', '', 'actions');
+    for (const [offset, text] of [[-1, '↑'], [1, '↓']]) {
+      const button = action(text, () => {
+        moveItem(orderedBands, index, offset);
+        orderedBands.forEach((item, i) => { item.order = i + 1; });
+        state.bands = orderedBands;
+        save();
+        render();
+      });
+      button.disabled = index + offset < 0 || index + offset >= orderedBands.length;
+      button.setAttribute('aria-label', `${band.name}を${offset < 0 ? '上' : '下'}へ`);
+      controls.append(button);
+    }
+    row.append(edit, controls);
+    bands.append(row);
+  });
+
+  const templates = settingsSection('テンプレート');
+  templates.append(action('テンプレートを追加', () => editTemplate()));
+  for (const template of state.templates) {
+    templates.append(action(template.name, () => editTemplate(template), 'settings-item'));
+  }
+
+  const general = settingsSection('一般');
+  general.append(
+    stepper('週の目標日数', state.settings.weeklyGoal, 1, 7, 1, value => {
+      state.settings.weeklyGoal = value;
+      save();
+      render();
+    }, '日'),
+    stepper('休憩秒数', state.settings.restSec, 30, 300, 15, value => {
+      state.settings.restSec = value;
+      save();
+      render();
+    }, '秒')
+  );
+
+  const backup = settingsSection('バックアップ');
+  const file = element('input');
+  file.type = 'file';
+  file.hidden = true;
+  file.addEventListener('change', async () => {
+    const selected = file.files[0];
+    if (!selected) return;
+    let imported;
+    try {
+      imported = parseImport(await selected.text());
+    } catch (error) {
+      toast(error.message);
+      file.value = '';
+      return;
+    }
+    const confirmed = await confirmDialog('今の記録を読み込んだ内容で置き換えます。よろしいですか？');
+    file.value = '';
+    if (!confirmed) return;
+    state = imported;
+    save();
+    render();
+  });
+  backup.append(
+    action('書き出し', () => {
+      const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = element('a');
+      link.href = url;
+      link.download = `kintore-${localDate(new Date())}.json`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }),
+    action('読み込み', () => file.click()),
+    file
+  );
+}
+
+function editExercise(existing) {
+  const draft = existing ? { ...existing } : {
+    id: uid('e'),
+    name: '',
+    type: 'reps',
+    part: '胸',
+    min: 8,
+    max: 15,
+    nextId: null,
+    archived: false
+  };
+
+  function draw() {
+    const form = settingsEditor('種目');
+    const saveButton = action('保存', () => {
+      draft.name = draft.name.trim();
+      if (!draft.name) return;
+      if (existing) Object.assign(existing, draft);
+      else state.exercises.push(draft);
+      save();
+      render();
+    }, 'primary');
+    saveButton.disabled = !draft.name.trim();
+    textField(form, '名前', draft.name, value => {
+      draft.name = value;
+      saveButton.disabled = !value.trim();
+    });
+    choices(form, 'タイプ', exerciseTypes, draft.type, type => {
+      const wasTime = draft.type === 'time';
+      if (type === 'time' && !wasTime && draft.min === 8 && draft.max === 15) {
+        draft.min = 20;
+        draft.max = 60;
+      } else if (type !== 'time' && wasTime && draft.min === 20 && draft.max === 60) {
+        draft.min = 8;
+        draft.max = 15;
+      }
+      draft.type = type;
+      const limit = type === 'time' ? 600 : 100;
+      draft.max = Math.min(draft.max, limit);
+      draft.min = Math.min(draft.min, draft.max);
+      draw();
+    });
+    choices(form, '部位', parts.map(part => [part, part]), draft.part, part => {
+      draft.part = part;
+      draw();
+    });
+    const time = draft.type === 'time';
+    const step = time ? 5 : 1;
+    const unit = time ? '秒' : '回';
+    form.append(
+      stepper('目標 min', draft.min, 1, draft.max, step, value => {
+        draft.min = value;
+        draw();
+      }, unit),
+      stepper('目標 max', draft.max, draft.min, time ? 600 : 100, step, value => {
+        draft.max = value;
+        draw();
+      }, unit)
+    );
+    const label = element('label', '', 'stack');
+    const select = element('select');
+    const none = element('option', 'なし');
+    none.value = '';
+    select.append(none);
+    for (const ex of state.exercises) {
+      if (ex.archived || ex.id === draft.id) continue;
+      const option = element('option', ex.name);
+      option.value = ex.id;
+      select.append(option);
+    }
+    select.value = draft.nextId ?? '';
+    select.addEventListener('change', () => {
+      draft.nextId = select.value || null;
+    });
+    label.append(element('span', '次の段階'), select);
+    form.append(label, saveButton);
+    if (existing && !existing.archived) {
+      form.append(action('アーカイブ', () => {
+        existing.archived = true;
+        save();
+        render();
+      }, 'danger'));
+    }
+  }
+
+  draw();
+}
+
+function editBand(existing) {
+  const draft = existing ? { ...existing } : {
+    id: uid('b'),
+    name: '',
+    order: Math.max(0, ...state.bands.map(band => band.order)) + 1,
+    note: ''
+  };
+  const form = settingsEditor('バンド');
+  const saveButton = action('保存', () => {
+    draft.name = draft.name.trim();
+    if (!draft.name) return;
+    if (existing) Object.assign(existing, draft);
+    else state.bands.push(draft);
+    save();
+    render();
+  }, 'primary');
+  saveButton.disabled = !draft.name.trim();
+  textField(form, '名前', draft.name, value => {
+    draft.name = value;
+    saveButton.disabled = !value.trim();
+  });
+  textField(form, 'メモ', draft.note, value => { draft.note = value; });
+  form.append(saveButton);
+  const used = existing && state.sessions.some(session =>
+    session.sets.some(set => set.bandId === existing.id));
+  if (existing && !used) {
+    form.append(action('削除', () => {
+      state.bands = state.bands.filter(band => band.id !== existing.id);
+      state.bands.sort((a, b) => a.order - b.order);
+      state.bands.forEach((band, i) => { band.order = i + 1; });
+      save();
+      render();
+    }, 'danger'));
+  }
+}
+
+function editTemplate(existing) {
+  const draft = existing ? { ...existing, exerciseIds: [...existing.exerciseIds] } : {
+    id: uid('t'),
+    name: '',
+    exerciseIds: [],
+    sets: 3
+  };
+
+  function draw() {
+    const form = settingsEditor('テンプレート');
+    const saveButton = action('保存', () => {
+      draft.name = draft.name.trim();
+      if (!draft.name || !draft.exerciseIds.length) return;
+      if (existing) Object.assign(existing, draft);
+      else state.templates.push(draft);
+      save();
+      render();
+    }, 'primary');
+    saveButton.disabled = !draft.name.trim() || !draft.exerciseIds.length;
+    textField(form, '名前', draft.name, value => {
+      draft.name = value;
+      saveButton.disabled = !value.trim() || !draft.exerciseIds.length;
+    });
+    draft.exerciseIds.forEach((id, index) => {
+      const name = state.exercises.find(ex => ex.id === id)?.name ?? '';
+      const row = element('div', '', 'head');
+      const controls = element('div', '', 'actions');
+      for (const [offset, text] of [[-1, '↑'], [1, '↓']]) {
+        const button = action(text, () => {
+          moveItem(draft.exerciseIds, index, offset);
+          draw();
+        });
+        button.disabled = index + offset < 0 || index + offset >= draft.exerciseIds.length;
+        button.setAttribute('aria-label', `${name}を${offset < 0 ? '上' : '下'}へ`);
+        controls.append(button);
+      }
+      const remove = action('外す', () => {
+        draft.exerciseIds.splice(index, 1);
+        draw();
+      });
+      remove.setAttribute('aria-label', `${name}を外す`);
+      controls.append(remove);
+      row.append(element('span', name, 'name'), controls);
+      form.append(row);
+    });
+    const label = element('label', '', 'stack');
+    const select = element('select');
+    const placeholder = element('option', '種目を選択');
+    placeholder.value = '';
+    select.append(placeholder);
+    for (const ex of state.exercises) {
+      if (ex.archived || draft.exerciseIds.includes(ex.id)) continue;
+      const option = element('option', ex.name);
+      option.value = ex.id;
+      select.append(option);
+    }
+    select.addEventListener('change', () => {
+      if (!select.value) return;
+      draft.exerciseIds.push(select.value);
+      draw();
+    });
+    label.append(element('span', '種目を追加'), select);
+    form.append(
+      label,
+      stepper('セット数', draft.sets, 1, 6, 1, value => {
+        draft.sets = value;
+        draw();
+      }),
+      saveButton
+    );
+  }
+
+  draw();
 }
 
 function toast(text) {

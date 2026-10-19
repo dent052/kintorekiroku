@@ -178,3 +178,159 @@ dialog::backdrop {
     scroll-behavior: auto !important;
   }
 }
+
+#view > .ex {
+  margin-top: 14px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ex {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg2);
+}
+
+h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.head > .settings-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.name {
+  font-weight: 700;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.dim {
+  color: var(--fg2);
+  overflow-wrap: anywhere;
+}
+
+.settings-item {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions button {
+  padding: 8px;
+}
+
+fieldset {
+  min-width: 0;
+  border: 0;
+}
+
+legend {
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  flex: 1;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--muted);
+  color: var(--fg2);
+  white-space: nowrap;
+  text-align: center;
+}
+
+.chip.on {
+  background: var(--fg);
+  color: var(--on-primary);
+  font-weight: 700;
+}
+
+input,
+select {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--muted);
+  color: var(--fg);
+  font: inherit;
+}
+
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+.stepper {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: 8px;
+}
+
+.pm {
+  height: 52px;
+  border-radius: 12px;
+  background: var(--muted);
+  color: var(--fg);
+  font: 500 28px var(--num);
+}
+
+.stepper .val {
+  text-align: center;
+}
+
+.val small {
+  font: 16px system-ui, sans-serif;
+  color: var(--fg2);
+  margin-left: 2px;
+}
+
+button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.danger {
+  color: var(--danger);
+}
