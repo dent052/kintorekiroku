@@ -1,6 +1,6 @@
 import {
   localDate, parseImport, value, recent, advice, prefill, rows,
-  prKind, sessionEvents, weekStats
+  prKind, sessionEvents, weekStats, weekStart, compare
 } from './logic.js';
 
 /** @typedef {import('./logic.js').Data} Data */
@@ -96,7 +96,254 @@ function render() {
 }
 
 function renderHome() {
-  view.innerHTML = '<h1>ホーム</h1>';
+  view.replaceChildren();
+  if (!state.exercises.length) {
+    const section = settingsSection('まず種目を登録しましょう');
+    section.append(action('設定', () => go('settings'), 'primary'));
+    return;
+  }
+
+  const today = localDate(new Date());
+  const home = element('div', '', 'home stack');
+  view.append(home);
+  let feedback;
+  try {
+    feedback = JSON.parse(localStorage.getItem('kintore:feedback'));
+  } catch {}
+  if (feedback) {
+    const coach = element('section', '', 'coach stack');
+    const date = feedback.date.split('-').slice(1).map(Number).join('/');
+    coach.append(
+      element('h2', `コーチより ${date}`),
+      element('p', feedback.summary)
+    );
+    if (feedback.kind !== 'nudge') {
+      for (const items of [feedback.good, feedback.next]) {
+        if (!items?.length) continue;
+        const list = element('ul');
+        for (const text of items) list.append(element('li', text));
+        coach.append(list);
+      }
+    }
+    home.append(coach);
+  }
+
+  const stats = weekStats(state, today);
+  const weekly = element('section', '', 'stack');
+  const head = element('div', '', 'head');
+  const progress = element('p', '', 'dim');
+  progress.append(
+    element('span', String(stats.days), 'num week-days'),
+    element('span', ` / ${stats.goal}日　継続 `),
+    element('span', String(stats.streak), 'num week-streak'),
+    element('span', '週')
+  );
+  head.append(element('h2', '今週'), progress);
+  const week = element('div', '', 'week');
+  const [year, month, day] = weekStart(today).split('-').map(Number);
+  for (let i = 0; i < 7; i++) {
+    const date = localDate(new Date(year, month - 1, day + i));
+    const mark = stats.marks[date];
+    const cell = element('div', '', 'day');
+    const bar = element('div', '',
+      `bar${mark ? ` ${mark}` : ''}${date === today ? ' today' : ''}`);
+    const status = { done: 'トレーニング', light: '軽めの日', rest: '休養' }[mark];
+    cell.setAttribute('aria-label',
+      `${date}${date === today ? ' 今日' : ''}${status ? ` ${status}` : ''}`);
+    cell.append(bar, element('span', '月火水木金土日'[i]));
+    week.append(cell);
+  }
+  weekly.append(head, week);
+  home.append(weekly);
+
+  const comparison = element('section', '', 'stack');
+  comparison.append(element('h2', '4週間前と比べて'));
+  const result = compare(state, today);
+  if (!result) {
+    comparison.append(element('p', '4週間続けるとここに成長が出ます', 'dim'));
+  } else {
+    const gain = element('div', '', 'gain');
+    for (const item of result.items) {
+      const ex = state.exercises.find(ex => ex.id === item.exerciseId);
+      const change = item.text.slice(ex.name.length + 1);
+      if (item.kind === 'load') {
+        gain.append(
+          element('span', change, 'num up'),
+          element('span', `${ex.name}　負荷アップ`)
+        );
+      } else {
+        const numbers = change.match(/^最高 ([\d.]+)→([\d.]+)(回|秒)$/);
+        const increase = Number(numbers[2]) - Number(numbers[1]);
+        gain.append(
+          element('span', `+${increase}`, 'num'),
+          element('span', item.text)
+        );
+      }
+    }
+    const signed = number => `${number < 0 ? '−' : '+'}${Math.abs(number)}`;
+    // Growth only, like the summary: a falling total in green would read as blame.
+    if (result.totalPct > 0) {
+      gain.append(
+        element('span', `${signed(result.totalPct)}%`, 'num'),
+        element('span', '合計回数')
+      );
+    }
+    for (const [amount, label] of [
+      [result.bodyKg, '体重 kg（7日平均）'],
+      [result.waist, 'ウエスト cm（7日平均）']
+    ]) {
+      if (amount === null) continue;
+      gain.append(
+        element('span', signed(amount), 'num body-change'),
+        element('span', label)
+      );
+    }
+    comparison.append(gain);
+  }
+  home.append(comparison);
+
+  const partSection = element('section', '', 'parts stack');
+  partSection.append(element('h2', '今週の部位別セット数'));
+  const max = Math.max(0, ...Object.values(stats.partSets));
+  for (const part of parts) {
+    const count = stats.partSets[part];
+    if (!count) continue;
+    const row = element('div');
+    const bar = element('i');
+    bar.style.width = `${count / max * 100}%`;
+    bar.setAttribute('aria-hidden', 'true');
+    row.append(element('span', part), bar, element('span', String(count), 'num'));
+    partSection.append(row);
+  }
+  if (max > 0) home.append(partSection);
+
+  const cta = element('div', '', 'cta');
+  const buttons = element('div', '', 'row');
+  buttons.append(
+    action('始める', () => {
+      if (!workout) summaryId = null;
+      go('train');
+    }, 'primary'),
+    action('軽めの日', () => {
+      if (workout) {
+        go('train');
+        return;
+      }
+      summaryId = null;
+      go('train');
+      startWorkout({ light: true });
+    })
+  );
+  const links = element('div', '', 'links');
+  if (!state.sessions.some(session => session.date === today)) {
+    links.append(action('今日は休む', recordRest));
+  }
+  links.append(action('体重を記録', recordBody));
+  cta.append(buttons, links);
+  view.append(cta);
+}
+
+function homeSheet(title) {
+  const sheet = element('dialog', '', 'home-sheet');
+  sheet.setAttribute('aria-label', title);
+  sheet.append(element('h2', title));
+  const content = element('div', '', 'stack');
+  const actions = element('div', '', 'dialog-actions');
+  actions.append(action('キャンセル', () => sheet.close()));
+  sheet.append(content, actions);
+  sheet.addEventListener('close', () => sheet.remove(), { once: true });
+  document.body.append(sheet);
+  sheet.showModal();
+  return { sheet, content };
+}
+
+function recordRest() {
+  const { sheet, content } = homeSheet('今日は休む');
+  for (const reason of ['風邪', '疲れ', '予定', 'その他']) {
+    content.append(action(reason, () => {
+      const today = localDate(new Date());
+      const skip = state.skips.find(item => item.date === today);
+      if (skip) skip.reason = reason;
+      else state.skips.push({ date: today, reason });
+      save();
+      sheet.close();
+      render();
+      toast('休むのも練習。また明日');
+    }));
+  }
+}
+
+function recordBody() {
+  const entries = [...state.body].sort((a, b) => b.date.localeCompare(a.date));
+  const latest = entries[0];
+  const lastWaist = entries.find(entry => entry.waist !== null);
+  let kg = latest?.kg ?? '';
+  let waist = lastWaist?.waist ?? '';
+  let none = latest?.waist === null;
+  const { sheet, content } = homeSheet('体重を記録');
+
+  function valid(number) {
+    return String(number).trim() !== '' && Number.isFinite(Number(number));
+  }
+
+  const saveButton = action('保存', () => {
+    if (!valid(kg) || (!none && !valid(waist))) return;
+    const today = localDate(new Date());
+    const entry = { date: today, kg: Number(kg), waist: none ? null : Number(waist) };
+    const existing = state.body.find(item => item.date === today);
+    if (existing) Object.assign(existing, entry);
+    else state.body.push(entry);
+    save();
+    sheet.close();
+    render();
+  }, 'primary');
+
+  function updateSave() {
+    saveButton.disabled = !valid(kg) || (!none && !valid(waist));
+  }
+
+  function decimalField(title, amount, onInput) {
+    const label = element('label', '', 'stack');
+    const input = element('input');
+    input.inputMode = 'decimal';
+    input.value = String(amount);
+    input.addEventListener('input', () => {
+      onInput(input.value);
+      updateSave();
+    });
+    label.append(element('span', title), input);
+    return label;
+  }
+
+  function draw() {
+    content.replaceChildren();
+    content.append(latest
+      ? stepper('体重', Number(kg), 0, Infinity, 0.1, next => {
+        kg = Math.round(next * 10) / 10;
+        draw();
+      }, 'kg')
+      : decimalField('体重 kg', kg, next => { kg = next; }));
+    const toggle = action('なし', () => {
+      none = !none;
+      draw();
+    }, `chip${none ? ' on' : ''}`);
+    toggle.setAttribute('aria-pressed', String(none));
+    toggle.setAttribute('aria-label', 'ウエストなし');
+    if (!none) {
+      content.append(lastWaist
+        ? stepper('ウエスト', Number(waist), 0, Infinity, 0.5, next => {
+          waist = Math.round(next * 10) / 10;
+          draw();
+        }, 'cm')
+        : decimalField('ウエスト cm', waist, next => { waist = next; }));
+    } else {
+      content.append(element('span', 'ウエスト'));
+    }
+    content.append(toggle, saveButton);
+    updateSave();
+  }
+
+  draw();
 }
 
 let workout = null;
