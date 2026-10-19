@@ -25,7 +25,7 @@ function loadData() {
     sessions: [],
     skips: [],
     body: [],
-    settings: { weeklyGoal: 3, restSec: 90 }
+    settings: { restSec: 90 }
   };
 
   let raw;
@@ -1122,7 +1122,8 @@ function renderHistory() {
     button.setAttribute('aria-pressed', String(historyTab === id));
     segmented.append(button);
   }
-  history.append(segmented);
+  dock.className = 'dock';
+  dock.append(segmented);
   view.append(history);
   if (historyTab === 'exercise') renderExerciseHistory(history);
   else if (historyTab === 'body') renderBodyHistory(history);
@@ -1144,21 +1145,18 @@ function renderExerciseHistory(parent) {
       return latest(b).localeCompare(latest(a));
     })[0].id;
   }
-  const picker = element('select', '', 'pick');
-  picker.setAttribute('aria-label', '種目');
-  for (const ex of exercises) {
-    const option = element('option', ex.name);
-    option.value = ex.id;
-    picker.append(option);
-  }
-  picker.value = historyExerciseId;
-  picker.addEventListener('change', () => {
-    historyExerciseId = picker.value;
-    render();
-  });
-  parent.append(picker);
-
   const ex = exercises.find(ex => ex.id === historyExerciseId);
+  dock.append(action(`種目を選ぶ：${ex.name} ▾`, () => {
+    const { sheet, content } = homeSheet('種目を選ぶ');
+    for (const exercise of exercises) {
+      content.append(action(exercise.name, () => {
+        historyExerciseId = exercise.id;
+        sheet.close();
+        render();
+      }, 'settings-item'));
+    }
+  }, 'pick'));
+
   const sessions = state.sessions
     .filter(session => session.sets.some(set => set.exerciseId === ex.id))
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -1269,7 +1267,7 @@ function renderCalendar(parent) {
   const marks = calendar(state, today);
   const grid = element('div', '', 'calendar');
   for (const day of '月火水木金土日') {
-    grid.append(element('span', day, 'calendar-heading dim'));
+    grid.append(element('span', day, 'dim calendar-heading'));
   }
   const [year, month, day] = weekStart(today).split('-').map(Number);
   for (let i = 0; i < 84; i++) {
@@ -1395,6 +1393,8 @@ function settingsSection(title) {
 }
 
 function settingsEditor(title) {
+  dock.className = 'dock';
+  dock.replaceChildren(action('キャンセル', renderSettings));
   view.replaceChildren(element('h1', title));
   const form = element('form', '', 'ex stack');
   form.addEventListener('submit', event => event.preventDefault());
@@ -1448,6 +1448,7 @@ function moveItem(items, index, offset) {
 }
 
 function renderSettings() {
+  dock.replaceChildren();
   view.replaceChildren(element('h1', '設定'));
 
   const exercises = settingsSection('種目');
@@ -1506,11 +1507,6 @@ function renderSettings() {
 
   const general = settingsSection('一般');
   general.append(
-    stepper('週の目標日数', state.settings.weeklyGoal, 1, 7, 1, value => {
-      state.settings.weeklyGoal = value;
-      save();
-      render();
-    }, '日'),
     stepper('休憩秒数', state.settings.restSec, 30, 300, 15, value => {
       state.settings.restSec = value;
       save();
@@ -1625,8 +1621,6 @@ function editExercise(existing) {
     name: '',
     type: 'reps',
     part: '胸',
-    min: 8,
-    max: 15,
     nextId: null,
     archived: false
   };
@@ -1647,37 +1641,13 @@ function editExercise(existing) {
       saveButton.disabled = !value.trim();
     });
     choices(form, 'タイプ', exerciseTypes, draft.type, type => {
-      const wasTime = draft.type === 'time';
-      if (type === 'time' && !wasTime && draft.min === 8 && draft.max === 15) {
-        draft.min = 20;
-        draft.max = 60;
-      } else if (type !== 'time' && wasTime && draft.min === 20 && draft.max === 60) {
-        draft.min = 8;
-        draft.max = 15;
-      }
       draft.type = type;
-      const limit = type === 'time' ? 600 : 100;
-      draft.max = Math.min(draft.max, limit);
-      draft.min = Math.min(draft.min, draft.max);
       draw();
     });
     choices(form, '部位', parts.map(part => [part, part]), draft.part, part => {
       draft.part = part;
       draw();
     });
-    const time = draft.type === 'time';
-    const step = time ? 5 : 1;
-    const unit = time ? '秒' : '回';
-    form.append(
-      stepper('目標 min', draft.min, 1, draft.max, step, value => {
-        draft.min = value;
-        draw();
-      }, unit),
-      stepper('目標 max', draft.max, draft.min, time ? 600 : 100, step, value => {
-        draft.max = value;
-        draw();
-      }, unit)
-    );
     const label = element('label', '', 'stack');
     const select = element('select');
     const none = element('option', 'なし');
@@ -1694,13 +1664,14 @@ function editExercise(existing) {
       draft.nextId = select.value || null;
     });
     label.append(element('span', '次の段階'), select);
-    form.append(label, saveButton);
+    form.append(label);
+    dock.prepend(saveButton);
     if (existing && !existing.archived) {
-      form.append(action('アーカイブ', () => {
+      dock.insertBefore(action('アーカイブ', () => {
         existing.archived = true;
         save();
         render();
-      }, 'danger'));
+      }, 'danger'), dock.lastElementChild);
     }
   }
 
@@ -1729,17 +1700,17 @@ function editBand(existing) {
     saveButton.disabled = !value.trim();
   });
   textField(form, 'メモ', draft.note, value => { draft.note = value; });
-  form.append(saveButton);
+  dock.prepend(saveButton);
   const used = existing && state.sessions.some(session =>
     session.sets.some(set => set.bandId === existing.id));
   if (existing && !used) {
-    form.append(action('削除', () => {
+    dock.insertBefore(action('削除', () => {
       state.bands = state.bands.filter(band => band.id !== existing.id);
       state.bands.sort((a, b) => a.order - b.order);
       state.bands.forEach((band, i) => { band.order = i + 1; });
       save();
       render();
-    }, 'danger'));
+    }, 'danger'), dock.lastElementChild);
   }
 }
 
@@ -1810,9 +1781,9 @@ function editTemplate(existing) {
       stepper('セット数', draft.sets, 1, 6, 1, value => {
         draft.sets = value;
         draw();
-      }),
-      saveButton
+      })
     );
+    dock.prepend(saveButton);
   }
 
   draw();
