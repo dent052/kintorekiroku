@@ -11,5 +11,5 @@
 - Unit (logic.js): `npm test`
 - End-to-end (real Chromium, 390×844): `npm install` once, then `npm run e2e`.
   Uses `/opt/pw-browsers/chromium` if present, else set `CHROMIUM_PATH`.
-  The first test fails if any action button sits in the scrolling content instead of the bottom dock — keep it that way.
+  The principle tests fail if any control sits on the paper (`.see`) instead of the indigo slab (`.press`), a sheet or the settings slab — keep it that way.
 - Run both before every deploy to `main` (GitHub Pages serves `main`).
