@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>画面イメージ v5</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--num:'Barlow Condensed',sans-serif;--ja:'Zen Kaku Gothic New',system-ui,sans-serif;
+  --paper:#FFFFFF;--ink:#101418;--ink2:#5B6470;--lane:#E4E7EB;--track:#C93A1E;--track-soft:#FBEAE5}
+*{box-sizing:border-box;margin:0}
+body{background:#D9DCE0;color:var(--ink);font:16px/1.6 var(--ja);padding:24px 16px}
+.intro{max-width:1240px;margin:0 auto 16px}.intro h1{font:900 28px var(--ja)}.intro p{color:#333}
+.wall{display:flex;flex-wrap:wrap;gap:20px;justify-content:center}
+figure{width:360px}figcaption{font-size:13px;color:#222;margin:0 4px 8px}
+.phone{background:var(--paper);border-radius:28px;height:760px;overflow:hidden;display:flex;flex-direction:column}
+.view{flex:1;overflow:hidden;padding:28px 22px 0;display:flex;flex-direction:column}
+.num{font-family:var(--num);font-weight:700;line-height:.9;letter-spacing:-.01em}
+.label{font-size:12px;color:var(--ink2);font-weight:500}
+.rule{height:1px;background:var(--lane);margin:14px 0}
+/* tabs: text only, sliding underline */
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);padding:0 10px 14px;position:relative}
+.tabs span{text-align:center;font-size:13px;font-weight:700;color:var(--ink2);padding:12px 0 8px}
+.tabs span.on{color:var(--ink)}
+.tabs i{position:absolute;top:0;height:3px;width:calc((100% - 20px)/4 - 28px);background:var(--track);border-radius:0 0 3px 3px}
+/* dock */
+.dock{padding:12px 22px 10px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--lane)}
+.btn{display:flex;align-items:center;justify-content:center;min-height:56px;border-radius:16px;font-weight:700;font-size:17px}
+.btn.go{background:var(--track);color:#fff;font-size:19px;min-height:64px}
+.btn.ln{border:1.5px solid var(--ink);color:var(--ink)}
+.btn.q{color:var(--ink2);min-height:44px;font-size:15px}
+.r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.r3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+/* home */
+.hero{display:flex;align-items:flex-end;gap:10px}
+.hero .num{font-size:96px}
+.hero .unit{font-size:20px;font-weight:700;padding-bottom:12px}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:14px}
+.week i{height:8px;background:var(--lane);border-radius:2px}
+.week i.d{background:var(--track)}.week i.l{background:linear-gradient(90deg,var(--track) 50%,var(--lane) 50%)}
+.week b{font-size:11px;color:var(--ink2);text-align:center;font-weight:500}
+.post{padding:12px 0;border-bottom:1px solid var(--lane);display:grid;grid-template-columns:44px 1fr;gap:6px}
+.post:last-child{border-bottom:0}
+.post .when{font:600 15px var(--num);color:var(--ink2)}
+.post .who{font-size:12px;color:var(--track);font-weight:700}
+.post p{font-size:15px;line-height:1.55}
+.post q{display:block;color:var(--ink2);font-size:13px;border-left:2px solid var(--lane);padding-left:8px;margin-bottom:4px}
+.cand{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;padding:6px 0;font-weight:700}
+.cand i{height:1px;background:repeating-linear-gradient(90deg,var(--ink2) 0 4px,transparent 4px 8px)}
+.cand .num{font-size:30px;color:var(--track)}
+/* training */
+.ex h2{font:900 30px var(--ja);letter-spacing:-.01em}
+.ex .sub{font:600 15px var(--num);color:var(--ink2);letter-spacing:.04em}
+.lanebox{margin-top:auto;padding-bottom:18px}
+.lanehead{display:flex;justify-content:space-between;align-items:baseline}
+.lanehead .num{font-size:40px}
+.lane{position:relative;height:56px;margin:14px 0 6px;border-top:1px solid var(--lane);border-bottom:1px solid var(--lane)}
+.lane .fill{position:absolute;left:0;top:18px;height:20px;background:var(--ink);border-radius:0 10px 10px 0}
+.lane .mark{position:absolute;top:-10px;bottom:-10px;width:3px;background:var(--track)}
+.lane .mark span{position:absolute;top:-22px;left:50%;transform:translateX(-50%);font:700 14px var(--num);color:var(--track);white-space:nowrap}
+.lane.over .fill{background:var(--track)}
+.ticks{display:flex;justify-content:space-between;font:600 12px var(--num);color:var(--ink2)}
+.prev{font:600 17px var(--num);color:var(--ink2);margin-top:6px}
+.sets{display:flex;gap:8px;margin-top:10px}.sets span{font:700 20px var(--num);border-bottom:2px solid var(--ink);padding:0 2px}
+.stepper{display:grid;grid-template-columns:64px 1fr 64px;align-items:center}
+.stepper .pm{height:64px;border-radius:50%;border:1.5px solid var(--ink);display:flex;align-items:center;justify-content:center;font:500 34px var(--num)}
+.stepper .val{text-align:center}.stepper .val .num{font-size:84px}.stepper .val small{font-size:16px;font-weight:700;margin-left:2px}
+.timer{display:flex;align-items:center;justify-content:space-between;background:var(--track-soft);border-radius:14px;padding:6px 6px 6px 16px}
+.timer .num{font-size:34px;color:var(--track)}
+.timer .q{min-height:44px;padding:0 12px;display:flex;align-items:center;font-weight:700;font-size:14px;color:var(--track)}
+.result{background:var(--track);color:#fff;border-radius:18px;padding:16px 18px;display:flex;align-items:center;gap:16px}
+.result .num{font-size:88px}.result b{font:900 30px var(--ja);display:block;line-height:1.1}.result small{font-size:13px;opacity:.9}
+/* history */
+.chart{margin-top:8px}
+.log{display:grid;grid-template-columns:52px 1fr;row-gap:2px;margin-top:6px}
+.log span{font:600 15px var(--num);color:var(--ink2);padding:7px 0;border-bottom:1px solid var(--lane)}
+.log b{font:700 20px var(--num);padding:5px 0;border-bottom:1px solid var(--lane)}
+.log b em{font:700 12px var(--ja);font-style:normal;color:#fff;background:var(--ink);border-radius:4px;padding:1px 5px;margin-right:8px;vertical-align:3px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);border:1.5px solid var(--ink);border-radius:14px;overflow:hidden}
+.seg span{text-align:center;padding:12px 0;font-weight:700;font-size:15px}.seg span.on{background:var(--ink);color:#fff}
+</style>
+</head>
+<body>
+<div class="intro"><h1>画面イメージ v5 ─ トラック</h1><p>白・墨・トラックの赤の3色。箱と影をなくし、細い線と余白で組む。主役は数字と「ライン」。</p></div>
+<div class="wall">
+
+<figure><figcaption><b>ホーム</b></figcaption><div class="phone">
+  <div class="view">
+    <p class="label">通算</p>
+    <div class="hero"><span class="num">48</span><span class="unit">日</span></div>
+    <div class="week"><i class="d"></i><i></i><i class="l"></i><i class="d"></i><i></i><i></i><i></i><b>月</b><b>火</b><b>水</b><b>木</b><b>金</b><b>土</b><b>日</b></div>
+    <div class="rule"></div>
+    <p class="label">新着</p>
+    <div class="post"><span class="when">7:31</span><div><span class="who">コーチ ・ 返信</span><q>肩が重かった</q><p>重い日は1セット目だけラインを狙えば十分。残りは前回並みでいい。</p></div></div>
+    
+    <div class="rule"></div>
+    <p class="label">次回の候補</p>
+    <div class="cand"><span>スクワット</span><i></i><span class="num">24</span></div>
+    <div class="cand"><span>プランク</span><i></i><span class="num">60<small style="font-size:16px">秒</small></span></div>
+  </div>
+  <div class="dock"><div class="btn go">始める</div><div class="r2"><div class="btn ln">軽めの日</div><div class="btn ln">体重</div></div><div class="btn q">今日は休む</div></div>
+  <div class="tabs"><i style="left:24px"></i><span class="on">ホーム</span><span>トレーニング</span><span>履歴</span><span>設定</span></div>
+</div></figure>
+
+<figure><figcaption><b>1セット目の前</b>：レーンにラインの目印。±でバーが伸びる</figcaption><div class="phone">
+  <div class="view ex">
+    <p class="sub">1 / 4</p>
+    <h2>腕立て伏せ</h2>
+    <p class="prev">前回　16・15・13</p>
+    <div class="lanebox">
+      <div class="lanehead"><span class="label">1セット目</span><span><span class="label">ライン </span><span class="num" style="color:var(--track)">17</span></span></div>
+      <div class="lane"><div class="fill" style="width:76%"></div><div class="mark" style="left:81%"></div></div>
+      <div class="ticks"><span>0</span><span>10</span><span>20</span></div>
+    </div>
+  </div>
+  <div class="dock">
+    <div class="stepper"><span class="pm">−</span><span class="val"><span class="num">16</span><small>回</small></span><span class="pm">＋</span></div>
+    <div class="btn go">完了</div>
+    <div class="r3"><div class="btn q">◀ 前へ</div><div class="btn q">その他</div><div class="btn q">次へ ▶</div></div>
+  </div>
+  <div class="tabs"><i style="left:calc(24px + (100% - 20px)/4)"></i><span>ホーム</span><span class="on">トレーニング</span><span>履歴</span><span>設定</span></div>
+</div></figure>
+
+<figure><figcaption><b>ラインを超えた</b>：バーが赤に変わる → 完了で「突破」</figcaption><div class="phone">
+  <div class="view ex">
+    <p class="sub">1 / 4</p>
+    <h2>腕立て伏せ</h2>
+    <div class="sets"><span>18</span></div>
+    <div class="lanebox">
+      <div class="result"><span class="num">18</span><div><b>突破</b><small>次のライン 17</small></div></div>
+    </div>
+  </div>
+  <div class="dock">
+    <div class="timer"><span class="label" style="color:var(--track)">休憩</span><span class="num">1:28</span><span style="display:flex"><span class="q">+15秒</span><span class="q">スキップ</span></span></div>
+    <div class="stepper"><span class="pm">−</span><span class="val"><span class="num">16</span><small>回</small></span><span class="pm">＋</span></div>
+    <div class="btn go">完了</div>
+    <div class="r3"><div class="btn q">◀ 前へ</div><div class="btn q">その他</div><div class="btn q">次へ ▶</div></div>
+  </div>
+  <div class="tabs"><i style="left:calc(24px + (100% - 20px)/4)"></i><span>ホーム</span><span class="on">トレーニング</span><span>履歴</span><span>設定</span></div>
+</div></figure>
+
+<figure><figcaption><b>履歴</b></figcaption><div class="phone">
+  <div class="view">
+        <h2 style="font:900 30px var(--ja)">バンドロウ</h2>
+    <svg class="chart" viewBox="0 0 316 150"><g stroke="#E4E7EB"><line x1="0" y1="20" x2="316" y2="20"/><line x1="0" y1="75" x2="316" y2="75"/><line x1="0" y1="130" x2="316" y2="130"/></g>
+      <polyline fill="none" stroke="#101418" stroke-width="2.5" points="6,70 36,64 66,58 96,52 126,46 156,40"/>
+      <polyline fill="none" stroke="#C93A1E" stroke-width="2.5" points="186,92 216,86 246,80 276,74 306,66"/>
+      <circle cx="306" cy="66" r="5" fill="#C93A1E"/><text x="186" y="112" font-size="12" font-weight="700" fill="#C93A1E" font-family="Zen Kaku Gothic New">黒に変更</text></svg>
+    <div class="log"><span>10/19</span><b><em>黒</em>14・12・11</b><span>10/16</span><b><em>黒</em>13・12・10</b><span>10/13</span><b><em>黒</em>12・11・10</b><span>10/10</span><b><em style="background:#5B6470">赤</em>25・22・20</b></div>
+  </div>
+  <div class="dock"><div class="btn ln">種目を選ぶ ▾</div><div class="seg"><span class="on">種目</span><span>体</span><span>日付</span></div></div>
+  <div class="tabs"><i style="left:calc(24px + (100% - 20px)/2)"></i><span>ホーム</span><span>トレーニング</span><span class="on">履歴</span><span>設定</span></div>
+</div></figure>
+
+</div>
+</body>
+</html>
