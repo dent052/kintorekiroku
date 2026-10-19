@@ -1,0 +1,180 @@
+:root {
+  --bg: #1F2937;
+  --card: #313742;
+  --muted: #37414F;
+  --fg: #F8FAFC;
+  --fg2: #CBD5E1;
+  --line: #374151;
+  --primary: #F97316;
+  --on-primary: #0F172A;
+  --accent: #22C55E;
+  --danger: #EF4444;
+  --coach: #26303d;
+  --advice: #3a2a1f;
+  --timer: #111823;
+  --tabbar: #1A2330;
+  --num: 'Barlow Condensed', system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 system-ui, sans-serif;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0 auto;
+}
+
+#view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 16px;
+}
+
+h1 {
+  font: 700 32px/1.1 var(--num);
+}
+
+.num {
+  font-family: var(--num);
+  font-weight: 600;
+  letter-spacing: .01em;
+  line-height: 1;
+}
+
+.val {
+  font-size: 48px;
+}
+
+button {
+  min-width: 48px;
+  min-height: 48px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--muted);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 200ms, color 200ms;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+.primary {
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 700;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 0 8px env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid var(--line);
+  background: var(--tabbar);
+}
+
+.tabs button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 0 12px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg2);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.tabs button[aria-current="page"] {
+  color: var(--primary);
+}
+
+.tabs svg {
+  width: 22px;
+  height: 22px;
+}
+
+#timer {
+  flex-shrink: 0;
+  padding: 10px 16px 12px;
+  border-top: 2px solid var(--primary);
+  background: var(--timer);
+}
+
+#timer .num {
+  font-size: 64px;
+  text-align: center;
+}
+
+#toast {
+  position: fixed;
+  bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  width: max-content;
+  max-width: min(448px, calc(100% - 32px));
+  padding: 12px 16px;
+  transform: translateX(-50%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--fg);
+}
+
+dialog {
+  width: calc(100% - 32px);
+  max-width: 448px;
+  margin: auto;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--fg);
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.dialog-actions button {
+  padding: 8px 16px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

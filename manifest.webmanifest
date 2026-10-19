@@ -1,0 +1,17 @@
+{
+  "name": "筋トレ記録",
+  "short_name": "筋トレ",
+  "display": "standalone",
+  "start_url": "./",
+  "scope": "./",
+  "background_color": "#1F2937",
+  "theme_color": "#1F2937",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
