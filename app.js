@@ -602,19 +602,33 @@ function renderTrainPaper() {
   const [previous] = recent(state, ex.id, training.date, 1);
   if (previous) {
     const sets = previous.sets.filter(set => set.exerciseId === ex.id);
-    view.append(element('p', '前回　' + sets.map(set => setText(ex, set)).join(' ・ '), 'prev'));
+    const groups = [];
+    sets.forEach((set, index) => {
+      const previous = sets[index - 1];
+      const sameLoad = previous && (ex.type === 'band' ? previous.bandId === set.bandId :
+        ex.type === 'weight' ? previous.kg === set.kg : true);
+      if (sameLoad) groups[groups.length - 1] += '・' + value(ex, set);
+      else groups.push(ex.type === 'time' ? String(value(ex, set)) : setText(ex, set));
+    });
+    view.append(element('p', '前回　' + groups.join(' ・ ') +
+      (ex.type === 'time' ? '秒' : ''), 'prev'));
   }
   const target = element('div', '', 'target');
   const done = trainingSession()?.sets.filter(set => set.exerciseId === ex.id) ?? [];
+  let targetNote;
   if (!done.length) {
     const l = line(state, ex.id, training.date);
     if (l.value !== undefined) {
-      target.append(element('span', 'ライン'), element('span', String(l.value), 'num'));
-      if (ex.type === 'time') target.append(element('span', '秒'));
+      const number = element('span', '', 'target-value');
+      number.append(element('span', String(l.value), 'num'));
+      if (ex.type === 'time') number.append(element('small', '秒'));
+      target.append(element('span', 'ライン', 'target-label'), number);
     }
-    if (l.kind !== 'line') target.append(element('span', lineText(l, ex)));
+    if (l.kind === 'flat' || l.kind === 'down') targetNote = lineText(l, ex);
+    else if (l.kind !== 'line') target.append(element('span', lineText(l, ex)));
   }
   view.append(target);
+  if (targetNote) view.append(element('p', targetNote));
   if (done.length) {
     view.append(element('p', '今日 ' + done.map(set => setText(ex, set)).join(' ・ '), 'prev'));
   }
@@ -912,9 +926,9 @@ function renderSummary() {
   const total = sets.reduce((sum, set) => sum + (set.reps ?? 0), 0);
   const [previous] = state.sessions.filter(item => item.date < training.date)
     .sort((a, b) => b.date.localeCompare(a.date));
-  const sum = element('div', '', 'ln');
-  sum.append(element('span', '合計回数', 'name'), element('span', String(total), 'num'));
-  view.append(sum);
+  const sum = element('div', '', 'summary-total');
+  sum.append(element('span', String(total), 'num'), element('small', '回'));
+  view.append(element('p', '合計回数', 'k'), sum);
   if (previous) {
     const diff = total - previous.sets.reduce((sum, set) => sum + (set.reps ?? 0), 0);
     view.append(element('p', '前回より ' + (diff >= 0 ? '+' : '') + diff,

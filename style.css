@@ -56,6 +56,9 @@ button, a, input, select, textarea { touch-action:manipulation; }
 .target { margin-top:auto; display:flex; align-items:baseline; gap:10px; }
 .target .num { font-size:96px; color:var(--shu); }
 .target span { font-weight:700; }
+.target-label { white-space:nowrap; }
+.target-value { display:inline-flex; align-items:baseline; gap:4px; }
+.target-value small { font-size:16px; }
 .big { display:flex; align-items:baseline; justify-content:center; gap:4px; }
 .big .num { font-size:76px; }
 .big small { font-weight:700; color:var(--mute-ai); }
@@ -78,6 +81,9 @@ button, a, input, select, textarea { touch-action:manipulation; }
 .verdict .num { font-size:72px; }
 .verdict b { font:900 30px/1 var(--ja); display:block; }
 .verdict small { font-size:13px; opacity:.9; }
+.summary-total { display:flex; align-items:baseline; gap:4px; }
+.summary-total .num { font-size:96px; }
+.summary-total small { font-weight:700; }
 .summary-up { color:var(--shu); }
 .chips { display:flex; gap:8px; overflow-x:auto; }
 .chips span, .chips button, button.chip { flex:none; min-height:44px; display:flex; align-items:center; padding:0 16px; border-radius:22px; border:1.5px solid var(--mute-ai); font-weight:700; font-size:14px; color:#fff; background:var(--ai2); }
