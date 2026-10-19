@@ -4,45 +4,26 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
-  <meta name="theme-color" content="#F5F6F8">
+  <meta name="theme-color" content="#1C2B4B">
   <title>筋トレ記録</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap">
   <link rel="stylesheet" href="./style.css">
   <script type="module" src="./app.js"></script>
 </head>
 <body>
-  <div class="app">
-    <main id="view"></main>
-    <div id="timer" hidden></div>
-    <div id="dock"></div>
-    <nav class="tabs" aria-label="メインメニュー">
-      <button type="button" data-tab="home" aria-current="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l9-7 9 7v9H3z"/></svg>
-        ホーム
-      </button>
-      <button type="button" data-tab="train">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9v6M8 7v10M16 7v10M20 9v6M8 12h8"/></svg>
-        トレーニング
-      </button>
-      <button type="button" data-tab="history">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 19l5-6 4 3 7-9"/></svg>
-        履歴
-      </button>
-      <button type="button" data-tab="settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
-        設定
-      </button>
-    </nav>
+  <div class="app" data-mode="today">
+    <section class="see" aria-label="記録"></section>
+    <section class="press" aria-label="操作"></section>
   </div>
   <div id="toast" role="status" aria-live="polite" hidden></div>
-  <dialog id="confirm-dialog" aria-labelledby="confirm-text">
+  <dialog id="confirm-dialog" class="sheet" aria-labelledby="confirm-text">
     <form method="dialog">
       <p id="confirm-text"></p>
       <div class="dialog-actions">
         <button type="submit" value="cancel" autofocus>キャンセル</button>
-        <button type="submit" value="confirm" class="primary">確認</button>
+        <button type="submit" value="confirm" class="go">確認</button>
       </div>
     </form>
   </dialog>

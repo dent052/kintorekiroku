@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { fixture } from './fixture.mjs';
+import { localDate, line, menuExercises } from '../logic.js';
 
 const root = path.resolve(import.meta.dirname, '..');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
@@ -64,198 +65,236 @@ async function open({ data, extra = {}, github } = {}) {
 }
 
 const stored = page => page.evaluate(() => JSON.parse(localStorage.getItem('kintore:data')));
-const tab = (page, name) => page.click(`[data-tab=${name}]`);
-const dockBtn = (page, text) => page.locator('#dock button', { hasText: text }).first();
+const press = (page, text) => page.locator('.press').getByRole('button', { name: text, exact: true });
+const sheet = page => page.locator('dialog.sheet[open]').last();
+const settings = async page => {
+  await press(page, '成長').click();
+  await press(page, '設定').click();
+};
 
-/** Buttons/links/selects inside the scrolling content (#view), excluding allowed list affordances. */
-async function contentActions(page) {
-  return page.$$eval('#view button, #view a, #view select', els => els
-    .filter(e => e.offsetParent !== null)
-    .filter(e => !e.classList.contains('calendar-day') && !e.classList.contains('source-link') && e.textContent.trim() !== 'すべて見る')
-    .map(e => e.textContent.trim() || e.getAttribute('aria-label')));
-}
-
-// The page itself must never scroll (only #view does), or the dock/tab bar slide out of sight.
-async function pageFits(page) {
+async function principles(page) {
+  assert.deepEqual(await page.$$eval('button, a[href], select, input, textarea, [role=slider]', elements =>
+    elements.filter(element => !element.closest('.press, dialog.sheet, .slab'))
+      .map(element => element.outerHTML)), []);
   const size = await page.evaluate(() => ({
     w: document.scrollingElement.scrollWidth, h: document.scrollingElement.scrollHeight,
-    top: document.scrollingElement.scrollTop, iw: window.innerWidth, ih: window.innerHeight,
-    tabs: document.querySelector('.tabs').getBoundingClientRect().bottom
+    top: document.scrollingElement.scrollTop, iw: innerWidth, ih: innerHeight,
+    bottom: document.querySelector('.press').getBoundingClientRect().bottom
   }));
-  assert.ok(size.w <= size.iw, `page scrolls sideways (${size.w} > ${size.iw})`);
-  assert.ok(size.h <= size.ih && size.top === 0, `page scrolls vertically (${size.h} > ${size.ih})`);
-  assert.ok(size.tabs <= size.ih, 'tab bar is cut off');
+  assert.ok(size.w <= size.iw, 'page scrolls sideways');
+  assert.ok(size.h <= size.ih && size.top === 0, 'page scrolls vertically');
+  assert.ok(size.bottom <= size.ih, 'press is cut off');
 }
 
-test('every main screen keeps its actions in the bottom dock', async () => {
-  const { page, errors, close } = await open({ data: fixture(), extra: { 'kintore:posts': [{ id: 'p1', at: '2026-10-19T07:30:00+09:00', kind: 'reading', text: '読み物', source: { title: '出典', url: 'https://example.com' } }] } });
-  const screens = [
-    ['home', async () => {}],
-    ['training start', () => tab(page, 'train')],
-    ['workout', () => dockBtn(page, '前回と同じ').click()],
-    ['workout during rest', () => dockBtn(page, '完了').click()],
-    ['workout next exercise', () => dockBtn(page, '次へ').click()],
-    ['history exercise', () => tab(page, 'history')],
-    ['history body', () => dockBtn(page, '体').click()],
-    ['history calendar', () => dockBtn(page, '日付').click()]
-  ];
-  for (const [name, go] of screens) {
-    await go();
-    await page.waitForTimeout(150);
-    assert.deepEqual(await contentActions(page), [], `${name}: actions above the dock`);
-    await pageFits(page);
+async function swipe(page, dx, dy = 0, selector = '.see') {
+  await page.evaluate(([dx, dy, selector]) => {
+    const target = document.querySelector(selector);
+    const touch = (x, y) => new Touch({ identifier: 1, target, clientX: x, clientY: y });
+    const start = touch(180, 250);
+    const end = touch(180 + dx, 250 + dy);
+    target.dispatchEvent(new TouchEvent('touchstart', { touches: [start], bubbles: true }));
+    target.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [end], bubbles: true }));
+  }, [dx, dy, selector]);
+}
+
+test('paper/slab principles hold on both phone sizes, modes, editors and open sheets', async () => {
+  const { page, errors, close } = await open({ data: fixture(), extra: {
+    'kintore:posts': [{ id: 'p1', at: '2099-01-01', kind: 'reading', text: '読み物',
+      source: { title: '出典', url: 'https://example.com' } }]
+  } });
+  for (const size of [{ width: 390, height: 844 }, { width: 360, height: 640 }]) {
+    await page.setViewportSize(size);
+    await principles(page);
+    for (const text of ['メニュー変更', '休む', '体重']) {
+      await press(page, text).click();
+      await principles(page);
+      if (text === 'メニュー変更') {
+        await sheet(page).getByRole('button', { name: '種目を選ぶ', exact: true }).click();
+        await principles(page);
+      }
+      await sheet(page).getByRole('button', { name: '閉じる', exact: true }).click();
+    }
+    await press(page, '始める').click();
+    assert.equal(await page.getAttribute('.app', 'data-mode'), 'train');
+    await principles(page);
+    await press(page, '戻る').click();
+    await press(page, '軽めの日').click();
+    assert.match(await page.textContent('.see'), /軽めの日/);
+    await principles(page);
+    await press(page, '戻る').click();
+    await press(page, '成長').click();
+    await principles(page);
+    await press(page, '新着').click();
+    await principles(page);
+    assert.ok(await sheet(page).getByRole('link', { name: '出典' }).isVisible());
+    await sheet(page).getByRole('button', { name: '閉じる' }).click();
+    await press(page, '設定').click();
+    await principles(page);
+    for (const text of ['＋ 種目', '＋ バンド', '＋ テンプレ']) {
+      await press(page, text).click();
+      await principles(page);
+      await press(page, 'キャンセル').click();
+    }
+    await page.setInputFiles('input[type=file]', {
+      name: 'data.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture()))
+    });
+    await sheet(page).waitFor();
+    await principles(page);
+    await page.locator('#confirm-dialog button[value=cancel]').click();
+    await press(page, '戻る').click();
+    assert.equal(await page.getAttribute('.app', 'data-mode'), 'growth');
+    await press(page, '今日').click();
   }
-  await tab(page, 'settings');
-  await pageFits(page);
-  for (const text of ['＋ 種目', '＋ バンド', '＋ テンプレ']) assert.ok(await dockBtn(page, text).isVisible(), text);
   assert.deepEqual(errors, []);
   await close();
 });
 
-test('first use: register an exercise, set a baseline, see it on home', async () => {
-  const { page, errors, close } = await open();
-  await tab(page, 'train');
-  await dockBtn(page, '種目を追加').click();
-  await page.fill('#view input[type=text]', '腕立て伏せ');
-  await dockBtn(page, '保存').click();
-  await tab(page, 'train');
-  assert.equal((await page.textContent('#dock')).trim(), '種目を選んで始める');
-  await dockBtn(page, '種目を選んで始める').click();
-  await page.click('dialog >> text=腕立て伏せ');
-  assert.match(await page.textContent('#view'), /初回。この1セットが基準になる/);
-  await dockBtn(page, '完了').click();
-  assert.match(await page.locator('.training-result').textContent(), /10\s*基準/);
-  assert.equal((await stored(page)).sessions.length, 1, 'set is saved on 完了');
-  await dockBtn(page, '終了').click();
-  assert.match(await page.textContent('#view'), /今日の記録/);
-  await dockBtn(page, 'ホームへ').click();
-  assert.match(await page.textContent('#view'), /通算\s*1\s*日/);
-  assert.deepEqual(errors, []);
-  await close();
-});
-
-test('line: clear and short results, rest timer, summary', async () => {
-  const { page, errors, close } = await open({ data: fixture() });
-  await tab(page, 'train');
-  await dockBtn(page, '前回と同じ').click();
-  const chip = await page.locator('.line-chip').textContent();
-  const line = Number(chip.match(/\d+/)[0]);
-  const shown = Number(await page.locator('#dock .stepper output').textContent().then(t => t.match(/\d+/)[0]));
-  const plus = page.locator('#dock .stepper button').last();
-  for (let i = shown; i < line; i++) await plus.click();
-  await dockBtn(page, '完了').click();
-  assert.match(await page.locator('.training-result').textContent(), /突破/);
-  assert.ok(await page.locator('#dock #timer').isVisible(), 'rest timer is in the dock');
-  const t1 = await page.locator('#timer .num').textContent();
-  await page.click('#timer >> text=+15秒');
-  const t2 = await page.locator('#timer .num').textContent();
-  const secs = t => { const [m, s] = t.split(':').map(Number); return m * 60 + s; };
-  assert.ok(secs(t2) > secs(t1), `+15秒 adds time (${t1} → ${t2})`);
-  await page.click('#timer >> text=スキップ');
-  assert.ok(await page.locator('#timer').isHidden());
-
-  await dockBtn(page, '次へ').click();
-  const minus = page.locator('#dock .stepper button').first();
-  for (let i = 0; i < 5; i++) await minus.click();
-  await dockBtn(page, '完了').click();
-  assert.match(await page.locator('.training-result').textContent(), /あと\s*\d+[\s\S]*ラインは次回へ/);
-
+test('today lines follow menuExercises and line, including custom and template selection', async () => {
+  const data = fixture();
+  const { page, errors, close } = await open({ data });
+  const today = localDate(new Date());
+  async function check(menu) {
+    const ids = menuExercises(data, menu, today);
+    assert.deepEqual(await page.locator('.ln').evaluateAll(rows => rows.map(row => row.dataset.exerciseId)), ids);
+    for (const id of ids) {
+      const expected = line(data, id, today);
+      const ex = data.exercises.find(ex => ex.id === id);
+      assert.equal(await page.locator('.ln[data-exercise-id="' + id + '"] .num').textContent(),
+        expected.kind === 'base' ? '初回' : expected.kind === 'up' ? expected.next + 'へ' :
+          String(expected.value) + (ex.type === 'time' ? '秒' : ''));
+    }
+  }
+  await check({ kind: 'same' });
+  await press(page, 'メニュー変更').click();
+  await sheet(page).getByRole('button', { name: '胸と背中', exact: true }).click();
+  await check({ kind: 'template', templateId: 't1' });
+  assert.match(await page.textContent('.lines > .k'), /胸と背中/);
+  await press(page, 'メニュー変更').click();
+  await sheet(page).getByRole('button', { name: '種目を選ぶ', exact: true }).click();
+  await sheet(page).getByRole('button', { name: '腕立て伏せ', exact: true }).click();
+  await sheet(page).getByRole('button', { name: '足上げ腕立て', exact: true }).click();
+  await sheet(page).getByRole('button', { name: '決定', exact: true }).click();
+  const menu = { kind: 'custom', exerciseIds: ['e2', 'e3', 'e4'] };
+  await check(menu);
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('kintore:menu'))), menu);
   await page.reload();
-  const today = await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; });
-  assert.equal((await stored(page)).sessions.find(s => s.date === today)?.sets.length, 2, 'both sets survive a reload');
+  await check(menu);
   assert.deepEqual(errors, []);
   await close();
 });
 
-test('summary counts cleared lines and shows a falling total neutrally', async () => {
-  const { page, close } = await open({ data: fixture() });
-  await tab(page, 'train');
-  await dockBtn(page, '前回と同じ').click();
-  const line = Number((await page.locator('.line-chip').textContent()).match(/\d+/)[0]);
-  const plus = page.locator('#dock .stepper button').last();
-  const shown = Number((await page.locator('#dock .stepper output').textContent()).match(/\d+/)[0]);
-  for (let i = shown; i < line; i++) await plus.click();
-  await dockBtn(page, '完了').click();
-  await dockBtn(page, '次へ').click();
-  await dockBtn(page, '次へ').click();
-  await dockBtn(page, '終了').click();
-  const text = await page.textContent('#view');
-  assert.match(text, /ライン突破\s*1\s*\/\s*1/);
-  assert.match(text, /前回より\s*-\d+/, 'a lower total is still shown');
+test('previous short is vermilion; base and up use the small word treatment', async () => {
+  const data = fixture();
+  const date = n => localDate(new Date(new Date().setDate(new Date().getDate() - n)));
+  data.sessions = [
+    { id: 'a', date: date(2), light: false, note: '', sets: [
+      { exerciseId: 'e1', reps: 15 }, { exerciseId: 'e2', reps: 20, bandId: 'r' }
+    ] },
+    { id: 'b', date: date(1), light: false, note: '', sets: [
+      { exerciseId: 'e1', reps: 14 }, { exerciseId: 'e2', reps: 20, bandId: 'r' }
+    ] }
+  ];
+  const { page, close } = await open({ data, extra: {
+    'kintore:menu': { kind: 'custom', exerciseIds: ['e1', 'e2', 'e3'] }
+  } });
+  assert.equal(await page.locator('.ln[data-exercise-id=e1] .carry').count(), 1);
+  assert.match(await page.locator('.ln[data-exercise-id=e1] small').textContent(), /前回 14 ・ あと2/);
+  assert.equal(await page.locator('.ln[data-exercise-id=e2] .word').textContent(), '黒へ');
+  assert.equal(await page.locator('.ln[data-exercise-id=e3] .word').textContent(), '初回');
   await close();
 });
 
-test('coach toggle marks the session for a reply', async () => {
-  const { page, close } = await open({ data: fixture() });
-  await tab(page, 'train');
-  await dockBtn(page, '前回と同じ').click();
-  await dockBtn(page, '完了').click();
-  await dockBtn(page, 'その他').click();
-  await page.fill('dialog textarea', '肩が重い');
-  await page.locator('dialog textarea').blur();
-  await page.click('dialog >> text=コーチに送る：オフ');
-  assert.ok(await page.locator('dialog >> text=コーチに送る：オン').isVisible());
-  const session = (await stored(page)).sessions.at(-1);
-  assert.equal(session.toCoach, true);
-  assert.equal(session.note, '肩が重い');
+test('swipe switches only today and growth at the specified thresholds', async () => {
+  const { page, errors, close } = await open({ data: fixture() });
+  const mode = () => page.getAttribute('.app', 'data-mode');
+  await swipe(page, -59);
+  assert.equal(await mode(), 'today');
+  await swipe(page, -80, 50);
+  assert.equal(await mode(), 'today');
+  await swipe(page, -60);
+  assert.equal(await mode(), 'growth');
+  await swipe(page, -100);
+  assert.equal(await mode(), 'growth');
+  await swipe(page, 60, 0, '.press');
+  assert.equal(await mode(), 'today');
+  await press(page, '始める').click();
+  await swipe(page, -100);
+  assert.equal(await mode(), 'train');
+  await principles(page);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('first use adds an exercise without creating a session; an empty menu opens the picker', async () => {
+  const { page, errors, close } = await open();
+  assert.match(await page.textContent('.see'), /まず種目を登録しましょう/);
+  await press(page, '種目を追加').click();
+  await page.getByLabel('名前', { exact: true }).fill('腕立て伏せ');
+  await press(page, '保存').click();
+  await press(page, '戻る').click();
+  assert.equal(await page.getAttribute('.app', 'data-mode'), 'today');
+  await press(page, '始める').click();
+  await sheet(page).getByRole('button', { name: '種目を選ぶ', exact: true }).click();
+  assert.ok(await sheet(page).getByRole('button', { name: '決定' }).isDisabled());
+  await sheet(page).getByRole('button', { name: '腕立て伏せ', exact: true }).click();
+  await sheet(page).getByRole('button', { name: '決定' }).click();
+  assert.equal(await page.getAttribute('.app', 'data-mode'), 'train');
+  assert.equal((await stored(page)).sessions.length, 0);
+  await press(page, '戻る').click();
+  assert.equal(await page.locator('.ln .word').textContent(), '初回');
+  assert.deepEqual(errors, []);
   await close();
 });
 
 test('rest day and body weight are recorded once per day', async () => {
   const { page, close } = await open({ data: fixture() });
-  await dockBtn(page, '今日は休む').click();
-  await page.click('dialog >> text=疲れ');
+  for (const reason of ['疲れ', '予定']) {
+    await press(page, '休む').click();
+    await sheet(page).getByRole('button', { name: reason, exact: true }).click();
+  }
   assert.match(await page.textContent('#toast'), /休むのも練習/);
-  await dockBtn(page, '体重を記録').click();
-  await page.click('dialog button[aria-label="体重を減らす"]');
-  await page.click('dialog >> text=保存');
-  await dockBtn(page, '体重を記録').click();
-  await page.click('dialog >> text=保存');
+  await press(page, '体重').click();
+  await sheet(page).getByRole('button', { name: '体重を減らす', exact: true }).click();
+  await sheet(page).getByRole('button', { name: '保存', exact: true }).click();
+  await press(page, '体重').click();
+  await sheet(page).getByRole('button', { name: '保存', exact: true }).click();
   const data = await stored(page);
-  const today = data.skips.at(-1).date;
+  const today = localDate(new Date());
   assert.equal(data.skips.filter(s => s.date === today).length, 1);
+  assert.equal(data.skips.find(s => s.date === today).reason, '予定');
   const todays = data.body.filter(b => b.date === today);
   assert.equal(todays.length, 1);
-  assert.equal(todays[0].kg, Math.round(todays[0].kg * 10) / 10, 'weight has one decimal');
+  assert.equal(todays[0].kg, Math.round(todays[0].kg * 10) / 10);
   await close();
 });
 
-test('history: chart colors by band, edit and delete a day', async () => {
-  const { page, errors, close } = await open({ data: fixture() });
-  await tab(page, 'history');
-  await dockBtn(page, '種目を選ぶ').click();
-  await page.click('dialog >> text=バンドロウ');
-  assert.equal(await page.locator('#view svg polyline').count(), 2, 'one line per band');
-  await dockBtn(page, '日付').click();
-  await page.locator('.calendar-day.done').last().click();
-  await page.waitForTimeout(150);
-  const box = await page.locator('.history > section:last-child').boundingBox();
-  assert.ok(box.y < 844 / 2, 'day detail scrolls into view');
-  const before = (await stored(page)).sessions.length;
-  const date = await page.locator('.calendar-day[aria-pressed=true]').getAttribute('aria-label');
-  const reps = async () => (await stored(page)).sessions.find(s => s.date === date.slice(0, 10)).sets[0].reps;
-  const r0 = await reps();
-  await page.locator('.history > section:last-child button[aria-label$="を増やす"]').first().click();
-  assert.equal(await reps(), r0 + 1);
-  await page.click('text=この日の記録を削除');
-  await page.click('#confirm-dialog button[value=confirm]');
-  // Deleting saves after the confirm dialog's promise resolves, so wait for the write.
-  await page.waitForFunction(n => JSON.parse(localStorage.getItem('kintore:data')).sessions.length === n, before - 1);
-  assert.deepEqual(errors, []);
+test('first body entry accepts weight with no waist', async () => {
+  const data = fixture();
+  data.body = [];
+  const { page, close } = await open({ data });
+  await press(page, '体重').click();
+  await sheet(page).getByLabel('体重 kg', { exact: true }).fill('68.4');
+  await sheet(page).getByRole('button', { name: 'ウエストなし', exact: true }).click();
+  await sheet(page).getByRole('button', { name: '保存', exact: true }).click();
+  assert.deepEqual((await stored(page)).body, [{ date: localDate(new Date()), kg: 68.4, waist: null }]);
   await close();
 });
 
-test('settings: add from the dock, bad import leaves data untouched', async () => {
+test('settings: add a band; invalid or cancelled import leaves data untouched', async () => {
   const { page, close } = await open({ data: fixture() });
-  await tab(page, 'settings');
-  await dockBtn(page, '＋ バンド').click();
-  await page.fill('#view input[type=text] >> nth=0', '青');
-  await dockBtn(page, '保存').click();
-  assert.deepEqual((await stored(page)).bands.map(b => `${b.name}${b.order}`), ['黄1', '赤2', '黒3', '青4']);
+  await settings(page);
+  await press(page, '＋ バンド').click();
+  await page.getByLabel('名前', { exact: true }).fill('青');
+  await press(page, '保存').click();
+  assert.deepEqual((await stored(page)).bands.map(b => b.name + b.order), ['黄1', '赤2', '黒3', '青4']);
   const before = await page.evaluate(() => localStorage.getItem('kintore:data'));
   await page.setInputFiles('input[type=file]', { name: 'x.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
-  await page.waitForTimeout(200);
-  assert.match(await page.textContent('#toast'), /読み込めないファイルです/);
+  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('読み込めないファイルです'));
+  assert.equal(await page.evaluate(() => localStorage.getItem('kintore:data')), before);
+  await page.setInputFiles('input[type=file]', {
+    name: 'data.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture()))
+  });
+  await page.locator('#confirm-dialog button[value=cancel]').click();
   assert.equal(await page.evaluate(() => localStorage.getItem('kintore:data')), before);
   await close();
 });
@@ -270,18 +309,18 @@ test('corrupt saved data is kept aside, not overwritten', async () => {
 test('GitHub: changes are pushed, failures retried, coach posts shown', async () => {
   const github = { owner: 'me', repo: 'data', token: 't', lastSyncAt: null, dirty: false };
   const { page, api, close } = await open({ data: fixture(), github });
-  api.posts = [{ id: 'r1', at: '2099-01-01T07:30:00+09:00', kind: 'reply', quote: '肩が重い', text: '1セット目だけ狙えば十分。' }, { broken: true }];
+  api.posts = [{ id: 'r1', at: '2099-01-01T07:30:00+09:00', kind: 'reply',
+    quote: '肩が重い', text: '1セット目だけ狙えば十分。' }, { broken: true }];
   await page.reload();
-  await page.waitForTimeout(500);
-  assert.match(await page.textContent('#view'), /1セット目だけ狙えば十分/);
-  await dockBtn(page, '今日は休む').click();
-  await page.click('dialog >> text=予定');
+  await page.waitForFunction(() => document.querySelector('.see').textContent.includes('1セット目だけ狙えば十分'));
+  await press(page, '休む').click();
+  await sheet(page).getByRole('button', { name: '予定', exact: true }).click();
   await page.waitForTimeout(6000);
-  assert.ok(api.puts.at(-1)?.skips.some(s => s.reason === '予定'), 'pushed after the 5 s debounce');
-  assert.equal(api.puts.at(-1).exercises[0].name, '腕立て伏せ', 'Japanese survives base64');
+  assert.ok(api.puts.at(-1)?.skips.some(s => s.reason === '予定'));
+  assert.equal(api.puts.at(-1).exercises[0].name, '腕立て伏せ');
   api.fail = true;
-  await dockBtn(page, '今日は休む').click();
-  await page.click('dialog >> text=風邪');
+  await press(page, '休む').click();
+  await sheet(page).getByRole('button', { name: '風邪', exact: true }).click();
   await page.waitForTimeout(6000);
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('kintore:github')).dirty), true);
   api.fail = false;
@@ -292,37 +331,19 @@ test('GitHub: changes are pushed, failures retried, coach posts shown', async ()
   await close();
 });
 
-test('swiping the content switches tabs in order', async () => {
-  const { page, errors, close } = await open({ data: fixture() });
-  const swipe = (from, to) => page.evaluate(([from, to]) => {
-    const target = document.querySelector('#view');
-    const touch = x => new Touch({ identifier: 1, target, clientX: x, clientY: 400 });
-    target.dispatchEvent(new TouchEvent('touchstart', { touches: [touch(from)], changedTouches: [touch(from)], bubbles: true }));
-    target.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [touch(to)], bubbles: true }));
-  }, [from, to]);
-  const current = () => page.getAttribute('[data-tab][aria-current=page]', 'data-tab');
-  await swipe(300, 80);
-  assert.equal(await current(), 'train');
-  await swipe(300, 80);
-  assert.equal(await current(), 'history');
-  await swipe(80, 300);
-  assert.equal(await current(), 'train');
-  await swipe(300, 270);
-  assert.equal(await current(), 'train', 'a short drag does not switch');
-  await pageFits(page);
-  assert.deepEqual(errors, []);
+test('GitHub restore requires confirmation and preserves the remote data', async () => {
+  const github = { owner: 'me', repo: 'data', token: 't' };
+  const { page, api, close } = await open({ data: fixture(), github });
+  const remote = fixture();
+  remote.exercises[0].name = '復元した種目';
+  api.remote = Buffer.from(JSON.stringify(remote)).toString('base64');
+  await settings(page);
+  await page.getByRole('button', { name: 'GitHub から復元', exact: true }).click();
+  await page.locator('#confirm-dialog button[value=cancel]').click();
+  assert.equal((await stored(page)).exercises[0].name, '腕立て伏せ');
+  await page.getByRole('button', { name: 'GitHub から復元', exact: true }).click();
+  await page.locator('#confirm-dialog button[value=confirm]').click();
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('kintore:data')).exercises[0].name === '復元した種目');
+  assert.equal((await stored(page)).sessions.length, remote.sessions.length);
   await close();
-});
-
-test('layout fits a short Android screen with the browser toolbar', async () => {
-  const context = await browser.newContext({ viewport: { width: 360, height: 640 }, hasTouch: true, isMobile: true });
-  const page = await context.newPage();
-  await page.addInitScript(d => { if (!localStorage.getItem('kintore:data')) localStorage.setItem('kintore:data', JSON.stringify(d)); }, fixture());
-  await page.goto(base);
-  for (const name of ['home', 'train', 'history', 'settings']) {
-    await tab(page, name);
-    await page.waitForTimeout(100);
-    await pageFits(page);
-  }
-  await context.close();
 });

@@ -1,17 +1,18 @@
 import {
-  localDate, parseImport, value, recent, prefill, rows,
-  lineText, sessionEvents, weekStats, weekStart, totalDays, feed, mergeFeed, firstSet, line, lineResult,
-  top, load, totals, bodyAvg7, calendar, toBase64Utf8, consultText, parsePosts
+  localDate, parseImport, value, recent, totalDays, feed, mergeFeed,
+  firstSet, line, lineResult, menuExercises, toBase64Utf8, consultText, parsePosts
 } from './logic.js';
 
 /** @typedef {import('./logic.js').Data} Data */
 
-const view = document.querySelector('#view');
-const dock = document.querySelector('#dock');
-const tabs = document.querySelectorAll('[data-tab]');
+const app = document.querySelector('.app');
+const view = document.querySelector('.see');
+const dock = document.querySelector('.press');
 const toastElement = document.querySelector('#toast');
 const dialog = document.querySelector('#confirm-dialog');
-let currentTab = 'home';
+let currentMode = 'today';
+let settingsReturn = 'today';
+let menu;
 let toastTimeout;
 
 /** @returns {Data} */
@@ -48,6 +49,7 @@ function loadData() {
 
 /** @type {Data} */
 let state = loadData();
+menu = loadMenu();
 
 function save() {
   state.updatedAt = new Date().toISOString();
@@ -216,7 +218,7 @@ async function fetchFeedback() {
     const raw = JSON.stringify(parsePosts(decodeGithub(file.content)));
     if (github !== settings || localStorage.getItem('kintore:posts') === raw) return;
     localStorage.setItem('kintore:posts', raw);
-    if (currentTab === 'home') renderHome();
+    if (currentMode === 'today') renderToday();
   } catch {}
 }
 
@@ -236,66 +238,76 @@ function uid(prefix) {
   return `${prefix}_${suffix}`;
 }
 
-/** @param {'home'|'train'|'history'|'settings'} tab */
-function go(tab) {
-  currentTab = tab;
+function loadMenu() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('kintore:menu'));
+    if (stored?.kind === 'same' ||
+        (stored?.kind === 'template' && typeof stored.templateId === 'string') ||
+        (stored?.kind === 'custom' && Array.isArray(stored.exerciseIds))) return stored;
+  } catch {}
+  return state.sessions.length ? { kind: 'same' } : { kind: 'custom', exerciseIds: [] };
+}
+
+function go(mode) {
+  if (mode === 'settings' && currentMode !== 'settings') settingsReturn = currentMode;
+  currentMode = mode;
   render();
 }
 
-// Horizontal swipe on the content switches tabs (ホーム ⇄ トレーニング ⇄ 履歴 ⇄ 設定).
-const tabOrder = ['home', 'train', 'history', 'settings'];
 let swipeStart = null;
-view.addEventListener('touchstart', event => {
+app.addEventListener('touchstart', event => {
   const touch = event.touches[0];
-  swipeStart = event.touches.length === 1 && !event.target.closest('input, textarea, select')
+  swipeStart = event.touches.length === 1 &&
+    !event.target.closest('input, textarea, select, .ruler, .chips')
     ? { x: touch.clientX, y: touch.clientY, t: Date.now() } : null;
 }, { passive: true });
-view.addEventListener('touchend', event => {
+app.addEventListener('touchcancel', () => { swipeStart = null; });
+app.addEventListener('touchend', event => {
   if (!swipeStart) return;
   const touch = event.changedTouches[0];
   const dx = touch.clientX - swipeStart.x;
   const dy = touch.clientY - swipeStart.y;
-  const quick = Date.now() - swipeStart.t < 700;
+  const elapsed = Date.now() - swipeStart.t;
   swipeStart = null;
-  if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
-  const next = tabOrder.indexOf(currentTab) + (dx < 0 ? 1 : -1);
-  if (next < 0 || next >= tabOrder.length) return;
-  go(tabOrder[next]);
+  if (elapsed > 700 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
+  if (currentMode === 'today' && dx < 0) go('growth');
+  else if (currentMode === 'growth' && dx > 0) go('today');
+  else return;
   view.classList.remove('slide-next', 'slide-prev');
   void view.offsetWidth;
   view.classList.add(dx < 0 ? 'slide-next' : 'slide-prev');
 }, { passive: true });
 
 function render() {
-  hideResult();
+  app.dataset.mode = currentMode;
+  view.className = currentMode === 'settings' ? 'see slab' : 'see';
+  view.replaceChildren();
+  view.scrollTop = 0;
+  dock.className = 'press';
   dock.replaceChildren();
-  updateHomeBadge();
-  for (const button of tabs) {
-    if (button.dataset.tab === currentTab) {
-      button.setAttribute('aria-current', 'page');
-    } else {
-      button.removeAttribute('aria-current');
-    }
+  if (currentMode === 'today') renderToday();
+  else if (currentMode === 'growth') renderGrowth();
+  else if (currentMode === 'settings') renderSettings();
+  else renderTrain();
+}
+
+function pager() {
+  const nav = element('nav', '', 'pager');
+  nav.setAttribute('aria-label', 'ページ');
+  for (const [mode, text] of [['today', '今日'], ['growth', '成長']]) {
+    const button = action(text, () => go(mode));
+    button.dataset.page = mode;
+    if (mode === currentMode) button.setAttribute('aria-current', 'page');
+    nav.append(button);
   }
-  const renders = {
-    home: renderHome,
-    train: renderTrain,
-    history: renderHistory,
-    settings: renderSettings
-  };
-  renders[currentTab]();
+  dock.append(nav);
 }
 
 function homeFeed() {
   let posts = [];
   let seen = [];
   try {
-    const stored = JSON.parse(localStorage.getItem('kintore:posts'));
-    if (Array.isArray(stored)) {
-      posts = stored.filter(post => post && typeof post.id === 'string'
-        && typeof post.text === 'string' && typeof post.at === 'string'
-        && ['reply', 'weekly', 'finding', 'reading'].includes(post.kind));
-    }
+    posts = parsePosts(localStorage.getItem('kintore:posts') ?? '[]');
   } catch {}
   try {
     const stored = JSON.parse(localStorage.getItem('kintore:seen'));
@@ -304,185 +316,221 @@ function homeFeed() {
   return { items: mergeFeed(feed(state, localDate(new Date())), posts, seen), seen };
 }
 
-function updateHomeBadge() {
-  const button = document.querySelector('[data-tab="home"]');
-  button.querySelector('.badge')?.remove();
-  const { items, seen } = homeFeed();
-  let unread = items.filter(item => !seen.includes(item.id)).length;
-  const now = new Date();
-  const cutoff = localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 13));
-  const today = localDate(now);
-  if (!state.sessions.some(session => session.date >= cutoff && session.date <= today)) {
-    unread = Math.min(unread, 2);
-  }
-  if (!unread) {
-    button.removeAttribute('aria-label');
-    return;
-  }
-  const label = unread > 9 ? '9+' : String(unread);
-  const badge = element('span', label, 'badge');
-  badge.setAttribute('aria-hidden', 'true');
-  button.append(badge);
-  button.setAttribute('aria-label', `ホーム 未読${label}件`);
-}
-
 function markSeen(items) {
   const { seen } = homeFeed();
   const displayed = items.map(item => item.id);
-  const next = [...seen.filter(id => !displayed.includes(id)), ...displayed];
   try {
-    localStorage.setItem('kintore:seen', JSON.stringify(next.slice(-500)));
+    localStorage.setItem('kintore:seen', JSON.stringify([
+      ...seen.filter(id => !displayed.includes(id)), ...displayed
+    ].slice(-500)));
   } catch {
     toast('保存できませんでした。容量を確認してください');
   }
-  updateHomeBadge();
 }
 
-function appendFeed(parent, items, seen) {
-  const list = element('div', '', 'feed');
+function appendFeed(parent, items, full = false) {
   for (const item of items) {
-    const row = element('article', '', `item${seen.includes(item.id) ? '' : ' new'}`);
-    const bar = element('i');
-    bar.setAttribute('aria-hidden', 'true');
-    const content = element('div', '', 'stack');
+    const post = element('article', '', 'post');
     const coach = ['reply', 'weekly', 'finding', 'reading'].includes(item.kind);
-    content.append(element('p', `${coach ? 'コーチ' : '記録'} ${shortDate(item.at.slice(0, 10))}`, 'k'));
-    if (item.kind === 'reply' && typeof item.quote === 'string') {
-      content.append(element('blockquote', item.quote, 'dim'));
+    const labels = {
+      reply: '返信', weekly: '週次', finding: '発見', reading: '読み物',
+      clear: '突破', pr: '自己ベスト', load: '負荷アップ', stage: '段階アップ', near: '節目'
+    };
+    post.append(element('p', coach ? 'コーチ' : '記録', 'k'));
+    const body = element('p', '', full ? '' : 'preview');
+    body.append(element('b', labels[item.kind]), document.createTextNode(item.text));
+    post.append(body);
+    if (full && item.kind === 'reply' && typeof item.quote === 'string') {
+      post.prepend(element('blockquote', item.quote, 'dim'));
     }
-    content.append(element('p', item.text));
-    if (item.kind === 'reading' && typeof item.source?.title === 'string') {
+    if (full && typeof item.source?.title === 'string') {
       try {
         const url = new URL(item.source.url);
-        if (['https:', 'http:'].includes(url.protocol)) {
-          const link = element('a', item.source.title, 'source-link');
+        if (['http:', 'https:'].includes(url.protocol)) {
+          const link = element('a', item.source.title);
           link.href = url.href;
           link.target = '_blank';
           link.rel = 'noopener noreferrer';
-          content.append(link);
+          post.append(link);
         }
       } catch {}
     }
-    row.append(bar, content);
-    list.append(row);
+    parent.append(post);
   }
-  parent.append(list);
 }
 
-function renderHome() {
-  fetchFeedback();
-  dock.replaceChildren();
-  view.replaceChildren();
-  const today = localDate(new Date());
-  const home = element('div', '', 'home stack');
-  view.append(home);
-
-  const stats = weekStats(state, today);
-  const head = element('div', '', 'head');
-  const total = element('div', '', 'total');
-  total.append(element('span', '通算'), element('br'),
-    element('span', String(totalDays(state)), 'num'), element('span', ' 日'));
-  const weekly = element('div', '', 'weekly stack');
-  weekly.append(element('p', `今週 ${stats.days}日`, 'dim'));
-  const week = element('div', '', 'week');
-  const [year, month, day] = weekStart(today).split('-').map(Number);
-  for (let i = 0; i < 7; i++) {
-    const date = localDate(new Date(year, month - 1, day + i));
-    const mark = stats.marks[date];
-    const cell = element('i', '', `bar${mark ? ` ${mark}` : ''}`);
-    const status = { done: 'トレーニング', light: '軽めの日', rest: '休養' }[mark];
-    cell.setAttribute('role', 'img');
-    cell.setAttribute('aria-label',
-      `${'月火水木金土日'[i]} ${date}${date === today ? ' 今日' : ''}${status ? ` ${status}` : ''}`);
-    week.append(cell);
+function menuName() {
+  if (menu.kind === 'template') {
+    const template = state.templates.find(item => item.id === menu.templateId);
+    if (template) return template.name;
   }
-  weekly.append(week);
-  head.append(total, weekly);
-  home.append(head);
+  return menu.kind === 'custom' ? '種目を選ぶ' : '前回と同じ';
+}
+
+function renderToday() {
+  view.replaceChildren();
+  dock.replaceChildren();
+  const now = new Date();
+  const today = localDate(now);
+  const date = element('div', '', 'date');
+  date.append(element('span',
+    now.getMonth() + 1 + '月' + now.getDate() + '日 ' + '日月火水木金土'[now.getDay()] + '曜', 'k'));
+  const total = element('span');
+  total.append(element('span', '通算 ', 'k'), element('span', String(totalDays(state)), 'num'),
+    element('span', ' 日', 'k'));
+  date.append(total);
+  view.append(date);
 
   if (!state.exercises.length) {
-    home.append(element('p', 'まず種目を登録しましょう', 'dim'));
+    view.append(element('p', 'まず種目を登録しましょう', 'lines'));
     dock.append(action('種目を追加', () => {
       go('settings');
       editExercise();
-    }, 'primary'));
-    dock.className = 'dock';
+    }, 'go'));
+  } else {
+    const lines = element('div', '', 'lines');
+    lines.append(element('p', '今日のライン ・ ' + menuName(), 'k'));
+    for (const id of menuExercises(state, menu, today)) {
+      const ex = state.exercises.find(item => item.id === id);
+      const target = line(state, id, today);
+      const [previous] = recent(state, id, today, 1);
+      const first = previous && firstSet(state, ex, previous);
+      const result = first && lineResult(line(state, id, previous.date), value(ex, first));
+      let detail = first ? '前回 ' + value(ex, first) + (ex.type === 'time' ? '秒' : '') : '初回';
+      if (result?.kind === 'clear') detail += ' ・ 突破';
+      if (result?.kind === 'short') detail += ' ・ あと' + result.diff;
+      if (ex.type === 'band') {
+        const band = state.bands.find(item => item.id === first?.bandId) ??
+          [...state.bands].sort((a, b) => a.order - b.order)[0];
+        if (band) detail = band.name + ' ・ ' + detail;
+      }
+      const row = element('div', '', 'ln');
+      row.dataset.exerciseId = id;
+      const name = element('span', ex.name, 'name');
+      name.append(element('small', detail));
+      const number = element('span', '', 'num' + (result?.kind === 'short' ? ' carry' : ''));
+      if (target.kind === 'base' || target.kind === 'up') {
+        number.classList.add('word');
+        number.textContent = target.kind === 'base' ? '初回' : target.next + 'へ';
+      } else {
+        number.append(document.createTextNode(String(target.value)));
+        if (ex.type === 'time') number.append(element('small', '秒'));
+      }
+      row.append(name, number);
+      lines.append(row);
+    }
+    view.append(lines);
+    dock.append(action('始める', () => startWorkout(false), 'go'));
+    const sub = element('div', '', 'sub');
+    sub.append(action('メニュー変更', changeMenu), action('軽めの日', () => startWorkout(true)),
+      action('休む', recordRest), action('体重', recordBody));
+    dock.append(sub);
   }
 
   const { items, seen } = homeFeed();
-  const news = element('section', '', 'stack');
-  news.append(element('h2', '新着'));
-  const displayed = items.slice(0, 3);
-  if (displayed.length) appendFeed(news, displayed, seen);
-  else news.append(element('p', '新着なし', 'dim'));
   if (items.length) {
-    news.append(action('すべて見る', () => {
-      const { items, seen } = homeFeed();
-      const ordered = [...items].sort((a, b) => b.at.localeCompare(a.at));
-      const { content } = homeSheet('新着');
-      appendFeed(content, ordered, seen);
-      markSeen(ordered);
-    }));
+    const news = element('div', '', 'feed');
+    news.append(element('p', '新着 ' + items.filter(item => !seen.includes(item.id)).length, 'k'));
+    const displayed = items.slice(0, 2);
+    appendFeed(news, displayed);
+    view.append(news);
+    markSeen(displayed);
   }
-  home.append(news);
-
-  const candidates = element('section', '', 'stack');
-  const carry = element('div', '', 'carry');
-  for (const ex of state.exercises) {
-    const session = state.sessions
-      .filter(session => !session.light && session.date <= today && firstSet(state, ex, session))
-      .sort((a, b) => b.date.localeCompare(a.date))[0];
-    if (!session) continue;
-    const target = line(state, ex.id, session.date);
-    if (lineResult(target, value(ex, firstSet(state, ex, session))).kind !== 'short') continue;
-    carry.append(element('span', ex.name),
-      element('span', `ライン ${target.value}${ex.type === 'time' ? '秒' : ''}`, 'num'));
-  }
-  if (carry.childElementCount) {
-    candidates.append(element('h2', '次回の候補'), carry);
-    home.append(candidates);
-  }
-
-  if (state.exercises.length) {
-    const buttons = element('div', '', 'row21');
-    buttons.append(
-      action('始める', () => {
-        if (!workout) summaryId = null;
-        go('train');
-      }, 'primary'),
-      action('軽めの日', () => {
-        if (workout) {
-          go('train');
-          return;
-        }
-        summaryId = null;
-        go('train');
-        startWorkout({ light: true });
-      })
-    );
-    const links = element('div', '', 'row2');
-    if (!state.sessions.some(session => session.date === today)) {
-      links.append(action('今日は休む', recordRest));
-    }
-    links.append(action('体重を記録', recordBody));
-    dock.className = 'dock';
-    dock.append(buttons, links);
-  }
-  markSeen(displayed);
+  pager();
+  fetchFeedback();
 }
 
 function homeSheet(title) {
-  const sheet = element('dialog', '', 'home-sheet');
+  const sheet = element('dialog', '', 'sheet');
   sheet.setAttribute('aria-label', title);
   sheet.append(element('h2', title));
   const content = element('div', '', 'stack');
-  const actions = element('div', '', 'dialog-actions');
-  actions.append(action('キャンセル', () => sheet.close()));
+  const actions = element('div', '', 'dialog-actions sub');
+  actions.append(action('閉じる', () => sheet.close()));
   sheet.append(content, actions);
   sheet.addEventListener('close', () => sheet.remove(), { once: true });
   document.body.append(sheet);
   sheet.showModal();
   return { sheet, content };
+}
+
+function changeMenu(onSelect) {
+  const { sheet, content } = homeSheet('メニュー変更');
+  function choose(next) {
+    try {
+      localStorage.setItem('kintore:menu', JSON.stringify(next));
+    } catch {
+      toast('保存できませんでした。容量を確認してください');
+      return;
+    }
+    menu = next;
+    sheet.close();
+    render();
+    if (typeof onSelect === 'function') onSelect();
+  }
+  for (const template of state.templates) {
+    content.append(action(template.name, () => choose({ kind: 'template', templateId: template.id })));
+  }
+  content.append(action('前回と同じ', () => choose({ kind: 'same' })));
+  content.append(action('種目を選ぶ', () => {
+    content.replaceChildren();
+    const selected = menu.kind === 'custom'
+      ? [...menu.exerciseIds] : menuExercises(state, menu, localDate(new Date()));
+    const chips = element('div', '', 'chips wrap');
+    for (const ex of state.exercises.filter(item => !item.archived)) {
+      const button = action(ex.name, () => {
+        const index = selected.indexOf(ex.id);
+        if (index < 0) selected.push(ex.id);
+        else selected.splice(index, 1);
+        button.classList.toggle('on', selected.includes(ex.id));
+        button.setAttribute('aria-pressed', String(selected.includes(ex.id)));
+        done.disabled = !selected.length;
+      }, 'chip' + (selected.includes(ex.id) ? ' on' : ''));
+      button.setAttribute('aria-pressed', String(selected.includes(ex.id)));
+      chips.append(button);
+    }
+    const done = action('決定', () => choose({ kind: 'custom', exerciseIds: selected }), 'go');
+    done.disabled = !selected.length;
+    content.append(chips, done);
+  }));
+}
+
+let training = null;
+function startWorkout(light) {
+  const ids = menuExercises(state, menu, localDate(new Date()));
+  if (!ids.length) {
+    changeMenu(() => startWorkout(light));
+    return;
+  }
+  training = { exerciseIds: ids, light };
+  go('train');
+}
+
+function renderTrain() {
+  view.append(element('h1', training?.light ? '軽めの日' : 'トレーニング', 'exname'));
+  const sub = element('div', '', 'sub');
+  sub.append(action('戻る', () => go('today')));
+  dock.append(sub);
+}
+
+function renderGrowth() {
+  view.append(element('h1', '成長', 'exname'));
+  const chips = element('div', '', 'chips');
+  const recorded = new Set(state.sessions.flatMap(session => session.sets.map(set => set.exerciseId)));
+  for (const ex of state.exercises.filter(item => recorded.has(item.id))) {
+    chips.append(element('span', ex.name));
+  }
+  if (state.body.length) chips.append(element('span', '体重'));
+  if (chips.childElementCount) dock.append(chips);
+  const sub = element('div', '', 'sub');
+  sub.append(action('記録を見る・直す', () => {}), action('新着', () => {
+    const { items } = homeFeed();
+    const { content } = homeSheet('新着');
+    appendFeed(content, [...items].sort((a, b) => b.at.localeCompare(a.at)), true);
+    markSeen(items);
+  }), action('設定', () => go('settings')));
+  dock.append(sub);
+  pager();
 }
 
 function recordRest() {
@@ -524,7 +572,7 @@ function recordBody() {
     save();
     sheet.close();
     render();
-  }, 'primary');
+  }, 'go');
 
   function updateSave() {
     saveButton.disabled = !valid(kg) || (!none && !valid(waist));
@@ -574,844 +622,6 @@ function recordBody() {
   draw();
 }
 
-let workout = null;
-let summaryId = null;
-let wakeLock = null;
-let endAt = null;
-let timerInterval;
-let resultTimeout;
-const timerElement = document.querySelector('#timer');
-
-function workoutCard(exerciseId, count) {
-  const filled = prefill(state, exerciseId, localDate(new Date()));
-  return {
-    exerciseId,
-    rows: (count === undefined ? filled : rows(filled, count))
-      .map(set => ({ set: { ...set }, done: false, kind: null }))
-  };
-}
-
-function startWorkout({ templateId, light = false, same = false } = {}) {
-  const today = localDate(new Date());
-  const template = state.templates.find(item => item.id === templateId);
-  let exerciseIds = [];
-  if (template) {
-    exerciseIds = template.exerciseIds;
-  } else if (light || same) {
-    const previous = state.sessions
-      .filter(session => session.date < today && (light || !session.light))
-      .sort((a, b) => b.date.localeCompare(a.date))[0];
-    if (!previous) {
-      renderStartChoices(light);
-      return;
-    }
-    exerciseIds = state.exercises
-      .filter(ex => previous.sets.some(set => set.exerciseId === ex.id))
-      .map(ex => ex.id);
-  }
-  workout = {
-    light,
-    index: 0,
-    cards: exerciseIds
-      .filter(id => state.exercises.some(ex => ex.id === id))
-      .map(id => workoutCard(id, light ? 1 : template?.sets)),
-    sessionId: null,
-    toCoach: state.sessions.find(session => session.date === today)?.toCoach ?? false,
-    note: state.sessions.find(session => session.date === today)?.note ?? ''
-  };
-  summaryId = null;
-  requestWakeLock();
-  go('train');
-}
-
-async function requestWakeLock() {
-  if (!workout || wakeLock || document.visibilityState !== 'visible') return;
-  const activeWorkout = workout;
-  try {
-    const lock = await navigator.wakeLock?.request('screen');
-    if (!lock) return;
-    if (workout !== activeWorkout) {
-      await lock.release();
-      return;
-    }
-    wakeLock = lock;
-    lock.addEventListener('release', () => {
-      if (wakeLock === lock) wakeLock = null;
-    });
-  } catch {}
-}
-
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && workout) requestWakeLock();
-});
-
-function renderStartChoices(light = false) {
-  view.replaceChildren(element('h1', light ? '軽めの日' : 'トレーニング'),
-    element('p', light ? 'メニューを選ぶと、各種目1セットで始まる' : '今日のメニューを選ぶ', 'dim'));
-  const last = [...state.sessions].sort((a, b) => b.date.localeCompare(a.date))[0];
-  if (last && !light) {
-    const names = [...new Set(last.sets.map(set => set.exerciseId))]
-      .map(id => state.exercises.find(ex => ex.id === id)?.name).filter(Boolean);
-    view.append(element('p', `前回 ${shortDate(last.date)}：${names.join('・')}`, 'training-note'));
-  }
-  dock.className = 'dock';
-  const templates = element('div', '', 'dock-grid');
-  for (const template of state.templates) {
-    templates.append(action(template.name, () => startWorkout({ templateId: template.id, light })));
-  }
-  dock.replaceChildren(templates);
-  if (light) {
-    dock.append(action('キャンセル', () => go('home')));
-    return;
-  }
-  if (!state.exercises.some(ex => !ex.archived)) {
-    view.append(element('p', 'まず種目を登録しましょう', 'training-note'));
-    dock.append(action('種目を追加', () => { go('settings'); editExercise(); }, 'primary'));
-    return;
-  }
-  if (!last) {
-    dock.append(action('種目を選んで始める', () => {
-      startWorkout();
-      pickWorkoutExercise();
-    }, 'primary'));
-    return;
-  }
-  dock.append(
-    action('前回と同じ', () => startWorkout({ same: true }), 'primary'),
-    element('div', '', 'row2')
-  );
-  dock.lastElementChild.append(
-    action('種目を選んで始める', () => {
-      startWorkout();
-      pickWorkoutExercise();
-    }),
-    action('軽めの日', () => startWorkout({ light: true }))
-  );
-}
-
-function pickWorkoutExercise() {
-  const { sheet, content } = homeSheet('種目を追加');
-  for (const ex of state.exercises) {
-    if (ex.archived) continue;
-    content.append(action(ex.name, () => {
-      workout.cards.push(workoutCard(ex.id));
-      workout.index = workout.cards.length - 1;
-      sheet.close();
-      render();
-    }, 'settings-item'));
-  }
-}
-
-function previousText(ex, session) {
-  const groups = [];
-  for (const set of session.sets.filter(set => set.exerciseId === ex.id)) {
-    const prefix = ex.type === 'band'
-      ? state.bands.find(band => band.id === set.bandId)?.name ?? 'なし'
-      : ex.type === 'weight' ? `${set.kg ?? 0}kg` : '';
-    const last = groups[groups.length - 1];
-    if (last && last.prefix === prefix) last.values.push(value(ex, set));
-    else groups.push({ prefix, values: [value(ex, set)] });
-  }
-  return groups.map(group =>
-    `${group.prefix ? `${group.prefix} ` : ''}${group.values.join('・')}`
-  ).join(' / ');
-}
-
-function hideResult() {
-  clearTimeout(resultTimeout);
-  document.querySelector('.training-result')?.remove();
-}
-
-document.addEventListener('click', event => {
-  const result = document.querySelector('.training-result');
-  if (result && !result.contains(event.target)) hideResult();
-}, true);
-
-function completeRow(card, row) {
-  if (row.done) return;
-  const ex = state.exercises.find(item => item.id === card.exerciseId);
-  const first = !card.rows.some(item => item.done);
-  const today = localDate(new Date());
-  const target = line(state, ex.id, today);
-  let session = state.sessions.find(item => item.date === today);
-  if (!session) {
-    session = {
-      id: uid('s'), date: today, light: workout.light,
-      note: workout.note, toCoach: workout.toCoach, sets: []
-    };
-    state.sessions.push(session);
-  } else {
-    session.light = session.light && workout.light;
-    session.note = workout.note;
-    session.toCoach = workout.toCoach;
-  }
-  workout.sessionId = session.id;
-  session.sets.push({ ...row.set });
-  row.done = true;
-  if (card.rows.every(item => item.done)) {
-    card.rows.push({ set: { ...row.set }, done: false, kind: null });
-  }
-  save();
-  startTimer(state.settings.restSec);
-  render();
-  if (!first) return;
-
-  const result = lineResult(target, value(ex, row.set));
-  const word = result.kind === 'clear' ? '突破'
-    : result.kind === 'short' ? `あと${result.diff}`
-      : result.kind === 'newload' ? '新しい基準' : '基準';
-  let small = '';
-  if (result.kind === 'clear') {
-    const [year, month, day] = today.split('-').map(Number);
-    const next = line(state, ex.id, localDate(new Date(year, month - 1, day + 1)));
-    if ('value' in next) small = `次のライン ${next.value}${ex.type === 'time' ? '秒' : ''}`;
-    else if (next.kind === 'up') small = `次は${next.next}で`;
-    navigator.vibrate?.(60);
-  } else if (result.kind === 'short') {
-    small = 'ラインは次回へ';
-  } else if (result.kind === 'newload') {
-    if (ex.type === 'band') {
-      small = `${state.bands.find(band => band.id === row.set.bandId)?.name ?? 'なし'}の1本目`;
-    } else if (ex.type === 'weight') {
-      small = `${row.set.kg ?? 0}kgの1本目`;
-    } else if (ex.nextId) {
-      small = `次は${target.next}で`;
-    }
-  }
-  const feedback = element('div', '', `training-result ${result.kind === 'clear' ? 'clear' : 'short'}`);
-  feedback.setAttribute('role', 'status');
-  const text = element('div');
-  text.append(element('div', word, 'word'));
-  if (small) text.append(element('small', small));
-  feedback.append(element('span', String(value(ex, row.set)), 'num'), text);
-  view.querySelector('.training').append(feedback);
-  resultTimeout = setTimeout(hideResult, 2500);
-}
-
-function workoutOptions(card, ex) {
-  const { sheet, content } = homeSheet(ex.name);
-  content.append(
-    action('種目を追加', () => {
-      sheet.close();
-      pickWorkoutExercise();
-    }),
-    action('セットを追加', () => {
-      const last = card.rows[card.rows.length - 1];
-      card.rows.push({ set: { ...last.set }, done: false, kind: null });
-      sheet.close();
-      render();
-    })
-  );
-  if (ex.nextId && state.exercises.some(item => item.id === ex.nextId)) {
-    content.append(action('次の段階へ切り替え', () => {
-      workout.cards[workout.index] = workoutCard(ex.nextId);
-      sheet.close();
-      render();
-    }));
-  }
-  const label = element('label', '', 'stack');
-  const note = element('textarea');
-  note.value = workout.note;
-  const persist = () => {
-    const session = state.sessions.find(item =>
-      item.id === workout.sessionId || item.date === localDate(new Date()));
-    if (session) {
-      session.note = workout.note;
-      session.toCoach = workout.toCoach;
-      save();
-    }
-  };
-  note.addEventListener('input', () => {
-    workout.note = note.value;
-    persist();
-  });
-  label.append(element('span', 'メモ'), note);
-  const coachLabel = () => workout.toCoach ? 'コーチに送る：オン（明日の朝に返信）' : 'コーチに送る：オフ';
-  const toggle = action(coachLabel(), () => {
-    workout.toCoach = !workout.toCoach;
-    toggle.textContent = coachLabel();
-    toggle.setAttribute('aria-pressed', String(workout.toCoach));
-    toggle.classList.toggle('on', workout.toCoach);
-    persist();
-  }, `chip${workout.toCoach ? ' on' : ''}`);
-  toggle.setAttribute('aria-pressed', String(workout.toCoach));
-  content.append(label, toggle);
-}
-
-function renderTrain() {
-  if (!workout) {
-    if (summaryId) renderSummary();
-    else renderStartChoices();
-    return;
-  }
-  if (!workout.cards.length) {
-    view.replaceChildren(element('h1', 'トレーニング'));
-    dock.className = 'dock';
-    dock.append(action('種目を追加', pickWorkoutExercise, 'primary'));
-    return;
-  }
-  const card = workout.cards[workout.index];
-  const ex = state.exercises.find(item => item.id === card.exerciseId);
-  const row = card.rows.find(item => !item.done);
-  const section = element('section', '', 'training stack');
-  const head = element('div', '', 'head');
-  const title = element('div');
-  title.append(element('h2', ex.name),
-    element('span', `${workout.index + 1} / ${workout.cards.length} 種目`, 'dim'));
-  head.append(title);
-  section.append(head);
-
-  const target = line(state, ex.id, localDate(new Date()));
-  if (!card.rows.some(item => item.done)) {
-    const chip = element('div', '', 'line-chip');
-    if ('value' in target) {
-      chip.append(element('span', 'ライン'),
-        element('span', `${target.value}${ex.type === 'time' ? '秒' : ''}`, 'num'));
-    } else {
-      chip.textContent = lineText(target, ex);
-    }
-    section.append(chip);
-    if (target.kind === 'flat' || target.kind === 'down') {
-      section.append(element('p', lineText(target, ex), 'dim'));
-    }
-    const previous = recent(state, ex.id, localDate(new Date()), 1)[0];
-    if (previous) section.append(element('p', `前回 ${previousText(ex, previous)}`, 'training-note'));
-  }
-
-  const done = element('div', '', 'done-sets');
-  for (const item of card.rows.filter(item => item.done)) {
-    const prefix = ex.type === 'band'
-      ? `${state.bands.find(band => band.id === item.set.bandId)?.name ?? 'なし'} `
-      : ex.type === 'weight' ? `${item.set.kg ?? 0}kg ` : '';
-    done.append(element('span', `${prefix}${value(ex, item.set)}${ex.type === 'time' ? '秒' : ''}`));
-  }
-  if (done.childElementCount) section.append(done);
-
-  const update = (key, next) => {
-    row.set[key] = next;
-    render();
-  };
-  let bands = null;
-  if (ex.type === 'band') {
-    bands = element('div', '', 'training-bands');
-    if (!state.bands.some(band => band.id === row.set.bandId)) {
-      bands.append(element('span', 'なし', 'chip on'));
-    }
-    for (const band of [...state.bands].sort((a, b) => a.order - b.order)) {
-      const selected = band.id === row.set.bandId;
-      const button = action(band.name, () => update('bandId', band.id),
-        selected ? 'on' : '');
-      button.setAttribute('aria-pressed', String(selected));
-      bands.append(button);
-    }
-  }
-  const spacer = element('div', '', 'training-space');
-  section.append(spacer, element('p', `${card.rows.indexOf(row) + 1}セット目`, 'training-label'));
-  view.replaceChildren(section);
-  dock.className = 'dock training-dock';
-  // The rest timer is tapped one-handed between sets, so it lives in the dock.
-  dock.append(timerElement);
-  if (bands) dock.append(bands);
-  if (ex.type === 'weight') {
-    const weight = stepper('重り', row.set.kg ?? 0, 0, Infinity, 0.5,
-      next => update('kg', next), 'kg');
-    weight.classList.add('training-weight');
-    dock.append(weight);
-  }
-  const time = ex.type === 'time';
-  const control = stepper(ex.name, value(ex, row.set), 0, Infinity, time ? 5 : 1,
-    next => update(time ? 'sec' : 'reps', next), time ? '秒' : '回');
-  dock.append(control.querySelector('.stepper'),
-    action('完了', () => completeRow(card, row), 'primary'));
-  const navigation = element('div', '', 'row3');
-  const previous = action('◀ 前へ', () => {
-    workout.index--;
-    render();
-  });
-  previous.disabled = workout.index === 0;
-  const last = workout.index === workout.cards.length - 1;
-  navigation.append(previous, action('その他', () => workoutOptions(card, ex)), action(last ? '終了' : '次へ ▶', () => {
-    if (last) finishWorkout();
-    else {
-      workout.index++;
-      render();
-    }
-  }, last ? 'primary' : ''));
-  dock.append(navigation);
-}
-
-function finishWorkout() {
-  const session = state.sessions.find(item => item.id === workout.sessionId);
-  if (session) {
-    session.note = workout.note;
-    session.toCoach = workout.toCoach;
-    save();
-  }
-  summaryId = session?.id ?? null;
-  workout = null;
-  stopTimer();
-  const lock = wakeLock;
-  wakeLock = null;
-  lock?.release().catch(() => {});
-  if (summaryId) render();
-  else go('home');
-}
-
-function totalReps(session) {
-  return session.sets.reduce((total, set) => {
-    const ex = state.exercises.find(item => item.id === set.exerciseId);
-    return total + (ex && ex.type !== 'time' ? value(ex, set) : 0);
-  }, 0);
-}
-
-function renderSummary() {
-  const session = state.sessions.find(item => item.id === summaryId);
-  const [year, month, day] = session.date.split('-').map(Number);
-  const date = new Date(year, month - 1, day);
-  const heading = `${month}月${day}日（${'日月火水木金土'[date.getDay()]}）`;
-  const section = element('div', '', 'summary stack');
-  section.append(element('p', heading, 'dim'));
-  let clear = 0;
-  let lines = 0;
-  for (const ex of state.exercises) {
-    const first = firstSet(state, ex, session);
-    if (!first) continue;
-    const result = lineResult(line(state, ex.id, session.date), value(ex, first));
-    if (result.kind === 'clear' || result.kind === 'short') lines++;
-    if (result.kind === 'clear') clear++;
-  }
-  const record = element('div');
-  record.append(element('h2', '今日の記録'),
-    element('p', `ライン突破 ${clear} / ${lines}`, 'ratio'));
-  section.append(record);
-  const total = totalReps(session);
-  const amount = element('div');
-  const number = element('p');
-  number.append(element('span', String(total), 'num big'), element('span', ' 回', 'dim'));
-  amount.append(number);
-  const previous = state.sessions
-    .filter(item => item.date < session.date)
-    .sort((a, b) => b.date.localeCompare(a.date))[0];
-  if (previous) {
-    const diff = total - totalReps(previous);
-    const comparison = element('p', '前回より ', 'dim');
-    comparison.append(element('b', `${diff >= 0 ? '+' : ''}${diff}`, diff > 0 ? 'positive' : 'dim'));
-    amount.append(comparison);
-  }
-  section.append(amount);
-  const events = element('div');
-  for (const event of sessionEvents(state, session.id)) {
-    const row = element('div', '', `ev ${event.kind}`);
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke', 'currentColor');
-    svg.setAttribute('stroke-width', '2.5');
-    svg.setAttribute('aria-hidden', 'true');
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', event.kind === 'pr' ? 'M5 13l4 4 10-10'
-      : event.kind === 'load' ? 'M12 19V5M5 12l7-7 7 7'
-        : 'M4 20h4v-4h4v-4h4V8h4');
-    svg.append(path);
-    row.append(svg, element('p', event.text));
-    events.append(row);
-  }
-  section.append(events);
-  view.replaceChildren(section);
-  dock.className = 'dock';
-  dock.append(action('ホームへ', () => {
-    summaryId = null;
-    go('home');
-  }, 'primary'));
-}
-
-function stopTimer() {
-  clearInterval(timerInterval);
-  timerInterval = undefined;
-  endAt = null;
-  timerElement.hidden = true;
-}
-
-function startTimer(sec) {
-  stopTimer();
-  endAt = Date.now() + sec * 1000;
-  const display = element('output', '', 'num');
-  display.setAttribute('aria-label', '休憩の残り時間');
-  timerElement.replaceChildren(
-    element('span', '休憩', 'dim'),
-    display,
-    action('+15秒', () => {
-      endAt += 15000;
-      tick();
-    }),
-    action('スキップ', stopTimer)
-  );
-  function tick() {
-    const remaining = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
-    if (remaining === 0) {
-      stopTimer();
-      navigator.vibrate?.([300, 100, 300]);
-      return;
-    }
-    display.textContent = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`;
-  }
-  timerElement.hidden = false;
-  timerInterval = setInterval(tick, 250);
-  tick();
-}
-
-let historyTab = 'exercise';
-let historyExerciseId = null;
-let historyDate = null;
-
-function shortDate(date) {
-  return date.split('-').slice(1).map(Number).join('/');
-}
-
-function lineChart(points, opts = {}) {
-  if (!points.length) return '<p class="dim">まだ記録がありません</p>';
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 328 180');
-  svg.setAttribute('class', 'history-chart');
-  svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', '記録の推移');
-  const add = (tag, attrs, text) => {
-    const node = document.createElementNS(svg.namespaceURI, tag);
-    for (const [key, val] of Object.entries(attrs)) node.setAttribute(key, String(val));
-    if (text !== undefined) node.textContent = text;
-    svg.append(node);
-    return node;
-  };
-  const smooth = opts.smooth ?? [];
-  const values = [...points, ...smooth].map(point => point.y);
-  const body = opts.smooth !== undefined;
-  const min = body ? Math.floor(Math.min(...values) - 1) : 0;
-  const max = body
-    ? Math.ceil(Math.max(...values) + 1)
-    : Math.max(5, Math.ceil(Math.max(...values) / 5) * 5);
-  const dateNumber = date => {
-    const [year, month, day] = date.split('-').map(Number);
-    return Date.UTC(year, month - 1, day);
-  };
-  const first = dateNumber(points[0].x);
-  const last = dateNumber(points[points.length - 1].x);
-  const x = point => first === last ? 175
-    : 36 + (dateNumber(point.x) - first) / (last - first) * 280;
-  const y = point => 140 - (point.y - min) / (max - min) * 120;
-  for (const fraction of [0, 0.5, 1]) {
-    const height = 140 - fraction * 120;
-    const amount = min + (max - min) * fraction;
-    add('line', {
-      x1: 32, y1: height, x2: 328, y2: height, stroke: 'var(--line)'
-    });
-    add('text', {
-      x: 28, y: height + 4, fill: 'var(--fg2)',
-      'text-anchor': 'end', 'font-size': 11
-    }, body ? Math.round(amount * 10) / 10 : amount);
-  }
-  const indices = [...new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])];
-  for (const index of indices) {
-    const point = points[index];
-    add('text', {
-      x: x(point), y: 172, fill: 'var(--fg2)', 'font-size': 11,
-      'text-anchor': indices.length === 1 ? 'middle'
-        : index === 0 ? 'start' : index === points.length - 1 ? 'end' : 'middle'
-    }, shortDate(point.x));
-  }
-  if (!body) {
-    const runs = [];
-    for (const point of points) {
-      const color = point.color ?? 'var(--fg2)';
-      const run = runs[runs.length - 1];
-      if (run?.color === color) run.points.push(point);
-      else runs.push({ color, points: [point] });
-    }
-    for (const run of runs) {
-      if (run.points.length > 1) {
-        add('polyline', {
-          fill: 'none', stroke: run.color, 'stroke-width': 3,
-          points: run.points.map(point => `${x(point)},${y(point)}`).join(' ')
-        });
-      }
-      const point = run.points[0];
-      if (point.label) {
-        add('text', {
-          x: x(point), y: Math.min(156, y(point) + 18),
-          fill: run.color, 'font-size': 12,
-          'text-anchor': x(point) > 250 ? 'end' : 'start'
-        }, point.label);
-      }
-    }
-  }
-  if (smooth.length > 1) {
-    add('polyline', {
-      fill: 'none', stroke: 'var(--primary)', 'stroke-width': 3,
-      points: smooth.map(point => `${x(point)},${y(point)}`).join(' ')
-    });
-  }
-  points.forEach((point, index) => {
-    const final = index === points.length - 1;
-    add('circle', {
-      cx: x(point), cy: y(point), r: final ? 5 : 4,
-      fill: point.color ?? 'var(--fg2)',
-      ...(final ? { stroke: 'var(--fg)', 'stroke-width': 2 } : {})
-    });
-  });
-  return svg.outerHTML;
-}
-
-function renderHistory() {
-  view.replaceChildren();
-  const history = element('div', '', 'history stack');
-  const segmented = element('div', '', 'seg');
-  for (const [id, title] of [['exercise', '種目'], ['body', '体'], ['date', '日付']]) {
-    const button = action(title, () => {
-      historyTab = id;
-      render();
-    }, historyTab === id ? 'on' : '');
-    button.setAttribute('aria-pressed', String(historyTab === id));
-    segmented.append(button);
-  }
-  dock.className = 'dock';
-  dock.append(segmented);
-  view.append(history);
-  if (historyTab === 'exercise') renderExerciseHistory(history);
-  else if (historyTab === 'body') renderBodyHistory(history);
-  else renderCalendar(history);
-}
-
-function renderExerciseHistory(parent) {
-  const exercises = state.exercises.filter(ex =>
-    state.sessions.some(session => session.sets.some(set => set.exerciseId === ex.id)));
-  if (!exercises.length) {
-    parent.append(element('p', 'まだ記録がありません', 'dim'));
-    return;
-  }
-  if (!exercises.some(ex => ex.id === historyExerciseId)) {
-    historyExerciseId = [...exercises].sort((a, b) => {
-      const latest = ex => state.sessions
-        .filter(session => session.sets.some(set => set.exerciseId === ex.id))
-        .reduce((date, session) => session.date > date ? session.date : date, '');
-      return latest(b).localeCompare(latest(a));
-    })[0].id;
-  }
-  const ex = exercises.find(ex => ex.id === historyExerciseId);
-  dock.append(action(`種目を選ぶ：${ex.name} ▾`, () => {
-    const { sheet, content } = homeSheet('種目を選ぶ');
-    for (const exercise of exercises) {
-      content.append(action(exercise.name, () => {
-        historyExerciseId = exercise.id;
-        sheet.close();
-        render();
-      }, 'settings-item'));
-    }
-  }, 'pick'));
-
-  const sessions = state.sessions
-    .filter(session => session.sets.some(set => set.exerciseId === ex.id))
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const records = sessions.map(session => ({ session, ...top(state, ex, session) }));
-  const loads = [...new Set(sessions.flatMap(session => session.sets
-    .filter(set => set.exerciseId === ex.id)
-    .map(set => load(state, ex, set))))].sort((a, b) => a - b);
-  const palette = ['var(--fg2)', 'var(--primary)', 'var(--good)', '#60A5FA'];
-  const loadName = amount => ex.type === 'band'
-    ? state.bands.find(band => band.order === amount)?.name ?? 'なし'
-    : ex.type === 'weight' ? `${amount}kg` : '';
-  const chart = element('div');
-  chart.innerHTML = lineChart(records.map((record, index) => ({
-    x: record.session.date,
-    y: record.value,
-    color: palette[loads.indexOf(record.load) % palette.length],
-    label: index === 0 || record.load !== records[index - 1].load
-      ? loadName(record.load) : ''
-  })));
-  parent.append(chart);
-
-  const current = records[records.length - 1].load;
-  const best = Math.max(...sessions.flatMap(session => session.sets
-    .filter(set => set.exerciseId === ex.id && load(state, ex, set) === current)
-    .map(set => value(ex, set))));
-  const unit = ex.type === 'time' ? '秒' : '回';
-  const stats = element('div', '', 'stats');
-  const stat = (amount, title, suffix = '') => {
-    const item = element('div');
-    const number = element('span', String(amount), 'num');
-    if (suffix) number.append(element('small', ` ${suffix}`, 'dim'));
-    item.append(number, element('span', title, 'dim'));
-    stats.append(item);
-  };
-  const currentName = loadName(current);
-  stat(best, `最高${currentName ? `（${currentName}）` : ''}`, unit);
-  if (ex.type === 'band' || ex.type === 'weight') {
-    stat(currentName, ex.type === 'band' ? '今のバンド' : '今の重さ');
-  }
-  stat(totals(state)[ex.id].toLocaleString('ja-JP'),
-    ex.type === 'time' ? '累計秒数' : '累計回数');
-  parent.append(stats);
-
-  const list = element('div', '', 'history-log stack');
-  for (const session of [...sessions].reverse()) {
-    const row = element('div', '', 'history-log-row');
-    row.append(element('span', shortDate(session.date), 'dim'));
-    if (ex.type === 'band' || ex.type === 'weight') {
-      const groups = [];
-      for (const set of session.sets.filter(set => set.exerciseId === ex.id)) {
-        const amount = load(state, ex, set);
-        const name = ex.type === 'band'
-          ? state.bands.find(band => band.id === set.bandId)?.name ?? 'なし'
-          : `${set.kg ?? 0}kg`;
-        const last = groups[groups.length - 1];
-        if (last?.name === name) last.values.push(value(ex, set));
-        else groups.push({ name, amount, values: [value(ex, set)] });
-      }
-      const content = element('div', '', 'stack');
-      for (const group of groups) {
-        const line = element('div', '', 'history-load');
-        const chips = element('div', '', 'chips');
-        const chip = element('span', group.name, 'chip on');
-        chip.style.background = palette[loads.indexOf(group.amount) % palette.length];
-        chips.append(chip);
-        line.append(chips, element('b', group.values.join('・'), 'num'));
-        content.append(line);
-      }
-      row.append(content);
-    } else {
-      row.append(element('b', previousText(ex, session), 'num'));
-    }
-    list.append(row);
-  }
-  parent.append(list);
-}
-
-function renderBodyHistory(parent) {
-  const entries = [...state.body].sort((a, b) => a.date.localeCompare(b.date));
-  const hasWaist = entries.some(entry => entry.waist !== null);
-  for (const [key, title] of [['kg', '体重 kg'], ['waist', 'ウエスト cm']]) {
-    if (key === 'waist' && !hasWaist) continue;
-    const section = element('section', '', 'stack');
-    const points = entries.filter(entry => entry[key] !== null)
-      .map(entry => ({ x: entry.date, y: entry[key], color: 'var(--fg2)' }));
-    const chart = element('div');
-    chart.innerHTML = lineChart(points, {
-      smooth: points.map(point => ({
-        x: point.x,
-        y: bodyAvg7(state.body, point.x, key)
-      }))
-    });
-    section.append(element('h2', title), chart);
-    parent.append(section);
-  }
-  const list = element('div', '', 'stack body-log');
-  for (const entry of [...entries].reverse()) {
-    list.append(element('p',
-      `${shortDate(entry.date)}  ${entry.kg.toFixed(1)}kg`
-      + (hasWaist && entry.waist !== null
-        ? `  ウエスト${entry.waist.toFixed(1)}cm` : '')));
-  }
-  parent.append(list);
-}
-
-function renderCalendar(parent) {
-  const today = localDate(new Date());
-  const marks = calendar(state, today);
-  const grid = element('div', '', 'calendar');
-  for (const day of '月火水木金土日') {
-    grid.append(element('span', day, 'dim calendar-heading'));
-  }
-  const [year, month, day] = weekStart(today).split('-').map(Number);
-  for (let i = 0; i < 84; i++) {
-    const date = localDate(new Date(year, month - 1, day - 77 + i));
-    const mark = marks[date];
-    const button = action(shortDate(date), () => {
-      historyDate = date;
-      render();
-      // The detail renders below 12 calendar rows, off screen on a phone.
-      view.querySelector('.history > section:last-child')?.scrollIntoView({ block: 'start' });
-    }, `bar calendar-day${mark ? ` ${mark}` : ''}${date === today ? ' today' : ''}`);
-    button.disabled = date > today;
-    button.setAttribute('aria-label',
-      `${date}${mark ? ` ${{ done: 'トレーニング', light: '軽めの日', rest: '休養' }[mark]}` : ''}`);
-    button.setAttribute('aria-pressed', String(historyDate === date));
-    grid.append(button);
-  }
-  parent.append(grid);
-  if (historyDate) renderDayHistory(parent, historyDate);
-}
-
-function renderDayHistory(parent, date) {
-  const section = element('section', '', 'ex stack');
-  section.append(element('h2', shortDate(date)));
-  const sessions = state.sessions.filter(session => session.date === date);
-  if (!sessions.length) {
-    const skips = state.skips.filter(skip => skip.date === date);
-    if (skips.length) {
-      for (const skip of skips) {
-        section.append(element('p', `休み（${skip.reason}）`));
-      }
-    } else {
-      section.append(element('p', '記録なし', 'dim'));
-    }
-    parent.append(section);
-    return;
-  }
-  for (const session of sessions) {
-    if (session.light) section.append(element('p', '軽めの日', 'dim'));
-    for (const ex of state.exercises) {
-      const sets = session.sets.filter(set => set.exerciseId === ex.id);
-      if (!sets.length) continue;
-      const group = element('div', '', 'stack');
-      group.append(element('h3', ex.name));
-      sets.forEach((set, index) => {
-        const row = element('div', '', 'stack');
-        if (ex.type === 'band' || ex.type === 'weight') {
-          const chips = element('div', '', 'chips');
-          const name = ex.type === 'band'
-            ? state.bands.find(band => band.id === set.bandId)?.name ?? 'なし'
-            : `${set.kg ?? 0}kg`;
-          chips.append(element('span', name, 'chip on'));
-          row.append(chips);
-        }
-        const time = ex.type === 'time';
-        row.append(
-          stepper(`${ex.name} ${index + 1}セット`, value(ex, set),
-            0, Infinity, time ? 5 : 1, next => {
-              set[time ? 'sec' : 'reps'] = next;
-              save();
-              render();
-            }, time ? '秒' : '回'),
-          action('削除', () => {
-            session.sets.splice(session.sets.indexOf(set), 1);
-            if (!session.sets.length) {
-              state.sessions = state.sessions.filter(item => item !== session);
-            }
-            save();
-            render();
-          }, 'danger')
-        );
-        group.append(row);
-      });
-      section.append(group);
-    }
-    const label = element('label', '', 'stack');
-    const note = element('textarea');
-    note.value = session.note;
-    note.addEventListener('input', () => {
-      session.note = note.value;
-      save();
-    });
-    label.append(element('span', 'メモ'), note);
-    section.append(label);
-  }
-  section.append(action('この日の記録を削除', async () => {
-    if (!await confirmDialog('この日の記録を削除します。よろしいですか？')) return;
-    state.sessions = state.sessions.filter(session => session.date !== date);
-    save();
-    render();
-  }, 'danger'));
-  parent.append(section);
-}
-
 const parts = ['胸', '背中', '脚', '肩', '腕', '体幹', '全身'];
 const exerciseTypes = [
   ['reps', '自重'],
@@ -1443,7 +653,7 @@ function settingsSection(title) {
 }
 
 function settingsEditor(title) {
-  dock.className = 'dock';
+  dock.className = 'press';
   dock.replaceChildren(action('キャンセル', renderSettings));
   view.replaceChildren(element('h1', title));
   const form = element('form', '', 'ex stack');
@@ -1501,11 +711,13 @@ function renderSettings() {
   dock.replaceChildren();
   view.replaceChildren(element('h1', '設定'));
 
-  dock.className = 'dock';
+  dock.className = 'press';
   const adds = element('div', '', 'row3');
   adds.append(action('＋ 種目', () => editExercise()), action('＋ バンド', () => editBand()),
     action('＋ テンプレ', () => editTemplate()));
-  dock.append(adds);
+  const links = element('div', '', 'sub');
+  links.append(action('戻る', () => go(settingsReturn)));
+  dock.append(links, adds);
   const exercises = settingsSection('種目');
   const toggle = action('アーカイブ済みを表示', () => {
     showArchived = !showArchived;
@@ -1597,7 +809,7 @@ function renderSettings() {
       const link = element('a');
       link.href = url;
       link.download = `kintore-${localDate(new Date())}.json`;
-      document.body.append(link);
+      backup.append(link);
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -1643,14 +855,14 @@ function renderGithubSettings() {
     render();
     if (configured()) pushData();
   });
-  const saveButton = element('button', '保存', 'primary');
+  const saveButton = element('button', '保存', 'go');
   saveButton.type = 'submit';
   form.append(saveButton);
   const link = element('a', 'トークンの作り方');
   link.href = 'https://github.com/settings/personal-access-tokens/new';
   link.className = 'settings-item';
   link.style.minHeight = '48px';
-  link.style.color = 'var(--primary)';
+  link.style.color = 'var(--shu-ai)';
   const status = element('p', syncStatus(), 'dim');
   status.dataset.syncStatus = '';
   const buttons = element('div', '', 'actions');
@@ -1686,7 +898,7 @@ function editExercise(existing) {
       else state.exercises.push(draft);
       save();
       render();
-    }, 'primary');
+    }, 'go');
     saveButton.disabled = !draft.name.trim();
     textField(form, '名前', draft.name, value => {
       draft.name = value;
@@ -1745,7 +957,7 @@ function editBand(existing) {
     else state.bands.push(draft);
     save();
     render();
-  }, 'primary');
+  }, 'go');
   saveButton.disabled = !draft.name.trim();
   textField(form, '名前', draft.name, value => {
     draft.name = value;
@@ -1783,7 +995,7 @@ function editTemplate(existing) {
       else state.templates.push(draft);
       save();
       render();
-    }, 'primary');
+    }, 'go');
     saveButton.disabled = !draft.name.trim() || !draft.exerciseIds.length;
     textField(form, '名前', draft.name, value => {
       draft.name = value;
@@ -1860,10 +1072,6 @@ function confirmDialog(text) {
     }, { once: true });
     dialog.showModal();
   });
-}
-
-for (const button of tabs) {
-  button.addEventListener('click', () => go(button.dataset.tab));
 }
 
 render();
