@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>画面イメージ v4</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--num:'Barlow Condensed',system-ui,sans-serif;--bg:#F5F6F8;--surface:#FFFFFF;--fg:#111827;--fg2:#4B5563;--line:#D9DEE5;--btn:#E9ECF1;--primary:#EA580C;--primary-d:#C2410C;--on:#FFFFFF;--good:#15803D;--good-bg:#DCFCE7;--tip:#FFF1E6;--tip-fg:#9A3412}
+*{box-sizing:border-box;margin:0}
+body{background:#E2E6EC;color:var(--fg);font:16px/1.5 system-ui,sans-serif;padding:20px 16px}
+.intro{max-width:1180px;margin:0 auto 16px}.intro h1{font:700 28px system-ui}.intro p{color:#444}
+.wall{display:flex;flex-wrap:wrap;gap:20px;justify-content:center}
+figure{width:360px;max-width:100%}
+figcaption{font-size:14px;color:#222;margin:0 4px 8px}
+.phone{background:var(--bg);border-radius:28px;height:760px;overflow:hidden;display:flex;flex-direction:column;border:1px solid var(--line)}
+.scroll{flex:1;overflow:hidden;padding:18px 16px 8px;display:flex;flex-direction:column;gap:12px}
+.num{font-family:var(--num);font-weight:600;line-height:1}
+.dim{color:var(--fg2);font-size:13px}
+.label{font-size:13px;color:var(--fg2);font-weight:600;letter-spacing:.04em}
+.b{display:flex;align-items:center;justify-content:center;min-height:52px;border-radius:14px;font-weight:700;font-size:17px;border:2px solid transparent}
+.b.p{background:var(--primary);color:var(--on);box-shadow:0 3px 0 var(--primary-d)}
+.b.s{background:var(--surface);color:var(--fg);border-color:var(--line);box-shadow:0 2px 0 var(--line)}
+.b.big{min-height:64px;font-size:20px}
+.dock{background:var(--surface);border-top:1px solid var(--line);padding:10px 16px 12px;display:flex;flex-direction:column;gap:8px}
+.row21{display:grid;grid-template-columns:2fr 1fr;gap:8px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);background:var(--surface);border-top:1px solid var(--line)}
+.tabs span{display:flex;flex-direction:column;align-items:center;padding:6px 0 10px;font-size:12px;color:var(--fg2);position:relative}
+.tabs span.on{color:var(--primary);font-weight:700}.tabs svg{width:22px;height:22px}
+.badge{position:absolute;top:2px;left:54%;background:var(--primary);color:#fff;border-radius:999px;font-size:11px;font-weight:700;padding:0 6px;line-height:18px}
+/* home */
+.head{display:flex;align-items:flex-end;justify-content:space-between}
+.total .num{font-size:56px}.total span{font-size:14px;color:var(--fg2)}
+.week{display:grid;grid-template-columns:repeat(7,14px);gap:4px}
+.week i{height:14px;border-radius:3px;background:var(--btn)}.week i.d{background:var(--primary)}.week i.l{background:linear-gradient(to top,var(--primary) 50%,var(--btn) 50%)}.week i.r{background:repeating-linear-gradient(135deg,var(--btn) 0 3px,var(--line) 3px 5px)}
+.feed{display:flex;flex-direction:column}
+.item{display:grid;grid-template-columns:4px 1fr;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.item i{border-radius:2px;background:var(--line)}.item.new i{background:var(--primary)}
+.item p{font-size:16px;line-height:1.45}.item .k{font-size:12px;color:var(--fg2);margin-bottom:2px}
+.item b{font-family:var(--num);font-size:22px;font-weight:700}
+.carry{display:grid;grid-template-columns:1fr auto;row-gap:6px;font-size:16px}
+.carry .num{font-size:22px;color:var(--primary);text-align:right}
+/* training */
+.chip{display:inline-flex;align-items:baseline;gap:8px;background:var(--tip);color:var(--tip-fg);border-radius:10px;padding:6px 12px;font-weight:700}
+.chip .num{font-size:28px}
+.note{font-size:15px;color:var(--fg2)}
+.sets{display:flex;gap:6px;flex-wrap:wrap}.sets span{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:2px 10px;font:600 18px var(--num)}
+.timer{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px 6px 6px 14px}
+.timer .num{font-size:36px;flex:1}
+.mini{min-height:44px;padding:0 12px;border-radius:10px;background:var(--surface);border:2px solid var(--line);box-shadow:0 2px 0 var(--line);display:flex;align-items:center;font-weight:700;font-size:15px}
+.bands{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.band{min-height:48px;display:flex;align-items:center;justify-content:center;border-radius:12px;border:2px solid var(--line);background:var(--surface);font-weight:700;box-shadow:0 2px 0 var(--line)}
+.band.on{border-color:var(--primary);background:var(--tip);color:var(--tip-fg)}
+.current{display:grid;grid-template-columns:72px 1fr 72px;gap:8px;align-items:center}
+.pm{height:72px;border-radius:16px;background:var(--surface);border:2px solid var(--line);box-shadow:0 3px 0 var(--line);font:600 36px var(--num);display:flex;align-items:center;justify-content:center}
+.val{text-align:center;font-size:72px}.val small{font-size:18px;color:var(--fg2)}
+.more{width:44px;height:44px;border-radius:12px;border:2px solid var(--line);background:var(--surface);display:flex;align-items:center;justify-content:center;font-weight:800;box-shadow:0 2px 0 var(--line)}
+/* result card */
+.result{border-radius:16px;padding:14px 16px;display:grid;grid-template-columns:auto 1fr;column-gap:16px;align-items:center}
+.result .num{font-size:84px;font-weight:700}
+.result .word{font-size:28px;font-weight:800;line-height:1.1}
+.result.clear{background:var(--primary);color:#fff}
+.result.short{background:var(--surface);border:2px solid var(--line);color:var(--fg)}
+.result.short .word{color:var(--fg2)}
+.result small{display:block;font-size:14px;font-weight:600;opacity:.9;margin-top:4px}
+/* summary */
+.sum .big{font-size:96px}
+.ratio{font:700 40px var(--num)}
+.ev{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:16px}
+.ev .num{font-size:22px;color:var(--good)}
+</style>
+</head>
+<body>
+<div class="intro"><h1>画面イメージ v4 ─ ライン</h1><p>各種目の1セット目に「ライン」。超えれば突破、届かなければ次回に持ち越し。押すものはすべて下。</p></div>
+<div class="wall">
+
+<figure><figcaption><b>ホーム</b>：新着（本当に新しいことだけ）と持ち越し</figcaption>
+<div class="phone">
+  <div class="scroll">
+    <div class="head">
+      <div class="total"><span>通算</span><br><span class="num" style="color:var(--fg)">48</span><span> 日</span></div>
+      <div style="text-align:right"><span class="dim">今週 2日</span><div class="week" style="margin-top:4px"><i class="d"></i><i class="r"></i><i class="l"></i><i></i><i></i><i></i><i></i></div></div>
+    </div>
+    <div>
+      <p class="label">新着</p>
+      <div class="feed">
+        <div class="item new"><i></i><div><p class="k">コーチ</p><p>バンドロウは3回連続でライン突破。来週は脚を1セット足そう。</p></div></div>
+        <div class="item new"><i></i><div><p class="k">前回</p><p>腕立て伏せ ライン <b>16</b> を突破</p></div></div>
+        <div class="item"><i></i><div><p class="k">1か月前</p><p>プランクは <b>40</b>秒。今は <b>55</b>秒</p></div></div>
+      </div>
+    </div>
+    <div>
+      <p class="label" style="margin-bottom:6px">持ち越し</p>
+      <div class="carry"><span>スクワット</span><span class="num">ライン 24</span><span>プランク</span><span class="num">ライン 60秒</span></div>
+    </div>
+  </div>
+  <div class="dock">
+    <div class="row21"><div class="b p big">始める</div><div class="b s big">軽めの日</div></div>
+    <div class="row2"><div class="b s">今日は休む</div><div class="b s">体重を記録</div></div>
+  </div>
+  <div class="tabs"><span class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9H3z"/></svg>ホーム<em class="badge" style="font-style:normal">2</em></span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9v6M8 7v10M16 7v10M20 9v6M8 12h8"/></svg>トレーニング</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19l5-6 4 3 7-9"/></svg>履歴</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>設定</span></div>
+</div></figure>
+
+<figure><figcaption><b>1セット目の前</b>：ラインだけを見せる</figcaption>
+<div class="phone">
+  <div class="scroll">
+    <div style="display:flex;justify-content:space-between;align-items:center"><div><h2 style="font-size:24px">腕立て伏せ</h2><span class="dim">1 / 4 種目</span></div><span class="more">…</span></div>
+    <span class="chip" style="align-self:flex-start">ライン <span class="num">17</span></span>
+    <p class="note">前回 16・15・13</p>
+    <div style="flex:1"></div>
+    <p class="label">1セット目</p>
+  </div>
+  <div class="dock">
+    <div class="current"><span class="pm">−</span><span class="num val">16<small>回</small></span><span class="pm">＋</span></div>
+    <div class="b p big">完了</div>
+    <div class="row2"><div class="b s">◀ 前の種目</div><div class="b s">次の種目 ▶</div></div>
+  </div>
+</div></figure>
+
+<figure><figcaption><b>完了した瞬間：突破</b>（ドックの上に出て2.5秒で消える）</figcaption>
+<div class="phone">
+  <div class="scroll">
+    <div style="display:flex;justify-content:space-between;align-items:center"><div><h2 style="font-size:24px">腕立て伏せ</h2><span class="dim">1 / 4 種目</span></div><span class="more">…</span></div>
+    <div class="sets"><span>18</span></div>
+    <div class="timer"><span class="dim">休憩</span><span class="num">1:28</span><span class="mini">+15秒</span><span class="mini">スキップ</span></div>
+    <div style="flex:1"></div>
+    <div class="result clear"><span class="num">18</span><div><div class="word">突破</div><small>次のライン 17</small></div></div>
+  </div>
+  <div class="dock">
+    <div class="current"><span class="pm">−</span><span class="num val">16<small>回</small></span><span class="pm">＋</span></div>
+    <div class="b p big">完了</div>
+    <div class="row2"><div class="b s">◀ 前の種目</div><div class="b s">次の種目 ▶</div></div>
+  </div>
+</div></figure>
+
+<figure><figcaption><b>完了した瞬間：あと1</b>（責めずに次回へ）</figcaption>
+<div class="phone">
+  <div class="scroll">
+    <div style="display:flex;justify-content:space-between;align-items:center"><div><h2 style="font-size:24px">バンドロウ</h2><span class="dim">2 / 4 種目</span></div><span class="more">…</span></div>
+    <div class="sets"><span>黒 14</span></div>
+    <div class="timer"><span class="dim">休憩</span><span class="num">1:30</span><span class="mini">+15秒</span><span class="mini">スキップ</span></div>
+    <div class="bands"><span class="band">黄</span><span class="band">赤</span><span class="band on">黒</span><span class="band">青</span></div>
+    <div style="flex:1"></div>
+    <div class="result short"><span class="num">14</span><div><div class="word">あと1</div><small>ラインは次回へ</small></div></div>
+  </div>
+  <div class="dock">
+    <div class="current"><span class="pm">−</span><span class="num val">14<small>回</small></span><span class="pm">＋</span></div>
+    <div class="b p big">完了</div>
+    <div class="row2"><div class="b s">◀ 前の種目</div><div class="b s">次の種目 ▶</div></div>
+  </div>
+</div></figure>
+
+<figure><figcaption><b>20回を超えた種目</b>：負荷を変える合図</figcaption>
+<div class="phone">
+  <div class="scroll">
+    <div style="display:flex;justify-content:space-between;align-items:center"><div><h2 style="font-size:24px">スクワット</h2><span class="dim">3 / 4 種目</span></div><span class="more">…</span></div>
+    <span class="chip" style="align-self:flex-start">20回を超えた。次はジャンプスクワットで。</span>
+    <p class="note">前回 23・21・20</p>
+    <div style="flex:1"></div>
+    <div class="b s">次の段階に切り替える</div>
+    <p class="label">1セット目</p>
+  </div>
+  <div class="dock">
+    <div class="current"><span class="pm">−</span><span class="num val">23<small>回</small></span><span class="pm">＋</span></div>
+    <div class="b p big">完了</div>
+    <div class="row2"><div class="b s">◀ 前の種目</div><div class="b s">次の種目 ▶</div></div>
+  </div>
+</div></figure>
+
+<figure><figcaption><b>終わったとき</b></figcaption>
+<div class="phone">
+  <div class="scroll sum" style="padding-top:36px;gap:16px">
+    <p class="dim">10月19日（日）</p>
+    <div><p class="label">今日の記録</p><p><span class="ratio">ライン突破 2 / 3</span></p></div>
+    <div><span class="num big">186</span><span class="dim" style="font-size:18px"> 回</span><p class="dim">前回より <b style="color:var(--good)">+14</b></p></div>
+    <div><div class="ev"><span>腕立て伏せ 自己ベスト</span><span class="num">18回</span></div><div class="ev"><span>バンドロウ 赤→黒</span><span class="num" style="color:var(--primary)">負荷アップ</span></div></div>
+  </div>
+  <div class="dock"><div class="b p big">ホームへ</div></div>
+</div></figure>
+
+</div>
+</body>
+</html>
