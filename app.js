@@ -1,6 +1,6 @@
 import {
   localDate, parseImport, value, recent, prefill, rows,
-  prKind, sessionEvents, weekStats, weekStart, totalDays, feed, mergeFeed, firstSet, line, lineResult,
+  lineText, sessionEvents, weekStats, weekStart, totalDays, feed, mergeFeed, firstSet, line, lineResult,
   top, load, totals, bodyAvg7, calendar, toBase64Utf8, consultText
 } from './logic.js';
 
@@ -245,6 +245,7 @@ function go(tab) {
 }
 
 function render() {
+  hideResult();
   dock.replaceChildren();
   updateHomeBadge();
   for (const button of tabs) {
@@ -556,6 +557,7 @@ let summaryId = null;
 let wakeLock = null;
 let endAt = null;
 let timerInterval;
+let resultTimeout;
 const timerElement = document.querySelector('#timer');
 
 function workoutCard(exerciseId, count) {
@@ -587,10 +589,12 @@ function startWorkout({ templateId, light = false, same = false } = {}) {
   }
   workout = {
     light,
+    index: 0,
     cards: exerciseIds
       .filter(id => state.exercises.some(ex => ex.id === id))
       .map(id => workoutCard(id, light ? 1 : template?.sets)),
     sessionId: null,
+    toCoach: state.sessions.find(session => session.date === today)?.toCoach ?? false,
     note: state.sessions.find(session => session.date === today)?.note ?? ''
   };
   summaryId = null;
@@ -638,12 +642,13 @@ function renderStartChoices(light = false) {
 }
 
 function pickWorkoutExercise() {
-  view.replaceChildren(element('h1', '種目を追加'));
-  const section = settingsSection('種目');
+  const { sheet, content } = homeSheet('種目を追加');
   for (const ex of state.exercises) {
     if (ex.archived) continue;
-    section.append(action(ex.name, () => {
+    content.append(action(ex.name, () => {
       workout.cards.push(workoutCard(ex.id));
+      workout.index = workout.cards.length - 1;
+      sheet.close();
       render();
     }, 'settings-item'));
   }
@@ -664,28 +669,123 @@ function previousText(ex, session) {
   ).join(' / ');
 }
 
-function completeRow(row) {
+function hideResult() {
+  clearTimeout(resultTimeout);
+  document.querySelector('.training-result')?.remove();
+}
+
+document.addEventListener('click', event => {
+  const result = document.querySelector('.training-result');
+  if (result && !result.contains(event.target)) hideResult();
+}, true);
+
+function completeRow(card, row) {
   if (row.done) return;
+  const ex = state.exercises.find(item => item.id === card.exerciseId);
+  const first = !card.rows.some(item => item.done);
   const today = localDate(new Date());
+  const target = line(state, ex.id, today);
   let session = state.sessions.find(item => item.date === today);
   if (!session) {
     session = {
       id: uid('s'), date: today, light: workout.light,
-      note: workout.note, sets: []
+      note: workout.note, toCoach: workout.toCoach, sets: []
     };
     state.sessions.push(session);
   } else {
     session.light = session.light && workout.light;
     session.note = workout.note;
+    session.toCoach = workout.toCoach;
   }
   workout.sessionId = session.id;
-  row.kind = prKind(state, row.set, session.id);
   session.sets.push({ ...row.set });
   row.done = true;
+  if (card.rows.every(item => item.done)) {
+    card.rows.push({ set: { ...row.set }, done: false, kind: null });
+  }
   save();
-  if (row.kind) navigator.vibrate?.(80);
   startTimer(state.settings.restSec);
   render();
+  if (!first) return;
+
+  const result = lineResult(target, value(ex, row.set));
+  const word = result.kind === 'clear' ? '突破'
+    : result.kind === 'short' ? `あと${result.diff}`
+      : result.kind === 'newload' ? '新しい基準' : '基準';
+  let small = '';
+  if (result.kind === 'clear') {
+    const [year, month, day] = today.split('-').map(Number);
+    const next = line(state, ex.id, localDate(new Date(year, month - 1, day + 1)));
+    if ('value' in next) small = `次のライン ${next.value}${ex.type === 'time' ? '秒' : ''}`;
+    else if (next.kind === 'up') small = `次は${next.next}で`;
+    navigator.vibrate?.(60);
+  } else if (result.kind === 'short') {
+    small = 'ラインは次回へ';
+  } else if (result.kind === 'newload') {
+    if (ex.type === 'band') {
+      small = `${state.bands.find(band => band.id === row.set.bandId)?.name ?? 'なし'}の1本目`;
+    } else if (ex.type === 'weight') {
+      small = `${row.set.kg ?? 0}kgの1本目`;
+    } else if (ex.nextId) {
+      small = `次は${target.next}で`;
+    }
+  }
+  const feedback = element('div', '', `training-result ${result.kind === 'clear' ? 'clear' : 'short'}`);
+  feedback.setAttribute('role', 'status');
+  const text = element('div');
+  text.append(element('div', word, 'word'));
+  if (small) text.append(element('small', small));
+  feedback.append(element('span', String(value(ex, row.set)), 'num'), text);
+  view.querySelector('.training').append(feedback);
+  resultTimeout = setTimeout(hideResult, 2500);
+}
+
+function workoutOptions(card, ex) {
+  const { sheet, content } = homeSheet(ex.name);
+  content.append(
+    action('種目を追加', () => {
+      sheet.close();
+      pickWorkoutExercise();
+    }),
+    action('セットを追加', () => {
+      const last = card.rows[card.rows.length - 1];
+      card.rows.push({ set: { ...last.set }, done: false, kind: null });
+      sheet.close();
+      render();
+    })
+  );
+  if (ex.nextId && state.exercises.some(item => item.id === ex.nextId)) {
+    content.append(action('次の段階へ切り替え', () => {
+      workout.cards[workout.index] = workoutCard(ex.nextId);
+      sheet.close();
+      render();
+    }));
+  }
+  const label = element('label', '', 'stack');
+  const note = element('textarea');
+  note.value = workout.note;
+  const persist = () => {
+    const session = state.sessions.find(item =>
+      item.id === workout.sessionId || item.date === localDate(new Date()));
+    if (session) {
+      session.note = workout.note;
+      session.toCoach = workout.toCoach;
+      save();
+    }
+  };
+  note.addEventListener('input', () => {
+    workout.note = note.value;
+    persist();
+  });
+  label.append(element('span', 'メモ'), note);
+  const toggle = action('コーチに送る', () => {
+    workout.toCoach = !workout.toCoach;
+    toggle.setAttribute('aria-pressed', String(workout.toCoach));
+    toggle.classList.toggle('on', workout.toCoach);
+    persist();
+  }, `chip${workout.toCoach ? ' on' : ''}`);
+  toggle.setAttribute('aria-pressed', String(workout.toCoach));
+  content.append(label, toggle);
 }
 
 function renderTrain() {
@@ -694,109 +794,107 @@ function renderTrain() {
     else renderStartChoices();
     return;
   }
-  view.replaceChildren(element('h1', 'トレーニング'));
-  for (const card of workout.cards) {
-    const ex = state.exercises.find(item => item.id === card.exerciseId);
-    const section = element('section', '', 'ex stack');
-    const head = element('div', '', 'head');
-    head.append(element('span', ex.name, 'name'));
-    const previous = recent(state, ex.id, localDate(new Date()), 1)[0];
-    if (previous) {
-      head.append(element('span', `前回 ${previousText(ex, previous)}`, 'dim'));
-    }
-    section.append(head);
-    card.rows.forEach((row, index) => {
-      const group = element('div', '', 'stack');
-      const update = (key, next) => {
-        if (row.done) return;
-        row.set[key] = next;
-        render();
-      };
-      if (ex.type === 'band') {
-        const chips = element('div', '', 'chips');
-        const bands = [...state.bands].sort((a, b) => a.order - b.order);
-        if (!bands.some(band => band.id === row.set.bandId)) {
-          chips.append(element('span', 'なし', 'chip on'));
-        }
-        for (const band of bands) {
-          const selected = row.set.bandId === band.id;
-          const button = action(band.name, () => update('bandId', band.id),
-            `chip${selected ? ' on' : ''}`);
-          button.disabled = row.done;
-          button.setAttribute('aria-pressed', String(selected));
-          chips.append(button);
-        }
-        group.append(chips);
-      }
-      if (ex.type === 'weight') {
-        const weight = stepper('重り', row.set.kg ?? 0, 0, Infinity, 0.5,
-          next => update('kg', next), 'kg');
-        for (const button of weight.querySelectorAll('button')) {
-          button.disabled = row.done || button.disabled;
-        }
-        group.append(weight);
-      }
-      const time = ex.type === 'time';
-      const control = stepper(`${ex.name} ${index + 1}セット`,
-        value(ex, row.set), 0, Infinity, time ? 5 : 1,
-        next => update(time ? 'sec' : 'reps', next), time ? '秒' : '回');
-      const counter = control.querySelector('.stepper');
-      for (const button of counter.querySelectorAll('button')) {
-        button.disabled = row.done || button.disabled;
-      }
-      counter.className = 'set';
-      counter.prepend(element('span', String(index + 1), 'k num'));
-      const complete = action(row.done ? '済' : '完了',
-        () => completeRow(row), `ok${row.done ? ' d' : ''}`);
-      complete.disabled = row.done;
-      counter.append(complete);
-      group.append(counter);
-      if (row.kind) {
-        group.append(element('p',
-          row.kind === 'pr' ? '自己ベスト！' : '負荷アップ！', 'pr'));
-      }
-      section.append(group);
-    });
-    section.append(action('セットを追加', () => {
-      const last = card.rows[card.rows.length - 1];
-      card.rows.push({ set: { ...last.set }, done: false, kind: null });
-      render();
-    }));
-    if (ex.nextId && state.exercises.some(item => item.id === ex.nextId)) {
-      section.append(action('次の段階へ切り替え', () => {
-        const index = workout.cards.indexOf(card);
-        workout.cards[index] = workoutCard(ex.nextId);
-        render();
-      }));
-    }
-    view.append(section);
+  if (!workout.cards.length) {
+    view.replaceChildren(element('h1', 'トレーニング'));
+    dock.className = 'dock';
+    dock.append(action('種目を追加', pickWorkoutExercise, 'primary'));
+    return;
   }
-  const bottom = element('div', '', 'workout-actions stack');
-  const label = element('label', '', 'stack');
-  const note = element('textarea');
-  note.value = workout.note;
-  note.addEventListener('change', () => {
-    workout.note = note.value;
-    const session = state.sessions.find(item =>
-      item.id === workout.sessionId || item.date === localDate(new Date()));
-    if (session) {
-      session.note = workout.note;
-      save();
+  const card = workout.cards[workout.index];
+  const ex = state.exercises.find(item => item.id === card.exerciseId);
+  const row = card.rows.find(item => !item.done);
+  const section = element('section', '', 'training stack');
+  const head = element('div', '', 'head');
+  const title = element('div');
+  title.append(element('h2', ex.name),
+    element('span', `${workout.index + 1} / ${workout.cards.length} 種目`, 'dim'));
+  const more = action('…', () => workoutOptions(card, ex), 'more');
+  more.setAttribute('aria-label', 'トレーニングの操作');
+  head.append(title, more);
+  section.append(head);
+
+  const target = line(state, ex.id, localDate(new Date()));
+  if (!card.rows.some(item => item.done)) {
+    const chip = element('div', '', 'line-chip');
+    if ('value' in target) {
+      chip.append(element('span', 'ライン'),
+        element('span', `${target.value}${ex.type === 'time' ? '秒' : ''}`, 'num'));
+    } else {
+      chip.textContent = lineText(target, ex);
     }
+    section.append(chip);
+    if (target.kind === 'flat' || target.kind === 'down') {
+      section.append(element('p', lineText(target, ex), 'dim'));
+    }
+    const previous = recent(state, ex.id, localDate(new Date()), 1)[0];
+    if (previous) section.append(element('p', `前回 ${previousText(ex, previous)}`, 'training-note'));
+  }
+
+  const done = element('div', '', 'done-sets');
+  for (const item of card.rows.filter(item => item.done)) {
+    const prefix = ex.type === 'band'
+      ? `${state.bands.find(band => band.id === item.set.bandId)?.name ?? 'なし'} `
+      : ex.type === 'weight' ? `${item.set.kg ?? 0}kg ` : '';
+    done.append(element('span', `${prefix}${value(ex, item.set)}${ex.type === 'time' ? '秒' : ''}`));
+  }
+  if (done.childElementCount) section.append(done);
+  section.append(timerElement);
+
+  const update = (key, next) => {
+    row.set[key] = next;
+    render();
+  };
+  if (ex.type === 'band') {
+    const bands = element('div', '', 'training-bands');
+    if (!state.bands.some(band => band.id === row.set.bandId)) {
+      bands.append(element('span', 'なし', 'chip on'));
+    }
+    for (const band of [...state.bands].sort((a, b) => a.order - b.order)) {
+      const selected = band.id === row.set.bandId;
+      const button = action(band.name, () => update('bandId', band.id),
+        selected ? 'on' : '');
+      button.setAttribute('aria-pressed', String(selected));
+      bands.append(button);
+    }
+    section.append(bands);
+  }
+  const spacer = element('div', '', 'training-space');
+  section.append(spacer, element('p', `${card.rows.indexOf(row) + 1}セット目`, 'training-label'));
+  view.replaceChildren(section);
+  dock.className = 'dock training-dock';
+  if (ex.type === 'weight') {
+    const weight = stepper('重り', row.set.kg ?? 0, 0, Infinity, 0.5,
+      next => update('kg', next), 'kg');
+    weight.classList.add('training-weight');
+    dock.append(weight);
+  }
+  const time = ex.type === 'time';
+  const control = stepper(ex.name, value(ex, row.set), 0, Infinity, time ? 5 : 1,
+    next => update(time ? 'sec' : 'reps', next), time ? '秒' : '回');
+  dock.append(control.querySelector('.stepper'),
+    action('完了', () => completeRow(card, row), 'primary'));
+  const navigation = element('div', '', 'row2');
+  const previous = action('◀ 前の種目', () => {
+    workout.index--;
+    render();
   });
-  label.append(element('span', 'メモ'), note);
-  bottom.append(
-    action('種目を追加', pickWorkoutExercise),
-    label,
-    action('終了', finishWorkout, 'primary')
-  );
-  view.append(bottom);
+  previous.disabled = workout.index === 0;
+  const last = workout.index === workout.cards.length - 1;
+  navigation.append(previous, action(last ? '終了' : '次の種目 ▶', () => {
+    if (last) finishWorkout();
+    else {
+      workout.index++;
+      render();
+    }
+  }, last ? 'primary' : ''));
+  dock.append(navigation);
 }
 
 function finishWorkout() {
   const session = state.sessions.find(item => item.id === workout.sessionId);
   if (session) {
     session.note = workout.note;
+    session.toCoach = workout.toCoach;
     save();
   }
   summaryId = session?.id ?? null;
@@ -820,21 +918,37 @@ function renderSummary() {
   const session = state.sessions.find(item => item.id === summaryId);
   const [year, month, day] = session.date.split('-').map(Number);
   const date = new Date(year, month - 1, day);
-  const heading = `${month}月${day}日（${'日月火水木金土'[date.getDay()]}）のトレーニング`;
+  const heading = `${month}月${day}日（${'日月火水木金土'[date.getDay()]}）`;
   const section = element('div', '', 'summary stack');
   section.append(element('p', heading, 'dim'));
+  let clear = 0;
+  let lines = 0;
+  for (const ex of state.exercises) {
+    const first = firstSet(state, ex, session);
+    if (!first) continue;
+    const result = lineResult(line(state, ex.id, session.date), value(ex, first));
+    if (result.kind === 'clear' || result.kind === 'short') lines++;
+    if (result.kind === 'clear') clear++;
+  }
+  const record = element('div');
+  record.append(element('h2', '今日の記録'),
+    element('p', `ライン突破 ${clear} / ${lines}`, 'ratio'));
+  section.append(record);
   const total = totalReps(session);
-  const amount = element('p');
-  amount.append(element('span', String(total), 'num big'), element('span', ' 回', 'dim'));
-  section.append(amount);
+  const amount = element('div');
+  const number = element('p');
+  number.append(element('span', String(total), 'num big'), element('span', ' 回', 'dim'));
+  amount.append(number);
   const previous = state.sessions
     .filter(item => item.date < session.date)
     .sort((a, b) => b.date.localeCompare(a.date))[0];
-  let totalText = '合計回数';
-  // Only show growth: a negative diff on a short day reads as blame (spec anti-goal).
-  const diff = previous ? total - totalReps(previous) : 0;
-  if (diff > 0) totalText += `　前回より +${diff}`;
-  section.append(element('p', totalText, 'dim'));
+  if (previous) {
+    const diff = total - totalReps(previous);
+    const comparison = element('p', '前回より ', 'dim');
+    comparison.append(element('b', `${diff >= 0 ? '+' : ''}${diff}`, diff > 0 ? 'positive' : 'dim'));
+    amount.append(comparison);
+  }
+  section.append(amount);
   const events = element('div');
   for (const event of sessionEvents(state, session.id)) {
     const row = element('div', '', `ev ${event.kind}`);
@@ -853,14 +967,12 @@ function renderSummary() {
     events.append(row);
   }
   section.append(events);
-  const stats = weekStats(state, localDate(new Date()));
-  section.append(element('p',
-    `今週 ${stats.days}日`, 'dim'));
-  const home = action('ホームへ', () => {
+  view.replaceChildren(section);
+  dock.className = 'dock';
+  dock.append(action('ホームへ', () => {
     summaryId = null;
     go('home');
-  }, 'primary');
-  view.replaceChildren(section, home);
+  }, 'primary'));
 }
 
 function stopTimer() {
@@ -875,15 +987,14 @@ function startTimer(sec) {
   endAt = Date.now() + sec * 1000;
   const display = element('output', '', 'num');
   display.setAttribute('aria-label', '休憩の残り時間');
-  const adjust = offset => {
-    endAt = Math.max(Date.now(), endAt + offset * 1000);
-    tick();
-  };
   timerElement.replaceChildren(
-    action('−15', () => adjust(-15), 'pm'),
+    element('span', '休憩', 'dim'),
     display,
-    action('+15', () => adjust(15), 'pm'),
-    action('スキップ', stopTimer, 'skip')
+    action('+15秒', () => {
+      endAt += 15000;
+      tick();
+    }),
+    action('スキップ', stopTimer)
   );
   function tick() {
     const remaining = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));

@@ -121,18 +121,6 @@ button:focus-visible {
   height: 22px;
 }
 
-#timer {
-  flex-shrink: 0;
-  padding: 10px 16px 12px;
-  border-top: 2px solid var(--primary);
-  background: var(--surface);
-}
-
-#timer .num {
-  font-size: 64px;
-  text-align: center;
-}
-
 #toast {
   position: fixed;
   bottom: calc(96px + env(safe-area-inset-bottom, 0px));
@@ -419,23 +407,6 @@ textarea {
 textarea:focus-visible {
   outline: 2px solid var(--fg);
   outline-offset: 2px;
-}
-
-#timer {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 48px 72px;
-  align-items: center;
-  gap: 8px;
-}
-
-#timer .pm {
-  font-size: 20px;
-}
-
-#timer .skip {
-  background: var(--surface);
-  color: var(--fg2);
-  white-space: nowrap;
 }
 
 .summary {
@@ -827,4 +798,223 @@ span.chip {
   border: 2px solid var(--bg);
   border-radius: 8px;
   background: var(--fg2);
+}
+
+.training {
+  position: relative;
+  min-height: 100%;
+  gap: 12px;
+}
+
+.training .head {
+  flex-wrap: nowrap;
+}
+
+.training h2 {
+  color: var(--fg);
+  font-size: 24px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.training .dim {
+  font-size: 13px;
+}
+
+.more {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  font-weight: 800;
+}
+
+.line-chip {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--tip);
+  color: var(--tip-fg);
+  font-weight: 700;
+}
+
+.line-chip .num {
+  font-size: 28px;
+}
+
+.training-note {
+  font-size: 15px;
+  color: var(--fg2);
+}
+
+.done-sets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.done-sets span {
+  padding: 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font: 600 18px var(--num);
+}
+
+#timer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+#timer .num {
+  flex: 1;
+  min-width: 0;
+  font-size: 36px;
+}
+
+#timer button {
+  flex: none;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.training-bands {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.training-bands button {
+  min-width: 0;
+  border-radius: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.training-bands .on {
+  border-color: var(--primary);
+  background: var(--tip);
+  color: var(--tip-fg);
+}
+
+.training-space {
+  flex: 1;
+}
+
+.training-label {
+  color: var(--fg2);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+
+.training-dock > .stepper {
+  grid-template-columns: 72px minmax(0, 1fr) 72px;
+}
+
+.training-dock > .stepper .pm {
+  height: 72px;
+  border-radius: 16px;
+  box-shadow: 0 3px 0 var(--line);
+  font: 600 36px var(--num);
+}
+
+.training-dock > .stepper .val {
+  font-size: 72px;
+}
+
+.training-dock > .stepper .val small {
+  font-size: 18px;
+}
+
+.training-weight .val {
+  font-size: 32px;
+}
+
+.training-weight .pm {
+  min-height: 48px;
+  height: 48px;
+  font: 600 28px var(--num);
+}
+
+.training-result {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  overflow-wrap: anywhere;
+}
+
+.training-result .num {
+  font-size: 84px;
+  font-weight: 700;
+}
+
+.training-result .word {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.training-result.clear {
+  background: var(--primary);
+  color: var(--on);
+}
+
+.training-result.short {
+  border: 2px solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.training-result.short .word {
+  color: var(--fg2);
+}
+
+.training-result small {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  opacity: .9;
+}
+
+.summary {
+  min-height: 100%;
+  gap: 16px;
+  padding-top: 16px;
+}
+
+.summary h2 {
+  font-size: 13px;
+  letter-spacing: .04em;
+}
+
+.summary .ratio {
+  font: 700 40px var(--num);
+}
+
+.summary .big + .dim {
+  font-size: 18px;
+}
+
+.positive {
+  color: var(--good);
 }
