@@ -463,3 +463,20 @@ export function toBase64Utf8(s) {
   }
   return btoa(chunks.join(''));
 }
+
+/** @param {string} text */
+export function parsePosts(text) {
+  let posts;
+  try {
+    posts = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(posts)) return [];
+  const kinds = ['reply', 'weekly', 'finding', 'reading'];
+  return posts
+    .filter(post => typeof post?.id === 'string' && typeof post.text === 'string' &&
+      typeof post.at === 'string' && kinds.includes(post.kind))
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, 200);
+}

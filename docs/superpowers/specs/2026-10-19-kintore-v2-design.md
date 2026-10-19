@@ -133,6 +133,7 @@ v1 の新着は自分の記録からしか作れず、**休んでいる日・フ
 [{ "id": "2026-10-20-reply", "at": "2026-10-20T07:31:00+09:00",
    "kind": "reply",  // reply | weekly | finding | reading
    "quote": "今日は肩が重かった",      // reply のみ：引用したメモ
+   "ref": ["s_abcd1234"],             // reply のみ：返信した session の id
    "text": "本文（2〜4文）",
    "source": { "title": "…", "url": "https://…" }  // reading は必須、他は任意
 }]

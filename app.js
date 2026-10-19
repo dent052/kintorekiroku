@@ -1,7 +1,7 @@
 import {
   localDate, parseImport, value, recent, prefill, rows,
   lineText, sessionEvents, weekStats, weekStart, totalDays, feed, mergeFeed, firstSet, line, lineResult,
-  top, load, totals, bodyAvg7, calendar, toBase64Utf8, consultText
+  top, load, totals, bodyAvg7, calendar, toBase64Utf8, consultText, parsePosts
 } from './logic.js';
 
 /** @typedef {import('./logic.js').Data} Data */
@@ -208,16 +208,14 @@ async function fetchFeedback() {
   feedbackCheckedAt = now;
   const settings = github;
   try {
-    const response = await fetch(githubUrl(settings, 'feedback.json'), {
+    const response = await fetch(githubUrl(settings, 'posts.json'), {
       headers: githubHeaders(settings), cache: 'no-store'
     });
     if (!response.ok) return;
     const file = await response.json();
-    const raw = decodeGithub(file.content);
-    const feedback = JSON.parse(raw);
-    if (!feedback?.date || !feedback.summary || github !== settings) return;
-    if (localStorage.getItem('kintore:feedback') === raw) return;
-    localStorage.setItem('kintore:feedback', raw);
+    const raw = JSON.stringify(parsePosts(decodeGithub(file.content)));
+    if (github !== settings || localStorage.getItem('kintore:posts') === raw) return;
+    localStorage.setItem('kintore:posts', raw);
     if (currentTab === 'home') renderHome();
   } catch {}
 }

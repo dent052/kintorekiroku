@@ -4,7 +4,7 @@ import {
   localDate, value, load, recent, top, firstSet, history, line, lineResult, lineText, prefill, rows,
   prKind, isStageUp, sessionEvents, totals,
   weekStart, weekStats, calendar, totalDays, feed, mergeFeed, bodyAvg7, consultText,
-  parseImport, toBase64Utf8
+  parseImport, toBase64Utf8, parsePosts
 } from './logic.js';
 
 const ex = (o) => ({ id: 'e1', name: '腕立て', type: 'reps', part: '胸', min: 8, max: 15, nextId: null, archived: false, ...o });
@@ -742,4 +742,20 @@ test('mergeFeed pins only unread replies then orders dates without truncating po
     ['reading', 'clear:e1:2026-10-20', 'weekly', 'reply']);
   assert.deepEqual(mergeFeed([], [], []), []);
   assert.deepEqual([own, posts], before);
+});
+
+test('parsePosts keeps valid posts newest first and rejects bad input', () => {
+  const ok = (id, at, kind = 'reading') => ({ id, at, kind, text: 't' });
+  assert.deepEqual(parsePosts('{"id":"x"}'), []);
+  assert.deepEqual(parsePosts('not json'), []);
+  const posts = parsePosts(JSON.stringify([
+    ok('a', '2026-10-18T07:30:00+09:00'),
+    { at: '2026-10-19T07:30:00+09:00', kind: 'reply', text: 'no id' },
+    ok('b', '2026-10-20T07:30:00+09:00', 'reply'),
+    ok('c', '2026-10-19T07:30:00+09:00', 'tweet'),
+    null
+  ]));
+  assert.deepEqual(posts.map(post => post.id), ['b', 'a']);
+  assert.equal(parsePosts(JSON.stringify(Array.from({ length: 250 }, (_, i) =>
+    ok(`p${i}`, `2026-01-01T00:00:${String(i % 60).padStart(2, '0')}`)))).length, 200);
 });
