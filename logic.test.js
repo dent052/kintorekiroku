@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  localDate, value, load, recent, top, advice, prefill, rows
+  localDate, value, load, recent, top, advice, prefill, rows,
+  prKind, isStageUp, sessionEvents, totals
 } from './logic.js';
 
 const ex = (o) => ({ id: 'e1', name: '腕立て', type: 'reps', part: '胸', min: 8, max: 15, nextId: null, archived: false, ...o });
@@ -304,4 +305,217 @@ test('rows repeats the last prefilled set using independent copies', () => {
   assert.equal(b.reps, 10);
   assert.deepEqual(rows([a, b], 1), [a]);
   assert.deepEqual(rows([a, b], 0), []);
+});
+
+test('prKind ignores the current session and returns null for a first exercise', () => {
+  const entry = set({ reps: 18 });
+  const d = data({ sessions: [ses(today, [entry])] });
+  assert.equal(prKind(d, entry, 's' + today), null);
+});
+
+test('prKind requires a strictly higher value at the same load', () => {
+  const d = data({
+    exercises: [ex({ type: 'band' })],
+    bands,
+    sessions: [ses('2026-10-19', [
+      set({ reps: 12, bandId: 'r' }),
+      set({ reps: 30, bandId: 'y' })
+    ])]
+  });
+  assert.equal(prKind(d, set({ reps: 13, bandId: 'r' }), 'current'), 'pr');
+  assert.equal(prKind(d, set({ reps: 12, bandId: 'r' }), 'current'), null);
+  assert.equal(prKind(d, set({ reps: 11, bandId: 'r' }), 'current'), null);
+  assert.equal(prKind(d, set({ reps: 40 }), 'current'), null);
+  assert.equal(prKind(d, set({ reps: 1, bandId: 'k' }), 'current'), 'load');
+});
+
+test('prKind includes light sessions and all dates but not other exercises', () => {
+  const d = data({
+    sessions: [
+      ses('2026-10-21', [set({ reps: 18 })], { light: true }),
+      ses(today, [set({ reps: 100 })]),
+      ses('2026-10-19', [set({ exerciseId: 'e2', reps: 100 })])
+    ]
+  });
+  assert.equal(prKind(d, set({ reps: 18 }), 's' + today), null);
+  assert.equal(prKind(d, set({ reps: 19 }), 's' + today), 'pr');
+});
+
+test('prKind uses seconds for time and kg for weight', () => {
+  const timed = data({
+    exercises: [ex({ type: 'time' })],
+    sessions: [ses('2026-10-19', [set({ sec: 30 })])]
+  });
+  assert.equal(prKind(timed, set({ sec: 35 }), 'current'), 'pr');
+  assert.equal(prKind(timed, set({ sec: 30 }), 'current'), null);
+  const weighted = data({
+    exercises: [ex({ type: 'weight' })],
+    sessions: [ses('2026-10-19', [set({ reps: 12, kg: 5 })])]
+  });
+  assert.equal(prKind(weighted, set({ reps: 1, kg: 6 }), 'current'), 'load');
+  assert.equal(prKind(weighted, set({ reps: 13, kg: 5 }), 'current'), 'pr');
+});
+
+test('isStageUp requires a predecessor and no earlier record of the target', () => {
+  const target = set({ exerciseId: 'e2', reps: 10 });
+  const d = data({
+    exercises: [
+      ex({ nextId: 'e2', archived: true }),
+      ex({ id: 'e2', name: '足上げ腕立て' })
+    ],
+    sessions: [
+      ses('2026-10-21', [target]),
+      ses(today, [target], { light: true })
+    ]
+  });
+  assert.equal(isStageUp(d, 'e2', 's' + today), true);
+  assert.equal(isStageUp(d, 'e2', 's2026-10-21'), false);
+  assert.equal(isStageUp(d, 'e1', 's' + today), false);
+});
+
+test('sessionEvents selects the largest qualifying PR value once per exercise', () => {
+  const d = data({
+    sessions: [
+      ses('2026-10-19', [set({ reps: 12 })]),
+      ses(today, [set({ reps: 13 }), set({ reps: 18 }), set({ reps: 16 })])
+    ]
+  });
+  const before = structuredClone(d);
+  assert.deepEqual(sessionEvents(d, 's' + today), [
+    { exerciseId: 'e1', kind: 'pr', text: '腕立て 自己ベスト 18回' }
+  ]);
+  assert.deepEqual(d, before);
+});
+
+test('sessionEvents gives stage priority over PR and load', () => {
+  for (const type of ['reps', 'band']) {
+    const d = data({
+      exercises: [
+        ex({ nextId: 'e2' }),
+        ex({ id: 'e2', name: '足上げ腕立て', type })
+      ],
+      bands,
+      sessions: [
+        ses('2026-10-21', [set({ exerciseId: 'e2', reps: 12, bandId: 'r' })]),
+        ses(today, [set({ exerciseId: 'e2', reps: 18, bandId: 'k' })])
+      ]
+    });
+    assert.deepEqual(sessionEvents(d, 's' + today), [
+      { exerciseId: 'e2', kind: 'stage', text: '足上げ腕立て に進んだ' }
+    ]);
+  }
+});
+
+test('sessionEvents load text uses both session maxima and outranks PR', () => {
+  const d = data({
+    exercises: [ex({ type: 'band', name: 'バンドロウ' })],
+    bands,
+    sessions: [
+      ses('2026-10-21', [
+        set({ reps: 30, bandId: 'y' }), set({ reps: 10, bandId: 'r' })
+      ], { light: true }),
+      ses(today, [
+        set({ reps: 40, bandId: 'y' }),
+        set({ reps: 15, bandId: 'r' }),
+        set({ reps: 5, bandId: 'k' })
+      ])
+    ]
+  });
+  assert.deepEqual(sessionEvents(d, 's' + today), [
+    { exerciseId: 'e1', kind: 'load', text: 'バンドロウ 赤→黒' }
+  ]);
+});
+
+test('sessionEvents PR text excludes higher values that do not qualify', () => {
+  const d = data({
+    exercises: [ex({ type: 'band' })],
+    bands,
+    sessions: [
+      ses('2026-10-19', [
+        set({ reps: 30, bandId: 'y' }), set({ reps: 10, bandId: 'r' })
+      ]),
+      ses(today, [
+        set({ reps: 25, bandId: 'y' }), set({ reps: 12, bandId: 'r' })
+      ])
+    ]
+  });
+  assert.deepEqual(sessionEvents(d, 's' + today), [
+    { exerciseId: 'e1', kind: 'pr', text: '腕立て 自己ベスト 12回' }
+  ]);
+});
+
+test('sessionEvents displays absent and unknown bands as なし', () => {
+  for (const bandId of [null, 'missing']) {
+    const d = data({
+      exercises: [ex({ type: 'band', name: 'バンドロウ' })],
+      bands,
+      sessions: [
+        ses('2026-10-19', [set({ reps: 12, bandId })]),
+        ses(today, [set({ reps: 5, bandId: 'y' })])
+      ]
+    });
+    assert.deepEqual(sessionEvents(d, 's' + today), [
+      { exerciseId: 'e1', kind: 'load', text: 'バンドロウ なし→黄' }
+    ]);
+  }
+});
+
+test('sessionEvents formats weight maxima including null kg as zero', () => {
+  for (const [oldKg, expected] of [
+    [null, '腕立て 0→6.5kg'], [5, '腕立て 5→6.5kg']
+  ]) {
+    const d = data({
+      exercises: [ex({ type: 'weight' })],
+      sessions: [
+        ses('2026-10-19', [set({ reps: 12, kg: oldKg })]),
+        ses(today, [set({ reps: 5, kg: 6 }), set({ reps: 4, kg: 6.5 })])
+      ]
+    });
+    assert.deepEqual(sessionEvents(d, 's' + today), [
+      { exerciseId: 'e1', kind: 'load', text: expected }
+    ]);
+  }
+});
+
+test('sessionEvents emits seconds and omits exercises without an event', () => {
+  const d = data({
+    exercises: [ex({ type: 'time' }), ex({ id: 'e2' })],
+    sessions: [
+      ses('2026-10-19', [set({ sec: 30 })]),
+      ses(today, [set({ sec: 35 }), set({ exerciseId: 'e2', reps: 10 })])
+    ]
+  });
+  assert.deepEqual(sessionEvents(d, 's' + today), [
+    { exerciseId: 'e1', kind: 'pr', text: '腕立て 自己ベスト 35秒' }
+  ]);
+  assert.deepEqual(sessionEvents(data({ sessions: [ses(today, [set({ reps: 10 })])] }), 's' + today), []);
+});
+
+test('totals includes archived exercises, light sessions, every load and seconds', () => {
+  const d = data({
+    exercises: [
+      ex({ archived: true }),
+      ex({ id: 'e2', type: 'time' }),
+      ex({ id: 'e3', type: 'band' }),
+      ex({ id: 'e4', type: 'weight' })
+    ],
+    bands,
+    sessions: [
+      ses('2026-10-19', [
+        set({ reps: 10 }), set({ exerciseId: 'e2', sec: 30 }),
+        set({ exerciseId: 'e3', reps: 8, bandId: 'r' }),
+        set({ exerciseId: 'e4', reps: 7, kg: 5 })
+      ]),
+      ses(today, [
+        set({ reps: 12 }), set({ reps: 8 }),
+        set({ exerciseId: 'e2', sec: 40 }),
+        set({ exerciseId: 'e3', reps: 9, bandId: 'k' }),
+        set({ exerciseId: 'e4', reps: 6, kg: 6 })
+      ], { light: true })
+    ]
+  });
+  const before = structuredClone(d);
+  assert.deepEqual(totals(d), { e1: 30, e2: 70, e3: 17, e4: 13 });
+  assert.deepEqual(totals(data()), {});
+  assert.deepEqual(d, before);
 });

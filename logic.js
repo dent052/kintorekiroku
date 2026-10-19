@@ -154,3 +154,83 @@ export function rows(prefilled, count) {
     ...prefilled[Math.min(i, prefilled.length - 1)]
   }));
 }
+
+/** @param {Data} data @param {Set} set */
+export function prKind(data, set, sessionId) {
+  const ex = data.exercises.find(ex => ex.id === set.exerciseId);
+  const previous = data.sessions
+    .filter(session => session.id !== sessionId)
+    .flatMap(session => session.sets)
+    .filter(entry => entry.exerciseId === set.exerciseId);
+  if (previous.length === 0) return null;
+
+  const currentLoad = load(data, ex, set);
+  if (previous.every(entry => load(data, ex, entry) < currentLoad)) return 'load';
+  const sameLoad = previous.filter(entry => load(data, ex, entry) === currentLoad);
+  if (sameLoad.length > 0 && sameLoad.every(entry => value(ex, entry) < value(ex, set))) {
+    return 'pr';
+  }
+  return null;
+}
+
+/** @param {Data} data */
+export function isStageUp(data, exerciseId, sessionId) {
+  const session = data.sessions.find(session => session.id === sessionId);
+  return data.exercises.some(ex => ex.nextId === exerciseId) &&
+    !data.sessions.some(previous =>
+      previous.date < session.date &&
+      previous.sets.some(set => set.exerciseId === exerciseId)
+    );
+}
+
+/** @param {Data} data */
+export function sessionEvents(data, sessionId) {
+  const session = data.sessions.find(session => session.id === sessionId);
+  const exerciseIds = [...new Set(session.sets.map(set => set.exerciseId))];
+  const events = [];
+  for (const exerciseId of exerciseIds) {
+    const ex = data.exercises.find(ex => ex.id === exerciseId);
+    if (isStageUp(data, exerciseId, sessionId)) {
+      events.push({ exerciseId, kind: 'stage', text: `${ex.name} に進んだ` });
+      continue;
+    }
+
+    const sets = session.sets.filter(set => set.exerciseId === exerciseId);
+    const kinds = sets.map(set => prKind(data, set, sessionId));
+    if (kinds.includes('load')) {
+      const previous = data.sessions
+        .filter(previous => previous.id !== sessionId)
+        .flatMap(previous => previous.sets)
+        .filter(set => set.exerciseId === exerciseId);
+      const oldLoad = Math.max(...previous.map(set => load(data, ex, set)));
+      const newLoad = Math.max(...sets.map(set => load(data, ex, set)));
+      const bandName = order => data.bands.find(band => band.order === order)?.name ?? 'なし';
+      const change = ex.type === 'band'
+        ? `${bandName(oldLoad)}→${bandName(newLoad)}`
+        : `${oldLoad}→${newLoad}kg`;
+      events.push({ exerciseId, kind: 'load', text: `${ex.name} ${change}` });
+    } else if (kinds.includes('pr')) {
+      const best = Math.max(...sets
+        .filter((set, i) => kinds[i] === 'pr')
+        .map(set => value(ex, set)));
+      events.push({
+        exerciseId,
+        kind: 'pr',
+        text: `${ex.name} 自己ベスト ${best}${ex.type === 'time' ? '秒' : '回'}`
+      });
+    }
+  }
+  return events;
+}
+
+/** @param {Data} data @returns {Object<string, number>} */
+export function totals(data) {
+  const result = {};
+  for (const session of data.sessions) {
+    for (const set of session.sets) {
+      const ex = data.exercises.find(ex => ex.id === set.exerciseId);
+      result[ex.id] = (result[ex.id] ?? 0) + value(ex, set);
+    }
+  }
+  return result;
+}
