@@ -862,14 +862,14 @@ function renderTrain() {
     done.append(element('span', `${prefix}${value(ex, item.set)}${ex.type === 'time' ? '秒' : ''}`));
   }
   if (done.childElementCount) section.append(done);
-  section.append(timerElement);
 
   const update = (key, next) => {
     row.set[key] = next;
     render();
   };
+  let bands = null;
   if (ex.type === 'band') {
-    const bands = element('div', '', 'training-bands');
+    bands = element('div', '', 'training-bands');
     if (!state.bands.some(band => band.id === row.set.bandId)) {
       bands.append(element('span', 'なし', 'chip on'));
     }
@@ -880,12 +880,14 @@ function renderTrain() {
       button.setAttribute('aria-pressed', String(selected));
       bands.append(button);
     }
-    section.append(bands);
   }
   const spacer = element('div', '', 'training-space');
   section.append(spacer, element('p', `${card.rows.indexOf(row) + 1}セット目`, 'training-label'));
   view.replaceChildren(section);
   dock.className = 'dock training-dock';
+  // The rest timer is tapped one-handed between sets, so it lives in the dock.
+  dock.append(timerElement);
+  if (bands) dock.append(bands);
   if (ex.type === 'weight') {
     const weight = stepper('重り', row.set.kg ?? 0, 0, Infinity, 0.5,
       next => update('kg', next), 'kg');
