@@ -4,7 +4,7 @@ import {
   localDate, value, load, recent, top, firstSet, history, line, lineResult, lineText, prefill, rows,
   prKind, isStageUp, sessionEvents, totals,
   weekStart, weekStats, calendar, totalDays, feed, mergeFeed, bodyAvg7, consultText,
-  parseImport, toBase64Utf8, parsePosts
+  parseImport, toBase64Utf8, parsePosts, lineHistory, clearCount, weekHeat, menuExercises
 } from './logic.js';
 
 const ex = (o) => ({ id: 'e1', name: '腕立て', type: 'reps', part: '胸', min: 8, max: 15, nextId: null, archived: false, ...o });
@@ -758,4 +758,183 @@ test('parsePosts keeps valid posts newest first and rejects bad input', () => {
   assert.deepEqual(posts.map(post => post.id), ['b', 'a']);
   assert.equal(parsePosts(JSON.stringify(Array.from({ length: 250 }, (_, i) =>
     ok(`p${i}`, `2026-01-01T00:00:${String(i % 60).padStart(2, '0')}`)))).length, 200);
+});
+
+test('lineHistory returns distinct dates ascending, excluding light days and missing line values', () => {
+  const d = data({
+    exercises: [ex({ type: 'band' })],
+    bands,
+    sessions: [
+      ses('2026-10-19', [set({ reps: 14, bandId: 'k' })]),
+      ses('2026-10-15', [set({ reps: 20, bandId: 'r' })]),
+      ses('2026-10-17', [set({ reps: 99, bandId: 'r' })], { light: true }),
+      ses('2026-10-16', [set({ reps: 12, bandId: 'k' })]),
+      ses('2026-10-14', [set({ reps: 15, bandId: 'r' })]),
+      ses('2026-10-18', [
+        set({ exerciseId: 'e2', reps: 99 }),
+        set({ reps: 13, bandId: 'k' }), set({ reps: 99, bandId: 'r' })
+      ]),
+      ses('2026-10-18', [set({ reps: 13, bandId: 'k' })], { id: 'duplicate' }),
+      ses('2026-10-20', [set({ exerciseId: 'e2', reps: 99 })])
+    ]
+  });
+  const before = structuredClone(d);
+  assert.deepEqual(lineHistory(d, 'e1'), [
+    { date: '2026-10-15', value: 16, load: 2 },
+    { date: '2026-10-18', value: 13, load: 3 },
+    { date: '2026-10-19', value: 14, load: 3 }
+  ]);
+  assert.deepEqual(lineHistory(data(), 'e1'), []);
+  assert.deepEqual(d, before);
+});
+
+test('lineHistory uses seconds, kg and numeric flat and down lines', () => {
+  const timed = data({
+    exercises: [ex({ type: 'time' })],
+    sessions: [
+      ses('2026-10-18', [set({ sec: 30 })]),
+      ses('2026-10-19', [set({ sec: 35 })])
+    ]
+  });
+  assert.deepEqual(lineHistory(timed, 'e1'), [
+    { date: '2026-10-19', value: 35, load: 0 }
+  ]);
+  const weighted = data({
+    exercises: [ex({ type: 'weight' })],
+    sessions: [
+      ses('2026-10-18', [set({ reps: 10, kg: 5 })]),
+      ses('2026-10-19', [set({ reps: 11, kg: 6 }), set({ reps: 99, kg: 9 })])
+    ]
+  });
+  assert.deepEqual(lineHistory(weighted, 'e1'), [
+    { date: '2026-10-19', value: 11, load: 6 }
+  ]);
+  for (const values of [[12, 13, 14], [12, 13, 14, 15, 14, 13]]) {
+    const d = withHistory(values);
+    d.sessions.push(ses(today, [set({ reps: 14 })]));
+    assert.deepEqual(lineHistory(d, 'e1').at(-1), { date: today, value: 14, load: 0 });
+  }
+});
+
+test('clearCount compares only first sets and excludes light, base and newload results', () => {
+  const d = data({
+    exercises: [ex({ type: 'band' })],
+    bands,
+    sessions: [
+      ses('2026-10-19', [set({ reps: 14, bandId: 'k' })]),
+      ses('2026-10-18', [set({ reps: 13, bandId: 'k' })]),
+      ses('2026-10-17', [set({ reps: 99, bandId: 'k' })], { light: true }),
+      ses('2026-10-16', [set({ reps: 12, bandId: 'k' })]),
+      ses('2026-10-15', [set({ reps: 20, bandId: 'r' })]),
+      ses('2026-10-14', [set({ reps: 15, bandId: 'r' })]),
+      ses(today, [set({ reps: 12, bandId: 'k' }), set({ reps: 99, bandId: 'k' })]),
+      ses('2026-10-21', [set({ exerciseId: 'e2', reps: 99 })])
+    ]
+  });
+  const before = structuredClone(d);
+  assert.equal(clearCount(d, 'e1'), 3);
+  assert.equal(clearCount(data(), 'e1'), 0);
+  assert.deepEqual(d, before);
+});
+
+test('clearCount includes clear flat and down lines and uses seconds for time', () => {
+  for (const values of [[12, 13, 14], [12, 13, 14, 15, 14, 13]]) {
+    const d = withHistory(values);
+    const before = clearCount(d, 'e1');
+    d.sessions.push(ses(today, [set({ reps: 14 })]));
+    assert.equal(clearCount(d, 'e1'), before + 1);
+  }
+  const d = data({
+    exercises: [ex({ type: 'time' })],
+    sessions: [
+      ses('2026-10-17', [set({ sec: 30 })]),
+      ses('2026-10-18', [set({ sec: 34 }), set({ sec: 99 })]),
+      ses('2026-10-19', [set({ sec: 39 })])
+    ]
+  });
+  assert.equal(clearCount(d, 'e1'), 1);
+});
+
+test('weekHeat counts distinct session days including light within twelve full Monday weeks', () => {
+  const d = data({
+    sessions: [
+      ses('2026-08-02', [set({ reps: 1 })]),
+      ses('2026-08-03', [set({ reps: 1 })], { light: true }),
+      ses('2026-08-09', [set({ reps: 1 })]),
+      ses('2026-08-10', [set({ reps: 1 })]),
+      ses('2026-10-18', [set({ reps: 1 })]),
+      ses('2026-10-19', [set({ reps: 1 })]),
+      ses('2026-10-19', [set({ reps: 1 })], { id: 'duplicate' }),
+      ses(today, [set({ reps: 1 })], { light: true }),
+      ses('2026-10-25', [set({ reps: 1 })]),
+      ses('2026-10-26', [set({ reps: 1 })])
+    ],
+    skips: [{ date: '2026-08-04', reason: '疲れ' }]
+  });
+  const before = structuredClone(d);
+  assert.deepEqual(weekHeat(d, today), [2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3]);
+  assert.deepEqual(weekHeat(data(), today), Array(12).fill(0));
+  assert.deepEqual(d, before);
+});
+
+test('weekHeat handles the year boundary with Monday as the first day', () => {
+  const d = data({ sessions: [
+    ses('2026-12-27', [set({ reps: 1 })]),
+    ses('2026-12-28', [set({ reps: 1 })]),
+    ses('2027-01-03', [set({ reps: 1 })]),
+    ses('2027-01-04', [set({ reps: 1 })])
+  ] });
+  assert.deepEqual(weekHeat(d, '2027-01-01'), [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2]);
+});
+
+test('menuExercises same uses the latest earlier non-light session in distinct set order', () => {
+  const d = data({
+    exercises: [ex(), ex({ id: 'e2', archived: true })],
+    sessions: [
+      ses('2026-10-17', [set({ reps: 10 })]),
+      ses(today, [set({ reps: 10 })]),
+      ses('2026-10-18', [
+        set({ exerciseId: 'e2', reps: 10 }), set({ exerciseId: 'missing', reps: 10 }),
+        set({ reps: 10 }), set({ exerciseId: 'e2', reps: 9 })
+      ]),
+      ses('2026-10-19', [set({ reps: 10 })], { light: true }),
+      ses('2026-10-21', [set({ reps: 10 })])
+    ]
+  });
+  const before = structuredClone(d);
+  for (const menu of [{ kind: 'same' }, undefined, null, {}, { kind: 'unknown' },
+    { kind: 'template', templateId: 'missing' }]) {
+    assert.deepEqual(menuExercises(d, menu, today), ['e2', 'e1']);
+  }
+  assert.deepEqual(d, before);
+});
+
+test('menuExercises template and custom keep selection order and only existing ids', () => {
+  const d = data({
+    exercises: [ex(), ex({ id: 'e2' })],
+    templates: [
+      { id: 't1', name: '背中', exerciseIds: ['e2', 'missing', 'e1'], sets: 3 },
+      { id: 'empty', name: '空', exerciseIds: [], sets: 3 }
+    ],
+    sessions: [ses('2026-10-19', [set({ reps: 10 })])]
+  });
+  const menu = { kind: 'custom', exerciseIds: ['e2', 'missing', 'e1'] };
+  const before = structuredClone([d, menu]);
+  assert.deepEqual(menuExercises(d, { kind: 'template', templateId: 't1' }, today), ['e2', 'e1']);
+  assert.deepEqual(menuExercises(d, menu, today), ['e2', 'e1']);
+  assert.deepEqual(menuExercises(d, { kind: 'template', templateId: 'empty' }, today), []);
+  assert.deepEqual(menuExercises(d, { kind: 'custom', exerciseIds: [] }, today), []);
+  assert.deepEqual([d, menu], before);
+});
+
+test('menuExercises returns empty when no selected or previous exercises exist', () => {
+  const d = data({ exercises: [] });
+  for (const menu of [undefined, { kind: 'same' },
+    { kind: 'template', templateId: 'missing' }, { kind: 'custom', exerciseIds: [] }]) {
+    assert.deepEqual(menuExercises(d, menu, today), []);
+  }
+  assert.deepEqual(menuExercises(data({ sessions: [
+    ses(today, [set({ reps: 10 })]),
+    ses('2026-10-19', [set({ reps: 10 })], { light: true })
+  ] }), { kind: 'same' }, today), []);
 });

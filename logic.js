@@ -480,3 +480,54 @@ export function parsePosts(text) {
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, 200);
 }
+
+/** @param {Data} data */
+export function lineHistory(data, exerciseId) {
+  const ex = data.exercises.find(ex => ex.id === exerciseId);
+  const sessions = data.sessions.filter(session =>
+    session.light === false && session.sets.some(set => set.exerciseId === exerciseId));
+  const dates = [...new Set(sessions.map(session => session.date))].sort();
+  return dates.flatMap(date => {
+    const l = line(data, exerciseId, date);
+    if (l.value === undefined) return [];
+    const session = sessions.find(session => session.date === date);
+    return [{ date, value: l.value, load: load(data, ex, firstSet(data, ex, session)) }];
+  });
+}
+
+/** @param {Data} data */
+export function clearCount(data, exerciseId) {
+  const ex = data.exercises.find(ex => ex.id === exerciseId);
+  return data.sessions.filter(session => {
+    if (session.light !== false) return false;
+    const first = firstSet(data, ex, session);
+    return first && lineResult(line(data, exerciseId, session.date), value(ex, first)).kind === 'clear';
+  }).length;
+}
+
+/** @param {Data} data @param {string} today */
+export function weekHeat(data, today) {
+  const start = weekStart(today);
+  return Array.from({ length: 12 }, (_, i) => {
+    const monday = dateOffset(start, (i - 11) * 7);
+    return new Set(inRange(data.sessions, monday, dateOffset(monday, 6))
+      .map(session => session.date)).size;
+  });
+}
+
+/** @param {Data} data @param {string} today */
+export function menuExercises(data, menu, today) {
+  let ids;
+  if (menu?.kind === 'custom') {
+    ids = menu.exerciseIds;
+  } else if (menu?.kind === 'template') {
+    ids = data.templates.find(template => template.id === menu.templateId)?.exerciseIds;
+  }
+  if (ids === undefined) {
+    const [session] = data.sessions
+      .filter(session => session.light === false && session.date < today)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    ids = [...new Set(session?.sets.map(set => set.exerciseId) ?? [])];
+  }
+  return ids.filter(id => data.exercises.some(ex => ex.id === id));
+}
