@@ -481,8 +481,8 @@ function recordBody() {
   const entries = [...state.body].sort((a, b) => b.date.localeCompare(a.date));
   const latest = entries[0];
   const lastWaist = entries.find(entry => entry.waist !== null);
-  let kg = latest?.kg ?? '';
-  let waist = lastWaist?.waist ?? '';
+  let kg = latest ? Math.round(latest.kg * 10) / 10 : '';
+  let waist = lastWaist ? Math.round(lastWaist.waist * 10) / 10 : '';
   let none = latest?.waist === null;
   const { sheet, content } = homeSheet('体重を記録');
 
@@ -622,20 +622,46 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function renderStartChoices(light = false) {
-  view.replaceChildren(element('h1', 'トレーニング'));
-  const section = settingsSection('テンプレート');
-  for (const template of state.templates) {
-    section.append(action(template.name, () =>
-      startWorkout({ templateId: template.id, light }), 'settings-item'));
+  view.replaceChildren(element('h1', light ? '軽めの日' : 'トレーニング'),
+    element('p', light ? 'メニューを選ぶと、各種目1セットで始まる' : '今日のメニューを選ぶ', 'dim'));
+  const last = [...state.sessions].sort((a, b) => b.date.localeCompare(a.date))[0];
+  if (last && !light) {
+    const names = [...new Set(last.sets.map(set => set.exerciseId))]
+      .map(id => state.exercises.find(ex => ex.id === id)?.name).filter(Boolean);
+    view.append(element('p', `前回 ${shortDate(last.date)}：${names.join('・')}`, 'training-note'));
   }
-  if (light) return;
-  section.append(
-    action('前回と同じ', () => startWorkout({ same: true })),
+  dock.className = 'dock';
+  const templates = element('div', '', 'dock-grid');
+  for (const template of state.templates) {
+    templates.append(action(template.name, () => startWorkout({ templateId: template.id, light })));
+  }
+  dock.replaceChildren(templates);
+  if (light) {
+    dock.append(action('キャンセル', () => go('home')));
+    return;
+  }
+  if (!state.exercises.some(ex => !ex.archived)) {
+    view.append(element('p', 'まず種目を登録しましょう', 'training-note'));
+    dock.append(action('種目を追加', () => { go('settings'); editExercise(); }, 'primary'));
+    return;
+  }
+  if (!last) {
+    dock.append(action('種目を選んで始める', () => {
+      startWorkout();
+      pickWorkoutExercise();
+    }, 'primary'));
+    return;
+  }
+  dock.append(
+    action('前回と同じ', () => startWorkout({ same: true }), 'primary'),
+    element('div', '', 'row2')
+  );
+  dock.lastElementChild.append(
     action('種目を選んで始める', () => {
       startWorkout();
       pickWorkoutExercise();
     }),
-    action('軽めの日', () => startWorkout({ light: true }), 'primary')
+    action('軽めの日', () => startWorkout({ light: true }))
   );
 }
 
@@ -776,8 +802,10 @@ function workoutOptions(card, ex) {
     persist();
   });
   label.append(element('span', 'メモ'), note);
-  const toggle = action('コーチに送る', () => {
+  const coachLabel = () => workout.toCoach ? 'コーチに送る：オン（明日の朝に返信）' : 'コーチに送る：オフ';
+  const toggle = action(coachLabel(), () => {
     workout.toCoach = !workout.toCoach;
+    toggle.textContent = coachLabel();
     toggle.setAttribute('aria-pressed', String(workout.toCoach));
     toggle.classList.toggle('on', workout.toCoach);
     persist();
@@ -806,9 +834,7 @@ function renderTrain() {
   const title = element('div');
   title.append(element('h2', ex.name),
     element('span', `${workout.index + 1} / ${workout.cards.length} 種目`, 'dim'));
-  const more = action('…', () => workoutOptions(card, ex), 'more');
-  more.setAttribute('aria-label', 'トレーニングの操作');
-  head.append(title, more);
+  head.append(title);
   section.append(head);
 
   const target = line(state, ex.id, localDate(new Date()));
@@ -871,14 +897,14 @@ function renderTrain() {
     next => update(time ? 'sec' : 'reps', next), time ? '秒' : '回');
   dock.append(control.querySelector('.stepper'),
     action('完了', () => completeRow(card, row), 'primary'));
-  const navigation = element('div', '', 'row2');
-  const previous = action('◀ 前の種目', () => {
+  const navigation = element('div', '', 'row3');
+  const previous = action('◀ 前へ', () => {
     workout.index--;
     render();
   });
   previous.disabled = workout.index === 0;
   const last = workout.index === workout.cards.length - 1;
-  navigation.append(previous, action(last ? '終了' : '次の種目 ▶', () => {
+  navigation.append(previous, action('その他', () => workoutOptions(card, ex)), action(last ? '終了' : '次へ ▶', () => {
     if (last) finishWorkout();
     else {
       workout.index++;
@@ -1449,8 +1475,12 @@ function renderSettings() {
   dock.replaceChildren();
   view.replaceChildren(element('h1', '設定'));
 
+  dock.className = 'dock';
+  const adds = element('div', '', 'row3');
+  adds.append(action('＋ 種目', () => editExercise()), action('＋ バンド', () => editBand()),
+    action('＋ テンプレ', () => editTemplate()));
+  dock.append(adds);
   const exercises = settingsSection('種目');
-  exercises.append(action('種目を追加', () => editExercise()));
   const toggle = action('アーカイブ済みを表示', () => {
     showArchived = !showArchived;
     render();
@@ -1473,7 +1503,6 @@ function renderSettings() {
   }
 
   const bands = settingsSection('バンド');
-  bands.append(action('バンドを追加', () => editBand()));
   const orderedBands = [...state.bands].sort((a, b) => a.order - b.order);
   orderedBands.forEach((band, index) => {
     const row = element('div', '', 'head');
@@ -1498,7 +1527,6 @@ function renderSettings() {
   });
 
   const templates = settingsSection('テンプレート');
-  templates.append(action('テンプレートを追加', () => editTemplate()));
   for (const template of state.templates) {
     templates.append(action(template.name, () => editTemplate(template), 'settings-item'));
   }

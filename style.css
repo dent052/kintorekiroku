@@ -666,9 +666,28 @@ a.settings-item {
 }
 
 .seg button.on {
-  background: var(--bg);
-  color: var(--fg);
-  font-weight: 600;
+  background: var(--fg);
+  color: var(--surface);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.row3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dock-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.dock-grid:empty {
+  display: none;
 }
 
 .pick {
