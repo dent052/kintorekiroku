@@ -83,7 +83,7 @@ v1 §5.2 の min/max を使う部分を置き換え：
 
 ### 4.3 見た目
 - 白ベース × オレンジ（`docs/mockup-v2.html` の案1）。トークン：
-  `--bg #F5F6F8` `--surface #FFFFFF` `--fg #111827` `--fg2 #4B5563` `--line #D9DEE5` `--btn #E9ECF1` `--primary #EA580C` `--primary-d #C2410C` `--on #FFFFFF` `--good #15803D` `--good-bg #DCFCE7` `--tip #FFF1E6` `--tip-fg #9A3412` `--danger #B91C1C`
+  `--bg #F5F6F8` `--surface #FFFFFF` `--fg #111827` `--fg2 #4B5563` `--line #D9DEE5` `--btn #E9ECF1` `--primary #C2410C` `--primary-d #9A3412` `--on #FFFFFF` `--good #15803D` `--good-bg #DCFCE7` `--tip #FFF1E6` `--tip-fg #9A3412` `--danger #B91C1C`
 - 中立色（下がった数字など）は `--fg2`。赤では出さない
 - **押すものはすべて画面下部の固定ドック**に置く（ホーム・トレーニング・履歴・設定の編集画面）。上部は表示専用
 - 押せるものは必ずボタンの形：塗り（主）またはふち付き（副）、下に2〜3pxの影。押せない表示は枠も影も付けない
