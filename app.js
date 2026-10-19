@@ -1,7 +1,8 @@
 import {
   localDate, parseImport, value, recent, totalDays, feed, mergeFeed,
   firstSet, line, lineResult, lineText, prefill, rows, sessionEvents,
-  menuExercises, toBase64Utf8, consultText, parsePosts
+  menuExercises, lineHistory, clearCount, weekHeat, history, totals, bodyAvg7,
+  calendar, weekStart, toBase64Utf8, consultText, parsePosts
 } from './logic.js';
 
 /** @typedef {import('./logic.js').Data} Data */
@@ -619,8 +620,7 @@ function renderTrainPaper() {
   if (!done.length) {
     const l = line(state, ex.id, training.date);
     if (l.value !== undefined) {
-      const number = element('span', '', 'target-value');
-      number.append(element('span', String(l.value), 'num'));
+      const number = element('span', String(l.value), 'num target-value');
       if (ex.type === 'time') number.append(element('small', '秒'));
       target.append(element('span', 'ライン', 'target-label'), number);
     }
@@ -943,17 +943,74 @@ function renderSummary() {
   }, 'go'));
 }
 
+let growthExerciseId = null;
+
 function renderGrowth() {
-  view.append(element('h1', '成長', 'exname'));
-  const chips = element('div', '', 'chips');
+  const today = localDate(new Date());
   const recorded = new Set(state.sessions.flatMap(session => session.sets.map(set => set.exerciseId)));
-  for (const ex of state.exercises.filter(item => recorded.has(item.id))) {
-    chips.append(element('span', ex.name));
+  const exercises = state.exercises.filter(ex => recorded.has(ex.id));
+  if (!exercises.some(ex => ex.id === growthExerciseId) &&
+      !(growthExerciseId === 'body' && state.body.length)) {
+    growthExerciseId = exercises[0]?.id ?? (state.body.length ? 'body' : null);
   }
-  if (state.body.length) chips.append(element('span', '体重'));
+  const body = growthExerciseId === 'body';
+  const ex = exercises.find(ex => ex.id === growthExerciseId);
+  view.append(element('p', 'ラインの階段', 'k'),
+    element('h1', body ? '体重' : ex?.name ?? '成長', 'exname'));
+  const entries = body
+    ? [...state.body].sort((a, b) => a.date.localeCompare(b.date))
+    : ex ? lineHistory(state, ex.id) : [];
+  if (body || entries.length >= 2) {
+    view.append(growthChart(entries, ex, today));
+  } else {
+    view.append(element('p', '記録が増えると、ここに階段ができる', 'stairs k'));
+  }
+
+  const stats = element('div', '', 'stat');
+  function stat(title, amount, suffix = '') {
+    const item = element('div');
+    item.append(element('p', title, 'k'), element('span', String(amount), 'num'));
+    if (suffix) item.append(element('span', suffix, 'k'));
+    stats.append(item);
+  }
+  if (body) {
+    const latest = entries.at(-1);
+    const average = bodyAvg7(state.body, today, 'kg');
+    const date = new Date(today + 'T12:00:00');
+    date.setDate(date.getDate() - 28);
+    const previous = bodyAvg7(state.body, localDate(date), 'kg');
+    const diff = average === null || previous === null ? null : average - previous;
+    stat('最新', latest.kg.toFixed(1));
+    stat('7日平均', average === null ? '—' : average.toFixed(1));
+    stat('4週間前との差', diff === null ? '—' : (diff > 0 ? '+' : '') + diff.toFixed(1));
+  } else {
+    stat('今のライン', ex ? line(state, ex.id, today).value ?? '—' : '—');
+    stat('突破', ex ? clearCount(state, ex.id) : 0, ' 回');
+    stat('累計', (ex ? totals(state)[ex.id] ?? 0 : 0).toLocaleString('ja-JP'));
+  }
+  view.append(stats, element('p', '12週間', 'k heat-title'));
+  const heat = element('div', '', 'heat');
+  weekHeat(state, today).forEach(days => {
+    const cell = element('i', '', days >= 3 ? 'd' : days ? 'l' : '');
+    cell.setAttribute('aria-label', days + '日');
+    heat.append(cell);
+  });
+  view.append(heat);
+  const chips = element('div', '', 'chips');
+  for (const [id, name] of [
+    ...exercises.map(ex => [ex.id, ex.name]),
+    ...(state.body.length ? [['body', '体重']] : [])
+  ]) {
+    const button = action(name, () => {
+      growthExerciseId = id;
+      render();
+    }, 'chip' + (id === growthExerciseId ? ' on' : ''));
+    button.setAttribute('aria-pressed', String(id === growthExerciseId));
+    chips.append(button);
+  }
   if (chips.childElementCount) dock.append(chips);
   const sub = element('div', '', 'sub');
-  sub.append(action('記録を見る・直す', () => {}), action('新着', () => {
+  sub.append(action('記録を見る・直す', recordHistory), action('新着', () => {
     const { items } = homeFeed();
     const { content } = homeSheet('新着');
     appendFeed(content, [...items].sort((a, b) => b.at.localeCompare(a.at)), true);
@@ -961,6 +1018,191 @@ function renderGrowth() {
   }), action('設定', () => go('settings')));
   dock.append(sub);
   pager();
+}
+
+function growthChart(entries, ex, today) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 316 190');
+  svg.setAttribute('class', 'stairs');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', ex ? ex.name + ' ラインの階段' : '体重と7日平均');
+  function add(tag, attrs, text) {
+    const node = document.createElementNS(svg.namespaceURI, tag);
+    for (const [key, val] of Object.entries(attrs)) node.setAttribute(key, String(val));
+    if (text !== undefined) node.textContent = text;
+    svg.append(node);
+    return node;
+  }
+  const body = !ex;
+  const points = entries.map(entry => ({
+    ...entry, value: body ? entry.kg : entry.value
+  }));
+  const averages = body ? points.map(point => ({
+    date: point.date, value: bodyAvg7(state.body, point.date, 'kg')
+  })) : [];
+  const values = [...points, ...averages].map(point => point.value);
+  const min = body ? Math.floor(Math.min(...values) - 1) : 0;
+  const max = body ? Math.ceil(Math.max(...values) + 1) :
+    Math.max(5, Math.ceil(Math.max(...values) / 5) * 5);
+  const dateNumber = date => new Date(date + 'T12:00:00').getTime();
+  const first = dateNumber(points[0].date);
+  const last = dateNumber(points.at(-1).date);
+  const x = point => first === last ? 158 :
+    (dateNumber(point.date) - first) / (last - first) * 316;
+  const y = point => 160 - (point.value - min) / (max - min) * 130;
+  for (const height of [30, 95, 160]) {
+    add('line', { x1: 0, y1: height, x2: 316, y2: height, stroke: 'var(--hair)' });
+  }
+  if (body) {
+    for (const point of points) {
+      add('circle', { cx: x(point), cy: y(point), r: 4, fill: 'var(--mute-ai)' });
+    }
+    if (averages.length > 1) {
+      add('polyline', { points: averages.map(point => x(point) + ',' + y(point)).join(' '),
+        fill: 'none', stroke: 'var(--ai)', 'stroke-width': 3 });
+    }
+  } else {
+    const currentLoad = history(state, ex.id, today).load;
+    let start = 0;
+    while (start < points.length) {
+      let end = start;
+      while (end + 1 < points.length && points[end + 1].load === points[start].load) end++;
+      let path = 'M' + x(points[start]) + ' ' + y(points[start]);
+      for (let i = start + 1; i <= end; i++) {
+        path += ' H' + x(points[i]) + ' V' + y(points[i]);
+      }
+      path += ' H' + (end + 1 < points.length ? x(points[end + 1]) : 316);
+      const current = points[start].load === currentLoad;
+      add('path', { d: path, class: current ? 'now' : 'old', fill: 'none',
+        stroke: current ? 'var(--shu)' : 'var(--ai)', 'stroke-width': 3 });
+      if (start > 0) {
+        const name = ex.type === 'band'
+          ? state.bands.find(band => band.order === points[start].load)?.name ?? 'なし'
+          : ex.type === 'weight' ? points[start].load + 'kg' : ex.name;
+        add('text', { x: x(points[start]) + 2, y: 182, 'font-size': 12,
+          'font-weight': 700, fill: 'var(--shu)', 'font-family': 'Zen Kaku Gothic New',
+          'text-anchor': x(points[start]) > 250 ? 'end' : 'start' }, name + 'へ');
+      }
+      start = end + 1;
+    }
+  }
+  for (const [point, position, anchor] of [[points[0], 0, 'start'], [points.at(-1), 316, 'end']]) {
+    add('text', { x: position, y: 182, 'font-size': 12, fill: 'var(--mute)',
+      'font-family': 'Barlow Condensed', 'text-anchor': anchor },
+    Number(point.date.slice(5, 7)) + '月');
+  }
+  return svg;
+}
+
+function shortDate(date) {
+  return date.split('-').slice(1).map(Number).join('/');
+}
+
+function recordHistory() {
+  const { content } = homeSheet('記録を見る・直す');
+  const today = localDate(new Date());
+  let selectedDate = null;
+  const grid = element('div', '', 'calendar');
+  const detail = element('div', '', 'day-history');
+  for (const day of '月火水木金土日') grid.append(element('span', day, 'dim calendar-heading'));
+  const [year, month, day] = weekStart(today).split('-').map(Number);
+  const buttons = [];
+  function refresh() {
+    const marks = calendar(state, today);
+    for (const [date, button] of buttons) {
+      const mark = marks[date];
+      button.className = 'calendar-day' + (mark ? ' ' + mark : '') +
+        (date === today ? ' today' : '');
+      button.setAttribute('aria-label', date +
+        (mark ? ' ' + { done: 'トレーニング', light: '軽めの日', rest: '休養' }[mark] : ''));
+      button.setAttribute('aria-pressed', String(selectedDate === date));
+    }
+    detail.replaceChildren();
+    if (selectedDate) renderDayHistory(detail, selectedDate, refresh);
+    render();
+  }
+  for (let i = 0; i < 84; i++) {
+    const date = localDate(new Date(year, month - 1, day - 77 + i));
+    const button = action(shortDate(date), () => {
+      selectedDate = date;
+      refresh();
+      detail.scrollIntoView({ block: 'start' });
+    });
+    button.disabled = date > today;
+    grid.append(button);
+    buttons.push([date, button]);
+  }
+  content.append(grid, detail);
+  refresh();
+}
+
+function renderDayHistory(parent, date, refresh) {
+  const section = element('section', '', 'ex stack');
+  section.append(element('h2', shortDate(date)));
+  const sessions = state.sessions.filter(session => session.date === date);
+  if (!sessions.length) {
+    const skips = state.skips.filter(skip => skip.date === date);
+    if (skips.length) {
+      for (const skip of skips) section.append(element('p', '休み（' + skip.reason + '）'));
+    } else {
+      section.append(element('p', '記録なし', 'dim'));
+    }
+    parent.append(section);
+    return;
+  }
+  for (const session of sessions) {
+    if (session.light) section.append(element('p', '軽めの日', 'dim'));
+    for (const ex of state.exercises) {
+      const sets = session.sets.filter(set => set.exerciseId === ex.id);
+      if (!sets.length) continue;
+      const group = element('div', '', 'stack');
+      group.append(element('h3', ex.name));
+      sets.forEach((set, index) => {
+        const row = element('div', '', 'stack');
+        if (ex.type === 'band' || ex.type === 'weight') {
+          const chips = element('div', '', 'chips');
+          const name = ex.type === 'band'
+            ? state.bands.find(band => band.id === set.bandId)?.name ?? 'なし'
+            : (set.kg ?? 0) + 'kg';
+          chips.append(element('span', name, 'chip on'));
+          row.append(chips);
+        }
+        const time = ex.type === 'time';
+        row.append(
+          stepper(ex.name + ' ' + (index + 1) + 'セット', value(ex, set),
+            0, Infinity, time ? 5 : 1, next => {
+              set[time ? 'sec' : 'reps'] = next;
+              save();
+              refresh();
+            }, time ? '秒' : '回'),
+          action('削除', () => {
+            session.sets.splice(session.sets.indexOf(set), 1);
+            if (!session.sets.length) state.sessions = state.sessions.filter(item => item !== session);
+            save();
+            refresh();
+          }, 'danger')
+        );
+        group.append(row);
+      });
+      section.append(group);
+    }
+    const label = element('label', '', 'stack');
+    const note = element('textarea');
+    note.value = session.note;
+    note.addEventListener('input', () => {
+      session.note = note.value;
+      save();
+    });
+    label.append(element('span', 'メモ'), note);
+    section.append(label);
+  }
+  section.append(action('この日の記録を削除', async () => {
+    if (!await confirmDialog('この日の記録を削除します。よろしいですか？')) return;
+    state.sessions = state.sessions.filter(session => session.date !== date);
+    save();
+    refresh();
+  }, 'danger'));
+  parent.append(section);
 }
 
 function recordRest() {

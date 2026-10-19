@@ -7,7 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { fixture } from './fixture.mjs';
-import { localDate, line, menuExercises, prefill } from '../logic.js';
+import { localDate, line, menuExercises, prefill, weekHeat, clearCount, totals,
+  bodyAvg7, feed, mergeFeed } from '../logic.js';
 
 const root = path.resolve(import.meta.dirname, '..');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
@@ -181,7 +182,7 @@ test('today lines follow menuExercises and line, including custom and template s
   await sheet(page).getByRole('button', { name: '種目を選ぶ', exact: true }).click();
   await sheet(page).getByRole('button', { name: '腕立て伏せ', exact: true }).click();
   await sheet(page).getByRole('button', { name: '足上げ腕立て', exact: true }).click();
-  await sheet(page).getByRole('button', { name: '決定', exact: true }).click();
+  await sheet(page).getByRole('button', { name: '決定' }).click();
   const menu = { kind: 'custom', exerciseIds: ['e2', 'e3', 'e4'] };
   await check(menu);
   assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('kintore:menu'))), menu);
@@ -571,5 +572,158 @@ test('light mode and weight controls fit the small viewport, including rest and 
   await press(page, '終了').click();
   await principles(page);
   assert.deepEqual(errors, []);
+  await close();
+});
+
+test('growth stairs, stats, load colors and twelve-week heat follow the records', async () => {
+  const data = fixture();
+  const { page, errors, close } = await open({ data });
+  await press(page, '成長').click();
+  assert.equal(await page.textContent('.see > .k'), 'ラインの階段');
+  assert.equal(await page.textContent('.exname'), '腕立て伏せ');
+  assert.match(await page.locator('.stairs path').first().getAttribute('d'), /H.*V/);
+  assert.equal(await page.locator('.heat i').count(), 12);
+  const today = localDate(new Date());
+  assert.deepEqual(await page.locator('.heat i').evaluateAll(cells =>
+    cells.map(cell => cell.className)), weekHeat(data, today).map(n => n >= 3 ? 'd' : n ? 'l' : ''));
+  assert.deepEqual(await page.locator('.stat .num').allTextContents(), [
+    String(line(data, 'e1', today).value), String(clearCount(data, 'e1')),
+    totals(data).e1.toLocaleString('ja-JP')
+  ]);
+  await press(page, 'バンドロウ').click();
+  assert.ok(await page.locator('.stairs path.old').count());
+  assert.ok(await page.locator('.stairs path.now').count());
+  assert.match(await page.locator('.stairs').textContent(), /黒へ/);
+  assert.equal(await press(page, 'バンドロウ').getAttribute('aria-pressed'), 'true');
+  await principles(page);
+  await press(page, '設定').click();
+  await press(page, '戻る').click();
+  assert.equal(await page.textContent('.exname'), 'バンドロウ');
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('body chip shows daily points, seven-day average and four-week difference', async () => {
+  const data = fixture();
+  const { page, errors, close } = await open({ data });
+  await press(page, '成長').click();
+  await press(page, '体重').click();
+  const today = localDate(new Date());
+  const previous = new Date(today + 'T12:00:00');
+  previous.setDate(previous.getDate() - 28);
+  const average = bodyAvg7(data.body, today, 'kg');
+  const delta = average - bodyAvg7(data.body, localDate(previous), 'kg');
+  assert.deepEqual(await page.locator('.stat .k').allTextContents(),
+    ['最新', '7日平均', '4週間前との差']);
+  assert.deepEqual(await page.locator('.stat .num').allTextContents(), [
+    data.body.at(-1).kg.toFixed(1), average.toFixed(1),
+    (delta > 0 ? '+' : '') + delta.toFixed(1)
+  ]);
+  assert.equal(await page.locator('.stairs circle').count(), data.body.length);
+  assert.equal(await page.locator('.stairs polyline').count(), 1);
+  for (const size of [{ width: 390, height: 844 }, { width: 360, height: 640 }]) {
+    await page.setViewportSize(size);
+    await principles(page);
+  }
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('growth empty state and a single line point explain the missing stairs', async () => {
+  const data = fixture();
+  data.sessions = [data.sessions[0]];
+  data.body = [];
+  const { page, errors, close } = await open({ data });
+  await press(page, '成長').click();
+  assert.match(await page.textContent('.see'), /記録が増えると、ここに階段ができる/);
+  assert.equal(await page.locator('.stairs path').count(), 0);
+  assert.equal(await press(page, '体重').count(), 0);
+  await principles(page);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('growth calendar edits values and notes, deletes sets and confirms day deletion', async () => {
+  const data = fixture();
+  const date = data.sessions.at(-1).date;
+  const { page, errors, close } = await open({ data });
+  await press(page, '成長').click();
+  for (const size of [{ width: 390, height: 844 }, { width: 360, height: 640 }]) {
+    await page.setViewportSize(size);
+    await press(page, '記録を見る・直す').click();
+    assert.equal(await sheet(page).locator('.calendar button').count(), 84);
+    await principles(page);
+    await sheet(page).getByRole('button', { name: date + ' トレーニング', exact: true }).click();
+    await principles(page);
+    await sheet(page).getByRole('button', { name: '腕立て伏せ 1セットを増やす', exact: true }).click();
+    const expected = data.sessions.at(-1).sets[0].reps + 1;
+    assert.equal((await stored(page)).sessions.find(s => s.date === date).sets[0].reps, expected);
+    data.sessions.at(-1).sets[0].reps = expected;
+    await sheet(page).getByLabel('メモ', { exact: true }).fill('今日は軽い');
+    await sheet(page).getByRole('button', { name: '閉じる', exact: true }).click();
+  }
+  await press(page, '記録を見る・直す').click();
+  await sheet(page).getByRole('button', { name: date + ' トレーニング', exact: true }).click();
+  assert.equal(await sheet(page).getByLabel('メモ', { exact: true }).inputValue(), '今日は軽い');
+  const count = (await stored(page)).sessions.find(s => s.date === date).sets.length;
+  await sheet(page).getByRole('button', { name: '削除', exact: true }).first().click();
+  assert.equal((await stored(page)).sessions.find(s => s.date === date).sets.length, count - 1);
+  await sheet(page).getByRole('button', { name: 'この日の記録を削除', exact: true }).click();
+  await principles(page);
+  await page.locator('#confirm-dialog button[value=cancel]').click();
+  assert.ok((await stored(page)).sessions.some(s => s.date === date));
+  await sheet(page).getByRole('button', { name: 'この日の記録を削除', exact: true }).click();
+  await page.locator('#confirm-dialog button[value=confirm]').click();
+  // The delete is saved after the confirm dialog's promise resolves.
+  await page.waitForFunction(d => !JSON.parse(localStorage.getItem('kintore:data')).sessions.some(s => s.date === d), date);
+  assert.match(await sheet(page).textContent(), /記録なし/);
+  await sheet(page).getByRole('button', { name: '閉じる', exact: true }).click();
+  await page.reload();
+  assert.ok(!(await stored(page)).sessions.some(s => s.date === date));
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('growth news shows all items in time order and marks them read', async () => {
+  const posts = [
+    { id: 'older-reply', at: '2098-01-01', kind: 'reply', text: '返事', quote: 'メモ' },
+    { id: 'newer', at: '2099-01-01', kind: 'reading', text: '読み物',
+      source: { title: '資料', url: 'https://example.com' } },
+    { id: 'third', at: '2097-01-01', kind: 'finding', text: '発見' }
+  ];
+  const data = fixture();
+  const { page, errors, close } = await open({ data, extra: { 'kintore:posts': posts } });
+  await press(page, '成長').click();
+  await press(page, '新着').click();
+  const items = mergeFeed(feed(data, localDate(new Date())), posts, [])
+    .sort((a, b) => b.at.localeCompare(a.at));
+  assert.equal(await sheet(page).locator('.post').count(), items.length);
+  assert.match(await sheet(page).locator('.post').first().textContent(), /読み物/);
+  const seen = await page.evaluate(() => JSON.parse(localStorage.getItem('kintore:seen')));
+  assert.ok(items.every(item => seen.includes(item.id)));
+  await principles(page);
+  await sheet(page).getByRole('button', { name: '閉じる', exact: true }).click();
+  await press(page, '今日').click();
+  assert.equal(await page.locator('.feed > .k').textContent(), '新着 0');
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('training target seconds sit four pixels after the large number', async () => {
+  const { page, close } = await open({ data: fixture(), extra: {
+    'kintore:menu': { kind: 'custom', exerciseIds: ['e3'] }
+  } });
+  await press(page, '始める').click();
+  const gap = await page.locator('.target-value').evaluate(number => {
+    const range = document.createRange();
+    range.selectNodeContents(number.firstChild);
+    return number.querySelector('small').getBoundingClientRect().left -
+      range.getBoundingClientRect().right;
+  });
+  const bigGap = await page.locator('.big').evaluate(big =>
+    big.querySelector('small').getBoundingClientRect().left -
+    big.querySelector('.num').getBoundingClientRect().right);
+  assert.ok(Math.abs(gap - bigGap) < 1);
+  assert.ok(Math.abs(gap - 4) < 1);
   await close();
 });
