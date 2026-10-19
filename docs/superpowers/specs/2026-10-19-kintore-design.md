@@ -1,6 +1,6 @@
 # 筋トレ記録アプリ 設計書
 
-日付: 2026-10-19 / 状態: 承認待ち
+日付: 2026-10-19 / 状態: 承認待ち（公開方法まで決定済み）
 
 ## 1. 目的と背景
 
@@ -49,12 +49,13 @@
 | オフライン | Service Worker で全ファイルをキャッシュ |
 | バックアップ | 非公開 GitHub リポジトリへ自動保存＋手動 JSON 書き出し/読み込み |
 | AI | ①アプリ内ルール判定 ②「AIに相談」ボタン（コピー＆ChatGPT を開く）③ Claude 定期タスク（週次レビュー＋水曜チェック） |
-| 公開 | GitHub Pages（§11 未決） |
+| 公開 | GitHub Pages（リポジトリを公開、ブランチ main の / (root) から配信）。検索除け：`index.html` に `<meta name="robots" content="noindex, nofollow">` |
 | テスト | ロジックは純粋関数にして `node --test`（Node 標準、依存なし） |
 
 ファイル構成（これ以外は作らない）：
 ```
-app/
+（リポジトリ直下）
+  .nojekyll             Pages の Jekyll 処理を止める（空ファイル）
   index.html            画面の骨組み（4タブ）
   style.css
   app.js                画面描画・イベント・タイマー・同期
@@ -283,10 +284,11 @@ UI UX Pro Max の推奨（Fitness/Gym App）をベースに、片手・自宅用
 - Claude（設計者）が各タスクの差分をレビューし、`node --test` と画面確認（Playwright で 390×844）で検証する。
 - コードは最小限（Ponytail）。仕様外の機能・抽象化・設定項目は追加しない。
 
-## 11. 未決（利用者に確認）
+## 11. 公開（利用者が決定）
 
-- 公開方法：GitHub Pages を無料で使うにはコード用リポジトリ `kintorekiroku` を公開にする必要がある（データは別の非公開リポジトリなので記録は公開されない）。
-  公開する場合、Pages は「ブランチ main の / (root)」から配信するため、§3 の `app/` の中身はリポジトリ直下に置く（`.nojekyll` を追加）。
+- コード用リポジトリ `kintorekiroku` を公開にし、GitHub Pages（main の / (root)）で配信する。記録は別の非公開リポジトリなので公開されない。
+- 検索エンジンに載せない：`noindex, nofollow` の meta タグ。`robots.txt` は使わない（Pages のサブパスに置いても効かず、クロールを止めると noindex が読まれないため）。
+- リポジトリ自体は GitHub 上で公開なので、GitHub 内の検索では見つかり得る（コードと設計書のみ）。
 
 ## 11.1 アプリ外の準備（実装計画の最後のタスク。Claude が利用者と一緒に行う）
 1. データ用の非公開リポジトリ `kintorekiroku-data` を作成し、`README.md`（= `coach/README.md`）を置く
