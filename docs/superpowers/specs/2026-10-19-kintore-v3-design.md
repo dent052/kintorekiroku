@@ -122,36 +122,5 @@ dialog.sheet  下から出るシート（藍）。閉じるは「閉じる」ボ
 - 体の記録の独立した画面
 
 ## 9. 合格条件
-`e2e/v3.test.mjs`（設計者が書いた受け入れテスト）がすべて通り、かつ設計者が全画面のスクリーンショットを `docs/mockup-v6.html` と見比べて差がないこと。テストを変更・削除して通すことは禁止。
-
-## 10. 見た目の作り方（見本と実装のずれを防ぐ）
-v2 では見本の CSS を捨てて言葉で実装させたため、余白・太さ・大きさ・細い線が抜け落ち、見本の魅力が消えた。v3 では：
-- **`style.css` は設計者が見本（`docs/mockup-v6.html`）の CSS から作る。実装者は `style.css` を変更しない**（必要なら質問する）
-- 実装者は下の部品名（クラス・属性）どおりの HTML を JS で出力し、動きをつなぐだけ
-- 受け入れテストで主要な計算済みスタイル（色・書体・大きさ）を見本の値と照合する
-- 設計者は見本と同じサンプルデータを入れたアプリを撮影し、見本と並べて確認する
-
-### 10.1 部品名の約束（HTML 構造）
-| 部品 | 構造 |
-|---|---|
-| 全体 | `div.app[data-mode="today"|"growth"|"train"|"summary"|"settings"]` の直下に `section.see` と `section.press` |
-| ページ切り替え | `.press > nav.pager > button[data-page="today"|"growth"]`、選択中は `aria-current="page"` |
-| 主ボタン | `button.go` |
-| 副ボタン行 | `div.sub > button`（2〜4個） |
-| 小見出し | `.k`（紙の上 `--mute`、板の上 `--mute-ai`） |
-| 数字 | `.num` |
-| 今日のライン | `.see .lines > .ln`（`.name` と `.name small`、値は `.num`、持ち越しは `.num.carry`） |
-| 新着 | `.see .feed > .post`（小見出し `b`） |
-| 進み具合 | `.see .dots > i`（`.on` / `.done`） |
-| 種目名 | `.see .exname` |
-| 前回 | `.see .prev` |
-| ライン | `.see .target`（`ライン` と `.num`） |
-| 結果の帯 | `.see .verdict`（`.num`、`b`、`small`） |
-| 休憩の円 | `.see .ring`（`.num`）。円弧は `style="--p: 0〜1"` で残り割合 |
-| 大きな値 | `.press .big`（`.num` と `small`） |
-| 目盛り | `.press .ruler[role=slider]` の中に `.ticks > .t`（5の倍数は `.major` と `em`、ライン以上は `.over`）、`.center`、`.line > b` |
-| チップ | `.press .chips > button`（選択中 `.on`） |
-| 階段 | `.see svg.stairs`（段は `path`） |
-| 12週間 | `.see .heat > i`（`.d` / `.l`） |
-| シート | `dialog.sheet`（中の操作は `.sub` / `.go` / `.chips` と同じ部品） |
-| 設定 | `.app[data-mode="settings"]` では `.see` も藍（`.see.slab`） |
+- 見た目は `docs/mockup-v6.html` を基準にする。**実装者は見本の CSS（色・書体・大きさ・余白・線）をそのまま流用する**こと
+- 設計者が各タスクの差分を読み、`npm test` / `npm run e2e` を流し、全画面を撮って見本と比べて確認する
