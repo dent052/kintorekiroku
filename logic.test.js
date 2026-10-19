@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  localDate, value, load, recent, top, advice, prefill, rows,
+  localDate, value, load, recent, top, firstSet, history, line, lineResult, lineText, prefill, rows,
   prKind, isStageUp, sessionEvents, totals,
-  weekStart, weekStats, calendar, compare, bodyAvg7, consultText,
+  weekStart, weekStats, calendar, totalDays, feed, mergeFeed, bodyAvg7, consultText,
   parseImport, toBase64Utf8
 } from './logic.js';
 
@@ -80,201 +80,6 @@ test('top chooses maximum value among the strongest load only', () => {
   assert.deepEqual(top(d, ex({ type: 'time' }), ses('2026-10-19', [
     set({ sec: 25 }), set({ sec: 35 })
   ])), { load: 0, value: 35 });
-});
-
-test('advice returns plus and keep with exact repetition texts', () => {
-  for (const [reps, expected] of [
-    [[12, 10, 9], { kind: 'plus', text: '各セット+1回を目標' }],
-    [[9, 7], { kind: 'keep', text: '今の負荷のまま、8回を目指す' }],
-    [[15, 8], { kind: 'plus', text: '各セット+1回を目標' }]
-  ]) {
-    const d = data({
-      sessions: [ses('2026-10-19', reps.map(reps => set({ reps })))]
-    });
-    assert.deepEqual(advice(d, 'e1', today), expected);
-  }
-});
-
-test('time advice uses seconds and a five-second increment', () => {
-  for (const [seconds, expected] of [
-    [[25, 19], { kind: 'keep', text: '今の負荷のまま、20秒を目指す' }],
-    [[30, 20], { kind: 'plus', text: '各セット+5秒を目標' }],
-    [[60, 65], { kind: 'set', text: 'セットを1つ増やす' }]
-  ]) {
-    const d = data({
-      exercises: [ex({ type: 'time', min: 20, max: 60 })],
-      sessions: [ses('2026-10-19', seconds.map(sec => set({ sec })))]
-    });
-    assert.deepEqual(advice(d, 'e1', today), expected);
-  }
-});
-
-test('next advice takes priority over load increases and resolves archived targets', () => {
-  for (const type of ['reps', 'band', 'weight']) {
-    const d = data({
-      exercises: [
-        ex({ type, nextId: 'e2' }),
-        ex({ id: 'e2', name: '足上げ腕立て', archived: true })
-      ],
-      bands,
-      sessions: [ses('2026-10-19', [
-        set({ reps: 15, bandId: type === 'band' ? 'r' : null, kg: type === 'weight' ? 6 : null })
-      ])]
-    });
-    assert.deepEqual(advice(d, 'e1', today), {
-      kind: 'next', text: '次の段階「足上げ腕立て」へ'
-    });
-    assert.deepEqual(prefill(d, 'e1', today), d.sessions[0].sets);
-  }
-});
-
-test('level-up chooses the next band by order or adds a set at the strongest band', () => {
-  for (const [bandId, expected] of [
-    ['r', { kind: 'band', text: 'バンドを「黒」に' }],
-    ['k', { kind: 'set', text: 'セットを1つ増やす' }]
-  ]) {
-    const d = data({
-      exercises: [ex({ type: 'band' })],
-      bands: [bands[2], bands[0], bands[1]],
-      sessions: [ses('2026-10-19', [
-        set({ reps: 15, bandId }), set({ reps: 16, bandId })
-      ])]
-    });
-    assert.deepEqual(advice(d, 'e1', today), expected);
-  }
-  assert.deepEqual(advice(data({
-    sessions: [ses('2026-10-19', [set({ reps: 15 })])]
-  }), 'e1', today), { kind: 'set', text: 'セットを1つ増やす' });
-});
-
-test('weight level-up has the exact text and prefills one kg above the maximum', () => {
-  const d = data({
-    exercises: [ex({ type: 'weight' })],
-    sessions: [ses('2026-10-19', [
-      set({ reps: 15, kg: 5 }), set({ reps: 16, kg: 6 })
-    ])]
-  });
-  const before = structuredClone(d);
-  assert.deepEqual(advice(d, 'e1', today), { kind: 'weight', text: '+1kg に' });
-  assert.deepEqual(prefill(d, 'e1', today), [
-    set({ reps: 15, kg: 7 }), set({ reps: 16, kg: 7 })
-  ]);
-  assert.deepEqual(d, before);
-});
-
-test('mixed-band level-up checks every set and upgrades from the strongest band', () => {
-  const d = data({
-    exercises: [ex({ type: 'band' })],
-    bands: [bands[2], bands[0], bands[1]],
-    sessions: [ses('2026-10-19', [
-      set({ reps: 16, bandId: 'y' }),
-      set({ reps: 15, bandId: 'r' })
-    ])]
-  });
-  const before = structuredClone(d);
-  assert.deepEqual(advice(d, 'e1', today), {
-    kind: 'band', text: 'バンドを「黒」に'
-  });
-  assert.deepEqual(prefill(d, 'e1', today), [
-    set({ reps: 16, bandId: 'k' }), set({ reps: 15, bandId: 'k' })
-  ]);
-  assert.deepEqual(d, before);
-
-  d.sessions[0].sets[0].reps = 14;
-  assert.deepEqual(advice(d, 'e1', today), {
-    kind: 'plus', text: '各セット+1回を目標'
-  });
-  assert.deepEqual(prefill(d, 'e1', today), d.sessions[0].sets);
-});
-
-test('mixed-weight sets below max prevent a load increase and retain their own kg', () => {
-  const d = data({
-    exercises: [ex({ type: 'weight' })],
-    sessions: [ses('2026-10-19', [
-      set({ reps: 14, kg: 5 }), set({ reps: 15, kg: 6 })
-    ])]
-  });
-  assert.deepEqual(advice(d, 'e1', today), {
-    kind: 'plus', text: '各セット+1回を目標'
-  });
-  assert.deepEqual(prefill(d, 'e1', today), d.sessions[0].sets);
-});
-
-test('rest requires three strictly declining tops at the same load', () => {
-  const d = data({
-    exercises: [ex({ type: 'band' })],
-    bands,
-    sessions: [
-      ses('2026-10-17', [set({ reps: 14, bandId: 'r' })]),
-      ses('2026-10-19', [set({ reps: 10, bandId: 'r' })]),
-      ses('2026-10-18', [set({ reps: 12, bandId: 'r' })])
-    ]
-  });
-  assert.deepEqual(advice(d, 'e1', today), {
-    kind: 'rest', text: '2回続けて下がっています。今日は軽めか休養を'
-  });
-  assert.deepEqual(prefill(d, 'e1', today), d.sessions[1].sets);
-
-  d.sessions[1].sets[0].bandId = 'k';
-  assert.equal(advice(d, 'e1', today).kind, 'plus');
-  d.sessions[1].sets[0].bandId = 'r';
-  d.sessions[1].sets[0].reps = 12;
-  assert.equal(advice(d, 'e1', today).kind, 'plus');
-  d.sessions.pop();
-  assert.equal(advice(d, 'e1', today).kind, 'plus');
-});
-
-test('rest takes priority over level-up', () => {
-  const d = data({
-    sessions: [
-      ses('2026-10-17', [set({ reps: 18 })]),
-      ses('2026-10-18', [set({ reps: 17 })]),
-      ses('2026-10-19', [set({ reps: 16 })])
-    ]
-  });
-  assert.deepEqual(advice(d, 'e1', today), {
-    kind: 'rest', text: '2回続けて下がっています。今日は軽めか休養を'
-  });
-});
-
-test('advice and prefill ignore today and light sessions', () => {
-  const previous = set({ reps: 9 });
-  const d = data({
-    sessions: [
-      ses('2026-10-17', [previous]),
-      ses('2026-10-19', [set({ reps: 15 })], { light: true }),
-      ses(today, [set({ reps: 15 })])
-    ]
-  });
-  assert.deepEqual(advice(d, 'e1', today), {
-    kind: 'plus', text: '各セット+1回を目標'
-  });
-  assert.deepEqual(prefill(d, 'e1', today), [previous]);
-  assert.notStrictEqual(prefill(d, 'e1', today)[0], previous);
-});
-
-test('no eligible history gives null advice and type-specific initial values', () => {
-  for (const [exercise, registeredBands, expected] of [
-    [ex(), bands, set({ reps: 8 })],
-    [ex({ type: 'band' }), [bands[2], bands[0], bands[1]], set({ reps: 8, bandId: 'y' })],
-    [ex({ type: 'band' }), [], set({ reps: 8 })],
-    [ex({ type: 'weight' }), bands, set({ reps: 8, kg: 5 })],
-    [ex({ type: 'time', min: 20, max: 60 }), bands, set({ sec: 20 })]
-  ]) {
-    const d = data({ exercises: [exercise], bands: registeredBands });
-    const before = structuredClone(d);
-    assert.equal(advice(d, 'e1', today), null);
-    assert.deepEqual(prefill(d, 'e1', today), [expected]);
-    assert.deepEqual(d, before);
-  }
-  const d = data({
-    sessions: [
-      ses(today, [set({ reps: 15 })]),
-      ses('2026-10-19', [set({ reps: 15 })], { light: true })
-    ]
-  });
-  assert.equal(advice(d, 'e1', today), null);
-  assert.deepEqual(prefill(d, 'e1', today), [set({ reps: 8 })]);
 });
 
 test('prefill filters other exercises and returns independent copies', () => {
@@ -529,19 +334,6 @@ test('weekStart returns Monday across weekdays and year boundaries', () => {
   assert.equal(weekStart('2027-01-01'), '2026-12-28');
 });
 
-test('weekStats preserves streak through illness but not fatigue', () => {
-  const d = data({
-    sessions: ['2026-10-12', '2026-10-14', '2026-10-16', '2026-10-05']
-      .map(date => ses(date, [set({ reps: 10 })])),
-    skips: [{ date: '2026-10-06', reason: '風邪' }]
-  });
-  assert.deepEqual(weekStats(d, today), {
-    days: 0, goal: 3, achieved: false, streak: 2, partSets: {}, marks: {}
-  });
-  d.skips[0].reason = '疲れ';
-  assert.equal(weekStats(d, today).streak, 1);
-});
-
 test('weekStats counts light days, archived parts and the full current week', () => {
   const d = data({
     exercises: [ex({ archived: true }), ex({ id: 'e2', part: '背中' })],
@@ -556,7 +348,7 @@ test('weekStats counts light days, archived parts and the full current week', ()
   });
   const before = structuredClone(d);
   assert.deepEqual(weekStats(d, today), {
-    days: 3, goal: 3, achieved: true, streak: 1,
+    days: 3,
     partSets: { 胸: 3, 背中: 1 },
     marks: {
       '2026-10-19': 'done', '2026-10-20': 'light',
@@ -601,130 +393,7 @@ test('bodyAvg7 uses inclusive seven-day bounds and ignores null waist', () => {
   assert.equal(bodyAvg7([{ date: today, kg: 68, waist: null }], today, 'waist'), null);
 });
 
-test('compare returns null when the old period has no sessions', () => {
-  assert.equal(compare(data(), today), null);
-  assert.equal(compare(data({
-    sessions: [
-      ses('2026-09-15', [set({ reps: 10 })]),
-      ses('2026-09-23', [set({ reps: 10 })]),
-      ses(today, [set({ reps: 12 })])
-    ]
-  }), today), null);
-});
-
-test('compare includes light and archived records and uses the strongest load', () => {
-  const d = data({
-    exercises: [
-      ex({ type: 'band', archived: true }),
-      ex({ id: 'e2', type: 'time', name: 'プランク' })
-    ],
-    bands,
-    sessions: [
-      ses('2026-09-16', [
-        set({ bandId: 'r', reps: 12 }), set({ exerciseId: 'e2', sec: 30 })
-      ]),
-      ses('2026-09-22', [set({ bandId: 'y', reps: 100 })]),
-      ses('2026-10-14', [
-        set({ bandId: 'r', reps: 100 }), set({ exerciseId: 'e2', sec: 45 })
-      ]),
-      ses(today, [set({ bandId: 'k', reps: 10 })], { light: true }),
-      ses('2026-10-21', [set({ bandId: 'k', reps: 999 })])
-    ],
-    body: [
-      { date: '2026-09-16', kg: 69, waist: 81 },
-      { date: '2026-09-22', kg: 69.2, waist: null },
-      { date: '2026-10-14', kg: 68, waist: 80.5 },
-      { date: today, kg: 68.1, waist: 80 }
-    ]
-  });
-  const before = structuredClone(d);
-  assert.deepEqual(compare(d, today), {
-    items: [
-      { exerciseId: 'e1', kind: 'load', text: '腕立て 赤→黒' },
-      { exerciseId: 'e2', kind: 'value', text: 'プランク 最高 30→45秒' }
-    ],
-    totalPct: -2, bodyKg: -1, waist: -0.7
-  });
-  assert.deepEqual(d, before);
-});
-
-test('compare sorts load increases then value rates with stable exercise ties and a three-item limit', () => {
-  const exercises = [
-    ex({ id: 'v1' }), ex({ id: 'w1', type: 'weight' }),
-    ex({ id: 'w2', type: 'weight' }), ex({ id: 'w3', type: 'weight' }),
-    ex({ id: 'v2' })
-  ];
-  const d = data({
-    exercises,
-    sessions: [
-      ses('2026-09-22', exercises.map(ex => set({ exerciseId: ex.id, reps: 10, kg: 5 }))),
-      ses(today, [
-        set({ exerciseId: 'w3', reps: 1, kg: 6 }),
-        set({ exerciseId: 'w2', reps: 1, kg: 7 }),
-        set({ exerciseId: 'w1', reps: 1, kg: 6 }),
-        set({ exerciseId: 'v2', reps: 30 }),
-        set({ exerciseId: 'v1', reps: 20 })
-      ])
-    ]
-  });
-  assert.deepEqual(compare(d, today).items.map(item => item.exerciseId), ['w2', 'w1', 'w3']);
-  d.exercises = exercises.filter(ex => ex.type !== 'weight');
-  d.sessions.forEach(session => {
-    session.sets = session.sets.filter(set => ['v1', 'v2'].includes(set.exerciseId));
-  });
-  assert.deepEqual(compare(d, today).items.map(item => item.exerciseId), ['v2', 'v1']);
-  d.sessions[1].sets[0].reps = 20;
-  assert.deepEqual(compare(d, today).items.map(item => item.exerciseId), ['v1', 'v2']);
-});
-
-test('compare omits decreases, unchanged values and zero baselines', () => {
-  const exercises = [
-    ex(), ex({ id: 'e2', type: 'weight' }), ex({ id: 'e3' }), ex({ id: 'e4' })
-  ];
-  const d = data({
-    exercises,
-    sessions: [
-      ses('2026-09-22', [
-        set({ reps: 12 }), set({ exerciseId: 'e2', reps: 10, kg: 6 }),
-        set({ exerciseId: 'e3', reps: 0 }), set({ exerciseId: 'e4', reps: 10 })
-      ]),
-      ses(today, [
-        set({ reps: 10 }), set({ exerciseId: 'e2', reps: 20, kg: 5 }),
-        set({ exerciseId: 'e3', reps: 10 }), set({ exerciseId: 'e4', reps: 10 })
-      ])
-    ]
-  });
-  assert.deepEqual(compare(d, today).items, []);
-  assert.equal(compare(d, today).bodyKg, null);
-  assert.equal(compare(d, today).waist, null);
-  assert.deepEqual(compare(data({
-    sessions: [ses('2026-09-22', [set({ reps: 0 })])]
-  }), today), { items: [], totalPct: null, bodyKg: null, waist: null });
-});
-
-test('compare displays missing bands and null kg in load changes', () => {
-  for (const bandId of [null, 'missing']) {
-    const d = data({
-      exercises: [ex({ type: 'band' })],
-      bands,
-      sessions: [
-        ses('2026-09-22', [set({ reps: 12, bandId })]),
-        ses(today, [set({ reps: 5, bandId: 'y' })])
-      ]
-    });
-    assert.equal(compare(d, today).items[0].text, '腕立て なし→黄');
-  }
-  const d = data({
-    exercises: [ex({ type: 'weight' })],
-    sessions: [
-      ses('2026-09-22', [set({ reps: 12 })]),
-      ses(today, [set({ reps: 5, kg: 6 })])
-    ]
-  });
-  assert.equal(compare(d, today).items[0].text, '腕立て 0→6kg');
-});
-
-test('consultText uses the specified sections, grouping, dates and target ordering', () => {
+test('consultText uses the specified sections, grouping, dates and load guidance', () => {
   const d = data({
     exercises: [
       ex({ name: '腕立て伏せ' }),
@@ -767,9 +436,8 @@ test('consultText uses the specified sections, grouping, dates and target orderi
     '10/13 68.2kg ウエスト80.5cm',
     '10/16 68.0kg',
     '',
-    '【目標範囲】',
-    '腕立て伏せ 8〜15回',
-    'プランク 20〜60秒'
+    '【負荷アップの目安】',
+    '1セット目が20回（時間は60秒）を超えたら負荷を上げる'
   ].join('\n'));
   assert.deepEqual(d, before);
 });
@@ -793,7 +461,7 @@ test('consultText includes exactly the last 28 days and omits empty sections', (
   assert.ok(!text.includes('【休み】'));
   assert.ok(!text.includes('【体】'));
   assert.equal(consultText(data(), today),
-    '自宅で自重とバンド中心に筋トレしています。以下の記録を見て、①伸びている点 ②停滞・偏り ③来週の具体的なメニュー提案 を短く教えてください。');
+    '自宅で自重とバンド中心に筋トレしています。以下の記録を見て、①伸びている点 ②停滞・偏り ③来週の具体的なメニュー提案 を短く教えてください。\n\n【負荷アップの目安】\n1セット目が20回（時間は60秒）を超えたら負荷を上げる');
 });
 
 test('consultText keeps exercise set order and consecutive load groups with missing-load prefixes', () => {
@@ -817,7 +485,7 @@ test('consultText keeps exercise set order and consecutive load groups with miss
   assert.ok(text.includes(
     '  重り: 0kg 8 / 6kg 10・10 / 0kg 7回\n  腕立て: なし 9・8 / 赤 7 / なし 6回'
   ));
-  assert.ok(text.endsWith('【目標範囲】\n腕立て 8〜15回\n重り 8〜15回'));
+  assert.ok(text.endsWith('【負荷アップの目安】\n1セット目が20回（時間は60秒）を超えたら負荷を上げる'));
 });
 
 test('parseImport rejects malformed JSON and invalid top-level shapes without changing current data', () => {
@@ -848,4 +516,230 @@ test('toBase64Utf8 encodes Japanese and large UTF-8 payloads without argument-li
   for (const text of ['', '腕立て', '筋トレ💪', '腕'.repeat(3_000_000)]) {
     assert.equal(toBase64Utf8(text), Buffer.from(text).toString('base64'));
   }
+});
+
+const withHistory = (values, exercise = ex(), entry = {}) => data({
+  exercises: [exercise],
+  bands,
+  sessions: values.map((v, i) => ses('2026-10-' + String(19 - i).padStart(2, '0'), [
+    set({ reps: exercise.type === 'time' ? null : v, sec: exercise.type === 'time' ? v : null, ...entry })
+  ]))
+});
+
+test('firstSet returns the first matching set or undefined', () => {
+  const a = set({ reps: 12 });
+  assert.strictEqual(firstSet(data(), ex(), ses(today, [
+    set({ exerciseId: 'e2', reps: 30 }), a, set({ reps: 20 })
+  ])), a);
+  assert.equal(firstSet(data(), ex(), ses(today, [])), undefined);
+});
+
+test('history selects first sets at the current load, excluding today and light sessions', () => {
+  const d = withHistory([12, 99, 13, 14, 15], ex({ type: 'band' }), { bandId: 'k' });
+  d.sessions[1].sets[0].bandId = 'r';
+  d.sessions[0].sets.push(set({ reps: 100, bandId: 'r' }));
+  d.sessions.push(ses(today, [set({ reps: 90, bandId: 'r' })]));
+  d.sessions.push(ses('2026-10-19', [set({ reps: 90, bandId: 'r' })], { light: true }));
+  const before = structuredClone(d);
+  assert.deepEqual(history(d, 'e1', today), { load: 3, values: [12, 13, 14] });
+  assert.deepEqual(history(data(), 'e1', today), { load: 0, values: [] });
+  assert.deepEqual(d, before);
+});
+
+test('line uses the upper median and the correct step', () => {
+  for (const [values, expected] of [
+    [[], { kind: 'base' }],
+    [[15, 14, 16], { kind: 'line', value: 16 }],
+    [[12, 15], { kind: 'line', value: 16 }],
+    [[12], { kind: 'line', value: 13 }],
+    [[12, 13, 14], { kind: 'down', value: 14 }],
+    [[15, 15, 14, 15, 14, 13], { kind: 'flat', value: 16 }]
+  ]) {
+    assert.deepEqual(line(withHistory(values), 'e1', today), expected);
+  }
+  assert.deepEqual(line(withHistory([40], ex({ type: 'time' })), 'e1', today),
+    { kind: 'line', value: 45 });
+});
+
+test('line load-up uses the first set, thresholds and next-stage priority', () => {
+  const d = withHistory([20], ex({ type: 'band' }), { bandId: 'r' });
+  assert.deepEqual(line(d, 'e1', today), { kind: 'up', next: '黒' });
+  d.exercises[0].nextId = 'e4';
+  d.exercises.push(ex({ id: 'e4', name: '足上げ腕立て', archived: true }));
+  d.sessions[0].sets[0].reps = 22;
+  assert.deepEqual(line(d, 'e1', today), { kind: 'up', next: '足上げ腕立て' });
+  assert.deepEqual(prefill(d, 'e1', today), d.sessions[0].sets);
+  assert.deepEqual(line(withHistory([20], ex({ type: 'weight' }), { kg: 5 }), 'e1', today),
+    { kind: 'up', next: '6kg' });
+  const timed = withHistory([60], ex({ type: 'time', nextId: 'e4' }));
+  timed.exercises.push(ex({ id: 'e4', name: '次' }));
+  assert.deepEqual(line(timed, 'e1', today), { kind: 'up', next: '次' });
+  assert.deepEqual(line(withHistory([20]), 'e1', today), { kind: 'line', value: 21 });
+  d.exercises[0].nextId = null;
+  d.sessions[0].sets[0].reps = 19;
+  d.sessions[0].sets.push(set({ reps: 99, bandId: 'k' }));
+  assert.deepEqual(line(d, 'e1', today), { kind: 'line', value: 20 });
+});
+
+test('flat requires six first sets at the same load and takes priority over down', () => {
+  const d = withHistory([12, 13, 14, 15, 14, 13], ex({ type: 'band' }), { bandId: 'k' });
+  assert.deepEqual(line(d, 'e1', today), { kind: 'flat', value: 14 });
+  d.sessions[5].sets[0].bandId = 'r';
+  assert.deepEqual(line(d, 'e1', today), { kind: 'down', value: 14 });
+  assert.deepEqual(line(withHistory([16, 15, 14, 15, 14, 13]), 'e1', today),
+    { kind: 'line', value: 16 });
+});
+
+test('lineResult compares only numeric lines', () => {
+  assert.deepEqual(lineResult({ kind: 'base' }, 12), { kind: 'base' });
+  assert.deepEqual(lineResult({ kind: 'up', next: '黒' }, 12), { kind: 'newload' });
+  for (const kind of ['line', 'flat', 'down']) {
+    assert.deepEqual(lineResult({ kind, value: 16 }, 16), { kind: 'clear' });
+    assert.deepEqual(lineResult({ kind, value: 16 }, 18), { kind: 'clear' });
+    assert.deepEqual(lineResult({ kind, value: 16 }, 15), { kind: 'short', diff: 1 });
+  }
+});
+
+test('lineText uses the specified pre-set strings', () => {
+  assert.equal(lineText({ kind: 'base' }, ex()), '初回。この1セットが基準になる');
+  assert.equal(lineText({ kind: 'line', value: 16 }, ex()), 'ライン 16');
+  assert.equal(lineText({ kind: 'line', value: 45 }, ex({ type: 'time' })), 'ライン 45秒');
+  assert.equal(lineText({ kind: 'up', next: '黒' }, ex()), '20回を超えた。次は黒で。');
+  assert.equal(lineText({ kind: 'up', next: '次' }, ex({ type: 'time' })), '60秒を超えた。次は次で。');
+  assert.equal(lineText({ kind: 'flat', value: 16 }, ex()), '3回、横ばい。負荷を変えるか、1日休むタイミング');
+  assert.equal(lineText({ kind: 'down', value: 14 }, ex()), '下がり続けている。今日は軽めでいい');
+});
+
+test('prefill uses fixed defaults without eligible history', () => {
+  for (const [exercise, expected] of [
+    [ex(), set({ reps: 10 })],
+    [ex({ type: 'time' }), set({ sec: 30 })],
+    [ex({ type: 'weight' }), set({ reps: 10, kg: 5 })],
+    [ex({ type: 'band' }), set({ reps: 10, bandId: 'y' })]
+  ]) {
+    const d = data({ exercises: [exercise], bands: [bands[2], bands[0], bands[1]],
+      sessions: [ses(today, [set({ reps: 99 })]), ses('2026-10-19', [set({ reps: 99 })], { light: true })] });
+    assert.deepEqual(prefill(d, 'e1', today), [expected]);
+    assert.deepEqual(line(d, 'e1', today), { kind: 'base' });
+  }
+  assert.deepEqual(prefill(data({ exercises: [ex({ type: 'band' })] }), 'e1', today),
+    [set({ reps: 10 })]);
+});
+
+test('prefill upgrades every set from the first-set load and otherwise keeps values', () => {
+  for (const type of ['band', 'weight']) {
+    const d = withHistory([20], ex({ type }), { bandId: type === 'band' ? 'r' : null, kg: type === 'weight' ? 5 : null });
+    d.sessions[0].sets.push(set({ reps: 8, bandId: type === 'band' ? 'y' : null, kg: type === 'weight' ? 10 : null }));
+    const before = structuredClone(d);
+    const result = prefill(d, 'e1', today);
+    assert.deepEqual(result.map(s => type === 'band' ? s.bandId : s.kg),
+      type === 'band' ? ['k', 'k'] : [6, 6]);
+    assert.deepEqual(result.map(s => s.reps), [20, 8]);
+    assert.deepEqual(d, before);
+    d.sessions[0].sets[0].reps = 19;
+    assert.deepEqual(prefill(d, 'e1', today), d.sessions[0].sets);
+  }
+});
+
+test('totalDays counts distinct dates including light sessions', () => {
+  assert.equal(totalDays(data()), 0);
+  assert.equal(totalDays(data({ sessions: [
+    ses(today, []), ses(today, [], { id: 'other' }),
+    ses('2026-10-19', [], { light: true })
+  ] })), 2);
+});
+
+test('old min, max and weeklyGoal fields do not affect lines, prefill, stats or feed', () => {
+  const d = withHistory([15, 14, 16], ex({ name: '腕立て伏せ', min: 8, max: 15 }));
+  d.settings.weeklyGoal = 3;
+  d.sessions.push(ses(today, [set({ reps: 16 })]));
+  assert.deepEqual(line(d, 'e1', today), { kind: 'line', value: 16 });
+  assert.deepEqual(prefill(d, 'e1', today), [set({ reps: 15 })]);
+  assert.deepEqual(weekStats(d, today), {
+    days: 2, partSets: { 胸: 2 }, marks: { '2026-10-19': 'done', '2026-10-20': 'done' }
+  });
+  assert.deepEqual(feed(d, today), [
+    { id: 'clear:e1:2026-10-20', at: today, kind: 'clear', text: '腕立て伏せ ライン16を突破' }
+  ]);
+  const before = [line(d, 'e1', today), prefill(d, 'e1', today), weekStats(d, today), feed(d, today)];
+  delete d.exercises[0].min;
+  delete d.exercises[0].max;
+  delete d.settings.weeklyGoal;
+  assert.deepEqual([line(d, 'e1', today), prefill(d, 'e1', today), weekStats(d, today), feed(d, today)], before);
+});
+
+test('feed uses the latest session through today and one item of each kind in exercise order', () => {
+  const d = data({
+    exercises: [ex({ name: '腕立て伏せ' }), ex({ id: 'e2' })],
+    sessions: [
+      ses('2026-10-19', [set({ exerciseId: 'e2', reps: 14 }), set({ reps: 15 })]),
+      ses(today, [set({ exerciseId: 'e2', reps: 16 }), set({ reps: 16 })]),
+      ses('2026-10-21', [set({ reps: 99 })])
+    ]
+  });
+  const before = structuredClone(d);
+  assert.deepEqual(feed(d, today), [
+    { id: 'clear:e1:2026-10-20', at: today, kind: 'clear', text: '腕立て伏せ ライン16を突破' },
+    { id: 'pr:e1:2026-10-20', at: today, kind: 'pr', text: '腕立て伏せ 自己ベスト 16回' }
+  ]);
+  assert.equal(new Set(feed(d, today).map(item => item.kind)).size, feed(d, today).length);
+  assert.deepEqual(d, before);
+  assert.deepEqual(feed(data(), today), []);
+});
+
+test('feed does not compare a first set at a different load', () => {
+  const d = withHistory([15], ex({ type: 'band' }), { bandId: 'k' });
+  d.sessions.push(ses(today, [set({ reps: 16, bandId: 'r' })]));
+  assert.ok(!feed(d, today).some(item => item.kind === 'clear'));
+});
+
+test('feed includes load and stage events in the specified kind order', () => {
+  const d = data({
+    exercises: [
+      ex({ type: 'band' }), ex({ id: 'e2', nextId: 'e3' }),
+      ex({ id: 'e3', name: '足上げ腕立て' })
+    ],
+    bands,
+    sessions: [
+      ses('2026-10-19', [set({ reps: 15, bandId: 'r' })]),
+      ses(today, [set({ reps: 10, bandId: 'k' }), set({ exerciseId: 'e3', reps: 12 })])
+    ]
+  });
+  assert.deepEqual(feed(d, today), [
+    { id: 'load:e1:2026-10-20', at: today, kind: 'load', text: '腕立て 赤→黒' },
+    { id: 'stage:e3:2026-10-20', at: today, kind: 'stage', text: '足上げ腕立て に進んだ' }
+  ]);
+});
+
+test('feed near uses the next milestone, its unit and the inclusive ten-percent boundary', () => {
+  for (const [sum, milestone, diff] of [[90, 100, 10], [95, 100, 5], [450, 500, 50], [900, 1000, 100], [1800, 2000, 200]]) {
+    const d = data({ exercises: [ex({ name: '腕立て伏せ' })],
+      sessions: [ses(today, [set({ reps: sum })])] });
+    assert.deepEqual(feed(d, today), [{
+      id: 'near:e1:' + milestone, at: today, kind: 'near',
+      text: '累計腕立て伏せ ' + milestone + '回まで あと' + diff + '回'
+    }]);
+  }
+  for (const sum of [89, 100, 500, 1000]) {
+    assert.deepEqual(feed(data({ sessions: [ses(today, [set({ reps: sum })])] }), today), []);
+  }
+  const timed = data({ exercises: [ex({ type: 'time', name: 'プランク' })],
+    sessions: [ses(today, [set({ sec: 95 })], { light: true })] });
+  assert.equal(feed(timed, today)[0].text, '累計プランク 100秒まで あと5秒');
+});
+
+test('mergeFeed pins only unread replies then orders dates without truncating posts or items', () => {
+  const own = [{ id: 'clear:e1:2026-10-20', at: today, kind: 'clear', text: '記録' }];
+  const posts = [
+    { id: 'reply', at: '2026-10-18T07:30:00+09:00', kind: 'reply', quote: 'メモ', text: '返信' },
+    { id: 'reading', at: '2026-10-20T07:30:00+09:00', kind: 'reading', text: '本文', source: { title: '資料', url: 'https://example.com' } },
+    { id: 'weekly', at: '2026-10-19T07:30:00+09:00', kind: 'weekly', text: '週次' }
+  ];
+  const before = structuredClone([own, posts]);
+  assert.deepEqual(mergeFeed(own, posts, []).map(item => item.id),
+    ['reply', 'reading', 'clear:e1:2026-10-20', 'weekly']);
+  assert.deepEqual(mergeFeed(own, posts, ['reply']).map(item => item.id),
+    ['reading', 'clear:e1:2026-10-20', 'weekly', 'reply']);
+  assert.deepEqual(mergeFeed([], [], []), []);
+  assert.deepEqual([own, posts], before);
 });

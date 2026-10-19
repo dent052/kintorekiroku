@@ -4,8 +4,6 @@
  * @property {string} name
  * @property {'reps'|'band'|'time'|'weight'} type
  * @property {'胸'|'背中'|'脚'|'肩'|'腕'|'体幹'|'全身'} part
- * @property {number} min
- * @property {number} max
  * @property {string|null} nextId
  * @property {boolean} archived
  *
@@ -15,7 +13,7 @@
  * @typedef {{id: string, date: string, light: boolean, note: string, sets: Set[]}} Session
  * @typedef {{date: string, reason: '風邪'|'疲れ'|'予定'|'その他'}} Skip
  * @typedef {{date: string, kg: number, waist: number|null}} Body
- * @typedef {{weeklyGoal: number, restSec: number}} Settings
+ * @typedef {{restSec: number}} Settings
  * @typedef {{version: 1, updatedAt: string, exercises: Exercise[], bands: Band[], templates: Template[], sessions: Session[], skips: Skip[], body: Body[], settings: Settings}} Data
  */
 
@@ -70,51 +68,69 @@ function nextBand(data, currentLoad) {
     .sort((a, b) => a.order - b.order)[0];
 }
 
+/** @param {Data} data @param {Exercise} ex @param {Session} session */
+export function firstSet(data, ex, session) {
+  return session.sets.find(set => set.exerciseId === ex.id);
+}
+
 /** @param {Data} data */
-export function advice(data, exerciseId, today) {
-  const sessions = recent(data, exerciseId, today, 3);
-  if (sessions.length === 0) return null;
-
+export function history(data, exerciseId, today) {
   const ex = data.exercises.find(ex => ex.id === exerciseId);
-  if (sessions.length === 3) {
-    const [s1, s2, s3] = sessions.map(session => top(data, ex, session));
-    if (
-      s1.load === s2.load &&
-      s2.load === s3.load &&
-      s3.value > s2.value &&
-      s2.value > s1.value
-    ) {
-      return {
-        kind: 'rest',
-        text: '2回続けて下がっています。今日は軽めか休養を'
-      };
-    }
-  }
-
-  const sets = sessions[0].sets.filter(set => set.exerciseId === exerciseId);
-  if (sets.every(set => value(ex, set) >= ex.max)) {
-    if (ex.nextId !== null) {
-      const next = data.exercises.find(exercise => exercise.id === ex.nextId);
-      return { kind: 'next', text: `次の段階「${next.name}」へ` };
-    }
-    if (ex.type === 'band') {
-      const band = nextBand(data, top(data, ex, sessions[0]).load);
-      if (band) return { kind: 'band', text: `バンドを「${band.name}」に` };
-    }
-    if (ex.type === 'weight') return { kind: 'weight', text: '+1kg に' };
-    return { kind: 'set', text: 'セットを1つ増やす' };
-  }
-
-  if (sets.some(set => value(ex, set) < ex.min)) {
-    return {
-      kind: 'keep',
-      text: `今の負荷のまま、${ex.min}${ex.type === 'time' ? '秒' : '回'}を目指す`
-    };
-  }
+  const sets = recent(data, exerciseId, today, Infinity)
+    .map(session => firstSet(data, ex, session));
+  const currentLoad = sets.length ? load(data, ex, sets[0]) : 0;
   return {
-    kind: 'plus',
-    text: ex.type === 'time' ? '各セット+5秒を目標' : '各セット+1回を目標'
+    load: currentLoad,
+    values: sets.filter(set => load(data, ex, set) === currentLoad)
+      .slice(0, 3).map(set => value(ex, set))
   };
+}
+
+/** @param {Data} data */
+export function line(data, exerciseId, today) {
+  const ex = data.exercises.find(ex => ex.id === exerciseId);
+  const h = history(data, exerciseId, today);
+  if (h.values.length === 0) return { kind: 'base' };
+
+  const next = data.exercises.find(entry => entry.id === ex.nextId);
+  const band = ex.type === 'band' ? nextBand(data, h.load) : undefined;
+  if (h.values[0] >= (ex.type === 'time' ? 60 : 20)) {
+    if (next) return { kind: 'up', next: next.name };
+    if (band) return { kind: 'up', next: band.name };
+    if (ex.type === 'weight') return { kind: 'up', next: `${h.load + 1}kg` };
+  }
+
+  const sorted = [...h.values].sort((a, b) => a - b);
+  const target = sorted[Math.floor(sorted.length / 2)] + (ex.type === 'time' ? 5 : 1);
+  const values = recent(data, exerciseId, today, Infinity)
+    .map(session => firstSet(data, ex, session))
+    .filter(set => load(data, ex, set) === h.load)
+    .slice(0, 6).map(set => value(ex, set));
+  if (values.length === 6 &&
+      Math.max(...values.slice(0, 3)) <= Math.max(...values.slice(3))) {
+    return { kind: 'flat', value: target };
+  }
+  if (h.values.length === 3 && h.values[0] < h.values[1] && h.values[1] < h.values[2]) {
+    return { kind: 'down', value: target };
+  }
+  return { kind: 'line', value: target };
+}
+
+export function lineResult(l, firstValue) {
+  if (l.kind === 'base') return { kind: 'base' };
+  if (l.kind === 'up') return { kind: 'newload' };
+  return firstValue >= l.value
+    ? { kind: 'clear' }
+    : { kind: 'short', diff: l.value - firstValue };
+}
+
+/** @param {Exercise} ex */
+export function lineText(l, ex) {
+  if (l.kind === 'base') return '初回。この1セットが基準になる';
+  if (l.kind === 'up') return `${ex.type === 'time' ? '60秒' : '20回'}を超えた。次は${l.next}で。`;
+  if (l.kind === 'flat') return '3回、横ばい。負荷を変えるか、1日休むタイミング';
+  if (l.kind === 'down') return '下がり続けている。今日は軽めでいい';
+  return `ライン ${l.value}${ex.type === 'time' ? '秒' : ''}`;
 }
 
 /** @param {Data} data @returns {Set[]} */
@@ -124,8 +140,8 @@ export function prefill(data, exerciseId, today) {
   if (!session) {
     return [{
       exerciseId,
-      reps: ex.type === 'time' ? null : ex.min,
-      sec: ex.type === 'time' ? ex.min : null,
+      reps: ex.type === 'time' ? null : 10,
+      sec: ex.type === 'time' ? 30 : null,
       kg: ex.type === 'weight' ? 5 : null,
       bandId: ex.type === 'band'
         ? [...data.bands].sort((a, b) => a.order - b.order)[0]?.id ?? null
@@ -136,14 +152,15 @@ export function prefill(data, exerciseId, today) {
   const sets = session.sets
     .filter(set => set.exerciseId === exerciseId)
     .map(set => ({ ...set }));
-  const { kind } = advice(data, exerciseId, today);
-  if (kind === 'band') {
-    const band = nextBand(data, top(data, ex, session).load);
-    return sets.map(set => ({ ...set, bandId: band.id }));
-  }
-  if (kind === 'weight') {
-    const kg = top(data, ex, session).load + 1;
-    return sets.map(set => ({ ...set, kg }));
+  if (line(data, exerciseId, today).kind === 'up' && !ex.nextId) {
+    const currentLoad = load(data, ex, firstSet(data, ex, session));
+    if (ex.type === 'band') {
+      const band = nextBand(data, currentLoad);
+      return sets.map(set => ({ ...set, bandId: band.id }));
+    }
+    if (ex.type === 'weight') {
+      return sets.map(set => ({ ...set, kg: currentLoad + 1 }));
+    }
   }
   return sets;
 }
@@ -269,20 +286,7 @@ export function weekStats(data, today) {
   const start = weekStart(today);
   const end = dateOffset(start, 6);
   const sessions = inRange(data.sessions, start, end);
-  const goal = data.settings.weeklyGoal;
   const days = new Set(sessions.map(session => session.date)).size;
-  const achieved = days >= goal;
-  let streak = achieved ? 1 : 0;
-
-  for (let week = dateOffset(start, -7); ; week = dateOffset(week, -7)) {
-    const last = dateOffset(week, 6);
-    const count = new Set(inRange(data.sessions, week, last)
-      .map(session => session.date)).size;
-    const restWeek = inRange(data.skips, week, last)
-      .some(skip => skip.reason === '風邪');
-    if (count < goal && !restWeek) break;
-    streak++;
-  }
 
   const partSets = {};
   for (const ex of data.exercises) {
@@ -291,7 +295,7 @@ export function weekStats(data, today) {
     if (count > 0) partSets[ex.part] = (partSets[ex.part] ?? 0) + count;
   }
   return {
-    days, goal, achieved, streak, partSets,
+    days, partSets,
     marks: marksInRange(data, start, end)
   };
 }
@@ -314,65 +318,63 @@ export function bodyAvg7(body, date, key) {
   return average(inRange(body, dateOffset(date, -6), date), key);
 }
 
+/** @param {Data} data */
+export function totalDays(data) {
+  return new Set(data.sessions.map(session => session.date)).size;
+}
+
 /** @param {Data} data @param {string} today */
-export function compare(data, today) {
-  const a = inRange(data.sessions, dateOffset(today, -6), today);
-  const b = inRange(data.sessions, dateOffset(today, -34), dateOffset(today, -28));
-  if (b.length === 0) return null;
+export function feed(data, today) {
+  const current = { ...data, sessions: data.sessions.filter(session => session.date <= today) };
+  const [session] = [...current.sessions].sort((a, b) => b.date.localeCompare(a.date));
+  if (!session) return [];
 
   const items = [];
+  const events = sessionEvents(current, session.id);
+  const sums = totals(current);
   for (const ex of data.exercises) {
-    const aSets = a.flatMap(session => session.sets)
-      .filter(set => set.exerciseId === ex.id);
-    const bSets = b.flatMap(session => session.sets)
-      .filter(set => set.exerciseId === ex.id);
-    if (aSets.length === 0 || bSets.length === 0) continue;
-    const current = top(data, ex, { sets: aSets });
-    const previous = top(data, ex, { sets: bSets });
-    if (current.load > previous.load) {
-      const bandName = order => data.bands.find(band => band.order === order)?.name ?? 'なし';
-      const change = ex.type === 'band'
-        ? `${bandName(previous.load)}→${bandName(current.load)}`
-        : `${previous.load}→${current.load}kg`;
+    const first = firstSet(current, ex, session);
+    if (first) {
+      const l = line(current, ex.id, session.date);
+      if (load(current, ex, first) === history(current, ex.id, session.date).load &&
+          lineResult(l, value(ex, first)).kind === 'clear') {
+        items.push({
+          id: `clear:${ex.id}:${session.date}`, at: session.date,
+          kind: 'clear', text: `${ex.name} ライン${l.value}を突破`
+        });
+      }
+    }
+    const event = events.find(event => event.exerciseId === ex.id);
+    if (event) {
       items.push({
-        exerciseId: ex.id, kind: 'load', text: `${ex.name} ${change}`,
-        increase: current.load - previous.load
+        id: `${event.kind}:${ex.id}:${session.date}`,
+        at: session.date, kind: event.kind, text: event.text
       });
-    } else if (
-      current.load === previous.load &&
-      previous.value !== 0 &&
-      current.value > previous.value
-    ) {
+    }
+
+    const sum = sums[ex.id] ?? 0;
+    const milestone = sum < 100 ? 100 : sum < 500 ? 500 : (Math.floor(sum / 1000) + 1) * 1000;
+    if (milestone - sum <= milestone * 0.1) {
+      const unit = ex.type === 'time' ? '秒' : '回';
       items.push({
-        exerciseId: ex.id,
-        kind: 'value',
-        text: `${ex.name} 最高 ${previous.value}→${current.value}${ex.type === 'time' ? '秒' : '回'}`,
-        increase: (current.value - previous.value) / previous.value
+        id: `near:${ex.id}:${milestone}`, at: session.date, kind: 'near',
+        text: `累計${ex.name} ${milestone}${unit}まで あと${milestone - sum}${unit}`
       });
     }
   }
-  items.sort((a, b) =>
-    (a.kind === b.kind ? b.increase - a.increase : a.kind === 'load' ? -1 : 1));
 
-  const sumReps = sessions => sessions.reduce((sum, session) =>
-    sum + session.sets.reduce((total, set) => {
-      const ex = data.exercises.find(ex => ex.id === set.exerciseId);
-      return total + (ex.type === 'time' ? 0 : set.reps);
-    }, 0), 0);
-  const oldTotal = sumReps(b);
-  const difference = key => {
-    const current = bodyAvg7(data.body, today, key);
-    const previous = bodyAvg7(data.body, dateOffset(today, -28), key);
-    return current === null || previous === null
-      ? null
-      : Math.round((current - previous) * 10) / 10;
-  };
-  return {
-    items: items.slice(0, 3).map(({ exerciseId, text, kind }) => ({ exerciseId, text, kind })),
-    totalPct: oldTotal === 0 ? null : Math.round((sumReps(a) - oldTotal) / oldTotal * 100),
-    bodyKg: difference('kg'),
-    waist: difference('waist')
-  };
+  const kinds = ['clear', 'pr', 'load', 'stage', 'near'];
+  return kinds.flatMap(kind => {
+    const item = items.find(item => item.kind === kind);
+    return item ? [item] : [];
+  }).sort((a, b) => b.at.localeCompare(a.at));
+}
+
+export function mergeFeed(own, posts, seen) {
+  const unreadReply = item => item.kind === 'reply' && !seen.includes(item.id);
+  return [...own.map(item => ({ ...item, at: item.at.slice(0, 10) })), ...posts]
+    .sort((a, b) => Number(unreadReply(b)) - Number(unreadReply(a)) ||
+      b.at.localeCompare(a.at));
 }
 
 /** @param {Data} data @param {string} today */
@@ -427,13 +429,7 @@ export function consultText(data, today) {
     )].join('\n'));
   }
 
-  const ids = new Set(sessions.flatMap(session => session.sets.map(set => set.exerciseId)));
-  const exercises = data.exercises.filter(ex => !ex.archived && ids.has(ex.id));
-  if (exercises.length > 0) {
-    sections.push(['【目標範囲】', ...exercises.map(ex =>
-      `${ex.name} ${ex.min}〜${ex.max}${ex.type === 'time' ? '秒' : '回'}`
-    )].join('\n'));
-  }
+  sections.push('【負荷アップの目安】\n1セット目が20回（時間は60秒）を超えたら負荷を上げる');
   return sections.join('\n\n');
 }
 
