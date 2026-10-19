@@ -1,6 +1,7 @@
 import {
   localDate, parseImport, value, recent, advice, prefill, rows,
-  prKind, sessionEvents, weekStats, weekStart, compare
+  prKind, sessionEvents, weekStats, weekStart, compare,
+  top, load, totals, bodyAvg7, calendar
 } from './logic.js';
 
 /** @typedef {import('./logic.js').Data} Data */
@@ -696,8 +697,358 @@ function startTimer(sec) {
   tick();
 }
 
+let historyTab = 'exercise';
+let historyExerciseId = null;
+let historyDate = null;
+
+function shortDate(date) {
+  return date.split('-').slice(1).map(Number).join('/');
+}
+
+function lineChart(points, opts = {}) {
+  if (!points.length) return '<p class="dim">まだ記録がありません</p>';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 328 180');
+  svg.setAttribute('class', 'history-chart');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', '記録の推移');
+  const add = (tag, attrs, text) => {
+    const node = document.createElementNS(svg.namespaceURI, tag);
+    for (const [key, val] of Object.entries(attrs)) node.setAttribute(key, String(val));
+    if (text !== undefined) node.textContent = text;
+    svg.append(node);
+    return node;
+  };
+  const smooth = opts.smooth ?? [];
+  const values = [...points, ...smooth].map(point => point.y);
+  const body = opts.smooth !== undefined;
+  const min = body ? Math.floor(Math.min(...values) - 1) : 0;
+  const max = body
+    ? Math.ceil(Math.max(...values) + 1)
+    : Math.max(5, Math.ceil(Math.max(...values) / 5) * 5);
+  const dateNumber = date => {
+    const [year, month, day] = date.split('-').map(Number);
+    return Date.UTC(year, month - 1, day);
+  };
+  const first = dateNumber(points[0].x);
+  const last = dateNumber(points[points.length - 1].x);
+  const x = point => first === last ? 175
+    : 36 + (dateNumber(point.x) - first) / (last - first) * 280;
+  const y = point => 140 - (point.y - min) / (max - min) * 120;
+  for (const fraction of [0, 0.5, 1]) {
+    const height = 140 - fraction * 120;
+    const amount = min + (max - min) * fraction;
+    add('line', {
+      x1: 32, y1: height, x2: 328, y2: height, stroke: 'var(--line)'
+    });
+    add('text', {
+      x: 28, y: height + 4, fill: 'var(--fg2)',
+      'text-anchor': 'end', 'font-size': 11
+    }, body ? Math.round(amount * 10) / 10 : amount);
+  }
+  const indices = [...new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])];
+  for (const index of indices) {
+    const point = points[index];
+    add('text', {
+      x: x(point), y: 172, fill: 'var(--fg2)', 'font-size': 11,
+      'text-anchor': indices.length === 1 ? 'middle'
+        : index === 0 ? 'start' : index === points.length - 1 ? 'end' : 'middle'
+    }, shortDate(point.x));
+  }
+  if (!body) {
+    const runs = [];
+    for (const point of points) {
+      const color = point.color ?? 'var(--fg2)';
+      const run = runs[runs.length - 1];
+      if (run?.color === color) run.points.push(point);
+      else runs.push({ color, points: [point] });
+    }
+    for (const run of runs) {
+      if (run.points.length > 1) {
+        add('polyline', {
+          fill: 'none', stroke: run.color, 'stroke-width': 3,
+          points: run.points.map(point => `${x(point)},${y(point)}`).join(' ')
+        });
+      }
+      const point = run.points[0];
+      if (point.label) {
+        add('text', {
+          x: x(point), y: Math.min(156, y(point) + 18),
+          fill: run.color, 'font-size': 12,
+          'text-anchor': x(point) > 250 ? 'end' : 'start'
+        }, point.label);
+      }
+    }
+  }
+  if (smooth.length > 1) {
+    add('polyline', {
+      fill: 'none', stroke: 'var(--primary)', 'stroke-width': 3,
+      points: smooth.map(point => `${x(point)},${y(point)}`).join(' ')
+    });
+  }
+  points.forEach((point, index) => {
+    const final = index === points.length - 1;
+    add('circle', {
+      cx: x(point), cy: y(point), r: final ? 5 : 4,
+      fill: point.color ?? 'var(--fg2)',
+      ...(final ? { stroke: 'var(--fg)', 'stroke-width': 2 } : {})
+    });
+  });
+  return svg.outerHTML;
+}
+
 function renderHistory() {
-  view.innerHTML = '<h1>履歴</h1>';
+  view.replaceChildren();
+  const history = element('div', '', 'history stack');
+  const segmented = element('div', '', 'seg');
+  for (const [id, title] of [['exercise', '種目'], ['body', '体'], ['date', '日付']]) {
+    const button = action(title, () => {
+      historyTab = id;
+      render();
+    }, historyTab === id ? 'on' : '');
+    button.setAttribute('aria-pressed', String(historyTab === id));
+    segmented.append(button);
+  }
+  history.append(segmented);
+  view.append(history);
+  if (historyTab === 'exercise') renderExerciseHistory(history);
+  else if (historyTab === 'body') renderBodyHistory(history);
+  else renderCalendar(history);
+}
+
+function renderExerciseHistory(parent) {
+  const exercises = state.exercises.filter(ex =>
+    state.sessions.some(session => session.sets.some(set => set.exerciseId === ex.id)));
+  if (!exercises.length) {
+    parent.append(element('p', 'まだ記録がありません', 'dim'));
+    return;
+  }
+  if (!exercises.some(ex => ex.id === historyExerciseId)) {
+    historyExerciseId = [...exercises].sort((a, b) => {
+      const latest = ex => state.sessions
+        .filter(session => session.sets.some(set => set.exerciseId === ex.id))
+        .reduce((date, session) => session.date > date ? session.date : date, '');
+      return latest(b).localeCompare(latest(a));
+    })[0].id;
+  }
+  const picker = element('select', '', 'pick');
+  picker.setAttribute('aria-label', '種目');
+  for (const ex of exercises) {
+    const option = element('option', ex.name);
+    option.value = ex.id;
+    picker.append(option);
+  }
+  picker.value = historyExerciseId;
+  picker.addEventListener('change', () => {
+    historyExerciseId = picker.value;
+    render();
+  });
+  parent.append(picker);
+
+  const ex = exercises.find(ex => ex.id === historyExerciseId);
+  const sessions = state.sessions
+    .filter(session => session.sets.some(set => set.exerciseId === ex.id))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const records = sessions.map(session => ({ session, ...top(state, ex, session) }));
+  const loads = [...new Set(sessions.flatMap(session => session.sets
+    .filter(set => set.exerciseId === ex.id)
+    .map(set => load(state, ex, set))))].sort((a, b) => a - b);
+  const palette = ['var(--fg2)', 'var(--primary)', 'var(--accent)', '#60A5FA'];
+  const loadName = amount => ex.type === 'band'
+    ? state.bands.find(band => band.order === amount)?.name ?? 'なし'
+    : ex.type === 'weight' ? `${amount}kg` : '';
+  const chart = element('div');
+  chart.innerHTML = lineChart(records.map((record, index) => ({
+    x: record.session.date,
+    y: record.value,
+    color: palette[loads.indexOf(record.load) % palette.length],
+    label: index === 0 || record.load !== records[index - 1].load
+      ? loadName(record.load) : ''
+  })));
+  parent.append(chart);
+
+  const current = records[records.length - 1].load;
+  const best = Math.max(...sessions.flatMap(session => session.sets
+    .filter(set => set.exerciseId === ex.id && load(state, ex, set) === current)
+    .map(set => value(ex, set))));
+  const unit = ex.type === 'time' ? '秒' : '回';
+  const stats = element('div', '', 'stats');
+  const stat = (amount, title, suffix = '') => {
+    const item = element('div');
+    const number = element('span', String(amount), 'num');
+    if (suffix) number.append(element('small', ` ${suffix}`, 'dim'));
+    item.append(number, element('span', title, 'dim'));
+    stats.append(item);
+  };
+  const currentName = loadName(current);
+  stat(best, `最高${currentName ? `（${currentName}）` : ''}`, unit);
+  if (ex.type === 'band' || ex.type === 'weight') {
+    stat(currentName, ex.type === 'band' ? '今のバンド' : '今の重さ');
+  }
+  stat(totals(state)[ex.id].toLocaleString('ja-JP'),
+    ex.type === 'time' ? '累計秒数' : '累計回数');
+  parent.append(stats);
+
+  const list = element('div', '', 'history-log stack');
+  for (const session of [...sessions].reverse()) {
+    const row = element('div', '', 'history-log-row');
+    row.append(element('span', shortDate(session.date), 'dim'));
+    if (ex.type === 'band' || ex.type === 'weight') {
+      const groups = [];
+      for (const set of session.sets.filter(set => set.exerciseId === ex.id)) {
+        const amount = load(state, ex, set);
+        const name = ex.type === 'band'
+          ? state.bands.find(band => band.id === set.bandId)?.name ?? 'なし'
+          : `${set.kg ?? 0}kg`;
+        const last = groups[groups.length - 1];
+        if (last?.name === name) last.values.push(value(ex, set));
+        else groups.push({ name, amount, values: [value(ex, set)] });
+      }
+      const content = element('div', '', 'stack');
+      for (const group of groups) {
+        const line = element('div', '', 'history-load');
+        const chips = element('div', '', 'chips');
+        const chip = element('span', group.name, 'chip on');
+        chip.style.background = palette[loads.indexOf(group.amount) % palette.length];
+        chips.append(chip);
+        line.append(chips, element('b', group.values.join('・'), 'num'));
+        content.append(line);
+      }
+      row.append(content);
+    } else {
+      row.append(element('b', previousText(ex, session), 'num'));
+    }
+    list.append(row);
+  }
+  parent.append(list);
+}
+
+function renderBodyHistory(parent) {
+  const entries = [...state.body].sort((a, b) => a.date.localeCompare(b.date));
+  const hasWaist = entries.some(entry => entry.waist !== null);
+  for (const [key, title] of [['kg', '体重 kg'], ['waist', 'ウエスト cm']]) {
+    if (key === 'waist' && !hasWaist) continue;
+    const section = element('section', '', 'stack');
+    const points = entries.filter(entry => entry[key] !== null)
+      .map(entry => ({ x: entry.date, y: entry[key], color: 'var(--muted)' }));
+    const chart = element('div');
+    chart.innerHTML = lineChart(points, {
+      smooth: points.map(point => ({
+        x: point.x,
+        y: bodyAvg7(state.body, point.x, key)
+      }))
+    });
+    section.append(element('h2', title), chart);
+    parent.append(section);
+  }
+  const list = element('div', '', 'stack body-log');
+  for (const entry of [...entries].reverse()) {
+    list.append(element('p',
+      `${shortDate(entry.date)}  ${entry.kg.toFixed(1)}kg`
+      + (hasWaist && entry.waist !== null
+        ? `  ウエスト${entry.waist.toFixed(1)}cm` : '')));
+  }
+  parent.append(list);
+}
+
+function renderCalendar(parent) {
+  const today = localDate(new Date());
+  const marks = calendar(state, today);
+  const grid = element('div', '', 'calendar');
+  for (const day of '月火水木金土日') {
+    grid.append(element('span', day, 'calendar-heading dim'));
+  }
+  const [year, month, day] = weekStart(today).split('-').map(Number);
+  for (let i = 0; i < 84; i++) {
+    const date = localDate(new Date(year, month - 1, day - 77 + i));
+    const mark = marks[date];
+    const button = action(shortDate(date), () => {
+      historyDate = date;
+      render();
+      // The detail renders below 12 calendar rows, off screen on a phone.
+      view.querySelector('.history > section:last-child')?.scrollIntoView({ block: 'start' });
+    }, `bar calendar-day${mark ? ` ${mark}` : ''}${date === today ? ' today' : ''}`);
+    button.disabled = date > today;
+    button.setAttribute('aria-label',
+      `${date}${mark ? ` ${{ done: 'トレーニング', light: '軽めの日', rest: '休養' }[mark]}` : ''}`);
+    button.setAttribute('aria-pressed', String(historyDate === date));
+    grid.append(button);
+  }
+  parent.append(grid);
+  if (historyDate) renderDayHistory(parent, historyDate);
+}
+
+function renderDayHistory(parent, date) {
+  const section = element('section', '', 'ex stack');
+  section.append(element('h2', shortDate(date)));
+  const sessions = state.sessions.filter(session => session.date === date);
+  if (!sessions.length) {
+    const skips = state.skips.filter(skip => skip.date === date);
+    if (skips.length) {
+      for (const skip of skips) {
+        section.append(element('p', `休み（${skip.reason}）`));
+      }
+    } else {
+      section.append(element('p', '記録なし', 'dim'));
+    }
+    parent.append(section);
+    return;
+  }
+  for (const session of sessions) {
+    if (session.light) section.append(element('p', '軽めの日', 'dim'));
+    for (const ex of state.exercises) {
+      const sets = session.sets.filter(set => set.exerciseId === ex.id);
+      if (!sets.length) continue;
+      const group = element('div', '', 'stack');
+      group.append(element('h3', ex.name));
+      sets.forEach((set, index) => {
+        const row = element('div', '', 'stack');
+        if (ex.type === 'band' || ex.type === 'weight') {
+          const chips = element('div', '', 'chips');
+          const name = ex.type === 'band'
+            ? state.bands.find(band => band.id === set.bandId)?.name ?? 'なし'
+            : `${set.kg ?? 0}kg`;
+          chips.append(element('span', name, 'chip on'));
+          row.append(chips);
+        }
+        const time = ex.type === 'time';
+        row.append(
+          stepper(`${ex.name} ${index + 1}セット`, value(ex, set),
+            0, Infinity, time ? 5 : 1, next => {
+              set[time ? 'sec' : 'reps'] = next;
+              save();
+              render();
+            }, time ? '秒' : '回'),
+          action('削除', () => {
+            session.sets.splice(session.sets.indexOf(set), 1);
+            if (!session.sets.length) {
+              state.sessions = state.sessions.filter(item => item !== session);
+            }
+            save();
+            render();
+          }, 'danger')
+        );
+        group.append(row);
+      });
+      section.append(group);
+    }
+    const label = element('label', '', 'stack');
+    const note = element('textarea');
+    note.value = session.note;
+    note.addEventListener('input', () => {
+      session.note = note.value;
+      save();
+    });
+    label.append(element('span', 'メモ'), note);
+    section.append(label);
+  }
+  section.append(action('この日の記録を削除', async () => {
+    if (!await confirmDialog('この日の記録を削除します。よろしいですか？')) return;
+    state.sessions = state.sessions.filter(session => session.date !== date);
+    save();
+    render();
+  }, 'danger'));
+  parent.append(section);
 }
 
 const parts = ['胸', '背中', '脚', '肩', '腕', '体幹', '全身'];
