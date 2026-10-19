@@ -237,7 +237,7 @@ UI UX Pro Max の推奨（Fitness/Gym App）をベースに、片手・自宅用
 
 - ダーク基調。トークンを `:root` に定義：
   `--bg #1F2937` `--card #313742` `--muted #37414F` `--fg #F8FAFC` `--fg-muted #CBD5E1` `--border #374151`
-  `--primary #F97316`（オレンジ：主要ボタン）`--on-primary #0F172A` `--accent #22C55E`（緑：自己ベスト・達成）`--danger #EF4444`
+  `--primary #F97316`（オレンジ：主要ボタン）`--on-primary #0F172A` `--accent #22C55E`（緑：自己ベスト・達成）`--danger #FCA5A5`（暗い背景で文字コントラスト4.5以上）
 - 数字と見出し：Barlow Condensed（Google Fonts、SW でキャッシュ）。本文：`system-ui`（日本語は端末フォント）。
 - 数字は大きく：セットの値 48px、タイマー 64px。本文 16px 以上。
 - タップ領域は最小 48×48px、間隔 8px 以上。主要操作は画面下半分。

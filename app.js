@@ -1,7 +1,7 @@
 import {
   localDate, parseImport, value, recent, advice, prefill, rows,
   prKind, sessionEvents, weekStats, weekStart, compare,
-  top, load, totals, bodyAvg7, calendar
+  top, load, totals, bodyAvg7, calendar, toBase64Utf8, consultText
 } from './logic.js';
 
 /** @typedef {import('./logic.js').Data} Data */
@@ -60,9 +60,173 @@ function save() {
   scheduleSync();
 }
 
+let github = loadGithub();
+let syncTimeout;
+let pushing = false;
+let syncVersion = 0;
+let retryToastShown = false;
+let feedbackCheckedAt = null;
+
+function loadGithub() {
+  let stored;
+  try {
+    stored = JSON.parse(localStorage.getItem('kintore:github'));
+  } catch {}
+  return {
+    owner: typeof stored?.owner === 'string' ? stored.owner.trim() : '',
+    repo: typeof stored?.repo === 'string' ? stored.repo.trim() : '',
+    token: typeof stored?.token === 'string' ? stored.token.trim() : '',
+    lastSyncAt: stored?.lastSyncAt ?? null,
+    dirty: stored?.dirty === true
+  };
+}
+
+function configured(settings = github) {
+  return [settings.owner, settings.repo, settings.token].every(text => text.trim());
+}
+
+function saveGithub() {
+  try {
+    localStorage.setItem('kintore:github', JSON.stringify(github));
+  } catch {
+    toast('保存できませんでした。容量を確認してください');
+  }
+  updateSyncStatus();
+}
+
+function syncStatus() {
+  if (!configured()) return '未設定';
+  if (github.dirty || !github.lastSyncAt) return '未保存の変更があります';
+  const date = new Date(github.lastSyncAt);
+  return `最終保存 ${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function updateSyncStatus() {
+  const status = view.querySelector('[data-sync-status]');
+  if (status) status.textContent = syncStatus();
+}
+
 function scheduleSync() {
   // shortcut: 単一端末前提で常に上書き。複数端末で使うなら updatedAt 比較を追加
+  if (!configured()) return;
+  syncVersion++;
+  github.dirty = true;
+  saveGithub();
+  clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(pushData, 5000);
 }
+
+function githubUrl(settings, file) {
+  return `https://api.github.com/repos/${encodeURIComponent(settings.owner)}/${encodeURIComponent(settings.repo)}/contents/${file}`;
+}
+
+function githubHeaders(settings) {
+  return {
+    Authorization: `Bearer ${settings.token}`,
+    Accept: 'application/vnd.github+json'
+  };
+}
+
+function decodeGithub(content) {
+  const binary = atob(content.replace(/[\r\n]/g, ''));
+  return new TextDecoder('utf-8').decode(
+    Uint8Array.from(binary, character => character.charCodeAt(0))
+  );
+}
+
+async function pushData() {
+  if (!configured() || pushing) return;
+  clearTimeout(syncTimeout);
+  pushing = true;
+  const settings = github;
+  const version = syncVersion;
+  const content = toBase64Utf8(JSON.stringify(state, null, 1));
+  settings.dirty = true;
+  saveGithub();
+  let succeeded = false;
+  try {
+    const url = githubUrl(settings, 'data.json');
+    const headers = githubHeaders(settings);
+    const response = await fetch(url, { headers, cache: 'no-store' });
+    let sha;
+    if (response.ok) sha = (await response.json()).sha;
+    else if (response.status !== 404) throw new Error();
+    const result = await fetch(url, {
+      method: 'PUT',
+      headers,
+      cache: 'no-store',
+      body: JSON.stringify({
+        message: 'sync ' + new Date().toISOString(),
+        content,
+        ...(sha ? { sha } : {})
+      })
+    });
+    if (!result.ok) throw new Error();
+    if (github === settings) {
+      github.dirty = syncVersion !== version;
+      github.lastSyncAt = new Date().toISOString();
+      saveGithub();
+    }
+    succeeded = true;
+  } catch {
+    if (!retryToastShown) {
+      retryToastShown = true;
+      toast('GitHub に保存できませんでした（あとで再送します）');
+    }
+  } finally {
+    pushing = false;
+    if ((succeeded || github !== settings) && configured() && github.dirty) {
+      clearTimeout(syncTimeout);
+      syncTimeout = setTimeout(pushData, 5000);
+    }
+  }
+}
+
+async function restoreGithub() {
+  if (!configured()) return;
+  try {
+    const response = await fetch(githubUrl(github, 'data.json'), {
+      headers: githubHeaders(github), cache: 'no-store'
+    });
+    if (!response.ok) throw new Error('読み込めないファイルです');
+    const file = await response.json();
+    const imported = parseImport(decodeGithub(file.content));
+    if (!await confirmDialog('GitHub の記録で置き換えます。よろしいですか？')) return;
+    state = imported;
+    save();
+    render();
+  } catch {
+    toast('読み込めないファイルです');
+  }
+}
+
+async function fetchFeedback() {
+  if (!configured()) return;
+  const now = Date.now();
+  if (feedbackCheckedAt !== null && now - feedbackCheckedAt < 600000) return;
+  feedbackCheckedAt = now;
+  const settings = github;
+  try {
+    const response = await fetch(githubUrl(settings, 'feedback.json'), {
+      headers: githubHeaders(settings), cache: 'no-store'
+    });
+    if (!response.ok) return;
+    const file = await response.json();
+    const raw = decodeGithub(file.content);
+    const feedback = JSON.parse(raw);
+    if (!feedback?.date || !feedback.summary || github !== settings) return;
+    if (localStorage.getItem('kintore:feedback') === raw) return;
+    localStorage.setItem('kintore:feedback', raw);
+    if (currentTab === 'home') renderHome();
+  } catch {}
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && github.dirty) pushData();
+});
+window.addEventListener('online', () => {
+  if (github.dirty) pushData();
+});
 
 function uid(prefix) {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -97,6 +261,7 @@ function render() {
 }
 
 function renderHome() {
+  fetchFeedback();
   view.replaceChildren();
   if (!state.exercises.length) {
     const section = settingsSection('まず種目を登録しましょう');
@@ -111,7 +276,7 @@ function renderHome() {
   try {
     feedback = JSON.parse(localStorage.getItem('kintore:feedback'));
   } catch {}
-  if (feedback) {
+  if (typeof feedback?.date === 'string' && feedback.date && feedback.summary) {
     const coach = element('section', '', 'coach stack');
     const date = feedback.date.split('-').slice(1).map(Number).join('/');
     coach.append(
@@ -1205,6 +1370,8 @@ function renderSettings() {
     }, '秒')
   );
 
+  renderGithubSettings();
+
   const backup = settingsSection('バックアップ');
   const file = element('input');
   file.type = 'file';
@@ -1241,6 +1408,66 @@ function renderSettings() {
     }),
     action('読み込み', () => file.click()),
     file
+  );
+
+  const consult = settingsSection('AIに相談');
+  consult.append(action('AIに相談', async () => {
+    try {
+      await navigator.clipboard.writeText(consultText(state, localDate(new Date())));
+    } catch {
+      toast('コピーできませんでした');
+      return;
+    }
+    toast('コピーしました。ChatGPT に貼り付けて送ってください');
+    window.open('https://chatgpt.com/', '_blank');
+  }));
+}
+
+function renderGithubSettings() {
+  const section = settingsSection('GitHub 保存');
+  const form = element('form', '', 'stack');
+  const draft = { owner: github.owner, repo: github.repo, token: github.token };
+  for (const key of ['owner', 'repo', 'token']) {
+    const input = textField(form, key, draft[key], value => { draft[key] = value; });
+    if (key === 'token') input.type = 'password';
+  }
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    clearTimeout(syncTimeout);
+    syncVersion++;
+    github = {
+      owner: draft.owner.trim(),
+      repo: draft.repo.trim(),
+      token: draft.token.trim(),
+      lastSyncAt: github.lastSyncAt,
+      dirty: github.dirty
+    };
+    if (configured()) github.dirty = true;
+    saveGithub();
+    render();
+    if (configured()) pushData();
+  });
+  const saveButton = element('button', '保存', 'primary');
+  saveButton.type = 'submit';
+  form.append(saveButton);
+  const link = element('a', 'トークンの作り方');
+  link.href = 'https://github.com/settings/personal-access-tokens/new';
+  link.className = 'settings-item';
+  link.style.minHeight = '48px';
+  link.style.color = 'var(--primary)';
+  const status = element('p', syncStatus(), 'dim');
+  status.dataset.syncStatus = '';
+  const buttons = element('div', '', 'actions');
+  const push = action('今すぐ保存', pushData);
+  const restore = action('GitHub から復元', restoreGithub);
+  push.disabled = restore.disabled = !configured();
+  buttons.append(push, restore);
+  section.append(
+    form,
+    link,
+    element('p', '対象はデータ用リポジトリ1つ、権限は Contents の Read and write だけ', 'dim'),
+    buttons,
+    status
   );
 }
 
@@ -1469,3 +1696,5 @@ for (const button of tabs) {
 }
 
 render();
+if (github.dirty) pushData();
+fetchFeedback();
