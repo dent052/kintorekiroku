@@ -8,7 +8,7 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 import { fixture } from './fixture.mjs';
 import { localDate, line, menuExercises, prefill, weekHeat, clearCount, totals,
-  bodyAvg7, feed, mergeFeed } from '../logic.js';
+  bodyAvg7, feed, mergeFeed, lineHistory, weekStart } from '../logic.js';
 
 const root = path.resolve(import.meta.dirname, '..');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
@@ -68,17 +68,25 @@ async function open({ data, extra = {}, github } = {}) {
 const stored = page => page.evaluate(() => JSON.parse(localStorage.getItem('kintore:data')));
 const press = (page, text) => page.locator('.press').getByRole('button', { name: text, exact: true });
 const sheet = page => page.locator('dialog.sheet[open]').last();
-const settings = async page => {
-  await press(page, '成長').click();
-  await press(page, '設定').click();
-};
+const settings = page => press(page, '設定').click();
+
+async function adjust(page, name) {
+  await press(page, '今日の調整').click();
+  await sheet(page).locator('.row').filter({ has: page.getByText(name, { exact: true }) }).click();
+}
+
+async function home(page) {
+  await press(page, 'ホーム').click();
+  await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'today');
+}
 
 async function leaveTraining(page) {
-  await press(page, 'メモ・その他').click();
+  await press(page, 'メモ').click();
   await sheet(page).getByRole('button', { name: 'トレーニングをやめる', exact: true }).click();
   assert.equal(await page.getAttribute('.app', 'data-mode'), 'summary');
   await principles(page);
-  await press(page, '今日へ戻る').click();
+  await press(page, 'ホームへ').click();
+  await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'today');
 }
 
 async function principles(page) {
@@ -114,8 +122,11 @@ test('paper/slab principles hold on both phone sizes, modes, editors and open sh
   for (const size of [{ width: 390, height: 844 }, { width: 360, height: 640 }]) {
     await page.setViewportSize(size);
     await principles(page);
+    await press(page, '今日の調整').click();
+    await principles(page);
+    await sheet(page).getByRole('button', { name: '閉じる', exact: true }).click();
     for (const text of ['メニュー変更', '休む', '体重']) {
-      await press(page, text).click();
+      await adjust(page, text === 'メニュー変更' ? 'メニュー' : text);
       await principles(page);
       if (text === 'メニュー変更') {
         await sheet(page).getByRole('button', { name: '種目を選ぶ', exact: true }).click();
@@ -127,7 +138,7 @@ test('paper/slab principles hold on both phone sizes, modes, editors and open sh
     assert.equal(await page.getAttribute('.app', 'data-mode'), 'train');
     await principles(page);
     await leaveTraining(page);
-    await press(page, '軽めの日').click();
+    await adjust(page, '軽めの日');
     assert.equal(await page.getAttribute('.app', 'data-mode'), 'train');
     await principles(page);
     await leaveTraining(page);
@@ -137,6 +148,7 @@ test('paper/slab principles hold on both phone sizes, modes, editors and open sh
     await principles(page);
     assert.ok(await sheet(page).getByRole('link', { name: '出典' }).isVisible());
     await sheet(page).getByRole('button', { name: '閉じる' }).click();
+    await home(page);
     await press(page, '設定').click();
     await principles(page);
     for (const text of ['＋ 種目', '＋ バンド', '＋ テンプレ']) {
@@ -150,9 +162,8 @@ test('paper/slab principles hold on both phone sizes, modes, editors and open sh
     await sheet(page).waitFor();
     await principles(page);
     await page.locator('#confirm-dialog button[value=cancel]').click();
-    await press(page, '戻る').click();
-    assert.equal(await page.getAttribute('.app', 'data-mode'), 'growth');
-    await press(page, '今日').click();
+    await home(page);
+    assert.equal(await page.getAttribute('.app', 'data-mode'), 'today');
   }
   assert.deepEqual(errors, []);
   await close();
@@ -174,11 +185,11 @@ test('today lines follow menuExercises and line, including custom and template s
     }
   }
   await check({ kind: 'same' });
-  await press(page, 'メニュー変更').click();
+  await adjust(page, 'メニュー');
   await sheet(page).getByRole('button', { name: '胸と背中', exact: true }).click();
   await check({ kind: 'template', templateId: 't1' });
-  assert.match(await page.textContent('.lines > .k'), /胸と背中/);
-  await press(page, 'メニュー変更').click();
+  assert.match(await page.textContent('.hello'), /胸と背中/);
+  await adjust(page, 'メニュー');
   await sheet(page).getByRole('button', { name: '種目を選ぶ', exact: true }).click();
   await sheet(page).getByRole('button', { name: '腕立て伏せ', exact: true }).click();
   await sheet(page).getByRole('button', { name: '足上げ腕立て', exact: true }).click();
@@ -213,23 +224,157 @@ test('previous short is vermilion; base and up use the small word treatment', as
   await close();
 });
 
-test('swipe switches only today and growth at the specified thresholds', async () => {
+test('home and settings ignore swipes; growth swipes change items and dots at the specified thresholds', async () => {
   const { page, errors, close } = await open({ data: fixture() });
   const mode = () => page.getAttribute('.app', 'data-mode');
+  for (const dx of [-100, 100]) {
+    await swipe(page, dx);
+    assert.equal(await mode(), 'today');
+  }
+  await press(page, '成長').click();
+  const index = () => page.locator('.exdots i').evaluateAll(dots => dots.findIndex(dot => dot.classList.contains('on')));
+  assert.equal(await page.locator('.exdots i').count(), 4);
+  assert.ok(await press(page, '◀ 前の種目').isDisabled());
   await swipe(page, -59);
-  assert.equal(await mode(), 'today');
+  assert.equal(await index(), 0);
   await swipe(page, -80, 50);
-  assert.equal(await mode(), 'today');
+  assert.equal(await index(), 0);
+  await swipe(page, 100);
+  assert.equal(await index(), 0);
   await swipe(page, -60);
   assert.equal(await mode(), 'growth');
-  await swipe(page, -100);
-  assert.equal(await mode(), 'growth');
+  assert.equal(await page.textContent('.exname'), 'バンドロウ');
+  assert.equal(await index(), 1);
   await swipe(page, 60, 0, '.press');
-  assert.equal(await mode(), 'today');
-  await press(page, '始める').click();
+  assert.equal(await page.textContent('.exname'), '腕立て伏せ');
+  assert.equal(await index(), 0);
+  for (let i = 0; i < 3; i++) await swipe(page, -100);
+  assert.equal(await page.textContent('.exname'), '体重');
+  assert.equal(await index(), 3);
+  assert.ok(await press(page, '次の種目 ▶').isDisabled());
   await swipe(page, -100);
-  assert.equal(await mode(), 'train');
+  assert.equal(await index(), 3);
+  await home(page);
+  await settings(page);
+  for (const dx of [-100, 100]) {
+    await swipe(page, dx);
+    assert.equal(await mode(), 'settings');
+  }
   await principles(page);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('training home preserves exercise, set, input and rest for resume', async () => {
+  const { page, errors, close } = await open({ data: fixture() });
+  await page.clock.install();
+  await press(page, '始める').click();
+  await press(page, '次 ▶').click();
+  await press(page, '完了').click();
+  await page.getByRole('slider').press('ArrowRight');
+  const amount = await page.getByRole('slider').getAttribute('aria-valuenow');
+  await home(page);
+  await press(page, '続きから').click();
+  assert.equal(await page.getAttribute('.app', 'data-mode'), 'train');
+  assert.match(await page.textContent('.tr-top'), /2 \/ 3 ・ 2セット目へ/);
+  assert.equal(await page.getByRole('slider').getAttribute('aria-valuenow'), amount);
+  assert.equal(await page.getByRole('slider').getAttribute('aria-label'), 'バンドロウ 回数');
+  assert.equal(await page.locator('.ring').count(), 1);
+  await press(page, '休憩を終える').click();
+  await home(page);
+  await press(page, '続きから').click();
+  assert.equal(await page.textContent('.exname'), 'バンドロウ');
+  assert.match(await page.textContent('.see'), /2セット目/);
+  await principles(page);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('history back from growth, settings, training and summary closes sheets and returns home', async () => {
+  const { page, errors, close } = await open({ data: fixture() });
+  await page.evaluate(() => {
+    window.pushes = 0;
+    const push = window.history.pushState.bind(window.history);
+    window.history.pushState = (...args) => { window.pushes++; push(...args); };
+  });
+  for (const destination of ['成長', '設定', '始める']) {
+    const before = await page.evaluate(() => window.pushes);
+    await press(page, destination).click();
+    assert.equal(await page.evaluate(() => window.pushes), before + 1);
+    if (destination === '成長') await press(page, '新着').click();
+    if (destination === '始める') await press(page, 'メモ').click();
+    await page.evaluate(() => window.history.back());
+    await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'today');
+    assert.equal(await page.locator('dialog[open]').count(), 0);
+    await principles(page);
+  }
+  await press(page, '続きから').click();
+  await press(page, 'メモ').click();
+  await sheet(page).getByRole('button', { name: 'トレーニングをやめる', exact: true }).click();
+  await page.evaluate(() => window.history.back());
+  await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'today');
+  assert.equal(await press(page, '続きから').count(), 0);
+  assert.equal(await press(page, '始める').count(), 1);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('today adjustment rows open their sheets and light start uses one set per exercise', async () => {
+  const data = fixture();
+  const { page, errors, close } = await open({ data });
+  await press(page, '今日の調整').click();
+  assert.equal(await sheet(page).getAttribute('aria-label'), '今日の調整');
+  assert.deepEqual(await sheet(page).locator('.row span').allTextContents(), ['メニュー', '軽めの日', '休む', '体重']);
+  assert.deepEqual(await sheet(page).locator('.row small').allTextContents(), [
+    '前回と同じ ›', '各1セットで始める', '今日は休みにする', '記録する'
+  ]);
+  await principles(page);
+  await sheet(page).getByRole('button', { name: '閉じる', exact: true }).click();
+  for (const [name, title] of [['メニュー', 'メニュー変更'], ['休む', '今日は休む'], ['体重', '体重を記録']]) {
+    await adjust(page, name);
+    assert.equal(await sheet(page).getAttribute('aria-label'), title);
+    assert.equal(await page.locator('dialog[open]').count(), 1);
+    await sheet(page).getByRole('button', { name: '閉じる', exact: true }).click();
+  }
+  await adjust(page, '軽めの日');
+  assert.equal(await page.getAttribute('.app', 'data-mode'), 'train');
+  assert.equal((await stored(page)).sessions.length, data.sessions.length);
+  for (let i = 0; i < 3; i++) {
+    await press(page, '完了').click();
+    await press(page, '休憩を終える').click();
+    if (i < 2) await press(page, '次 ▶').click();
+  }
+  await press(page, '◀ 前').click();
+  assert.ok(await page.locator('.dots i').last().evaluate(dot => dot.classList.contains('done')));
+  const session = (await stored(page)).sessions.at(-1);
+  assert.equal(session.light, true);
+  assert.equal(session.sets.length, 3);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('home has seven week cells and miniature stairs from the last eight line points', async () => {
+  const data = fixture();
+  const today = localDate(new Date());
+  data.sessions.push({ id: 'today', date: today, light: true, note: '', sets: [{ exerciseId: 'e1', reps: 10 }] });
+  const { page, errors, close } = await open({ data });
+  assert.deepEqual(await page.locator('.week span').allTextContents(), [...'月火水木金土日']);
+  const [year, month, day] = weekStart(today).split('-').map(Number);
+  const dates = Array.from({ length: 7 }, (_, i) => localDate(new Date(year, month - 1, day + i)));
+  assert.deepEqual(await page.locator('.week i').evaluateAll(cells => cells.map(cell => ({
+    done: cell.classList.contains('d'), today: cell.classList.contains('t')
+  }))), dates.map(date => ({
+    done: data.sessions.some(session => session.date === date && session.sets.length > 0),
+    today: date === today
+  })));
+  for (const id of menuExercises(data, { kind: 'same' }, today)) {
+    const points = lineHistory(data, id).slice(-8);
+    const mini = page.locator('.ln[data-exercise-id="' + id + '"] .mini');
+    assert.equal(await mini.getAttribute('viewBox'), '0 0 64 28');
+    assert.match(await mini.locator('path').getAttribute('d'), /H.*V/);
+    assert.equal((await mini.locator('path').getAttribute('d')).match(/H/g).length, points.length - 1);
+    assert.equal(await mini.locator('path').getAttribute('stroke'), 'var(--ai)');
+  }
   assert.deepEqual(errors, []);
   await close();
 });
@@ -240,7 +385,7 @@ test('first use adds an exercise without creating a session; an empty menu opens
   await press(page, '種目を追加').click();
   await page.getByLabel('名前', { exact: true }).fill('腕立て伏せ');
   await press(page, '保存').click();
-  await press(page, '戻る').click();
+  await home(page);
   assert.equal(await page.getAttribute('.app', 'data-mode'), 'today');
   await press(page, '始める').click();
   await sheet(page).getByRole('button', { name: '種目を選ぶ', exact: true }).click();
@@ -258,14 +403,14 @@ test('first use adds an exercise without creating a session; an empty menu opens
 test('rest day and body weight are recorded once per day', async () => {
   const { page, close } = await open({ data: fixture() });
   for (const reason of ['疲れ', '予定']) {
-    await press(page, '休む').click();
+    await adjust(page, '休む');
     await sheet(page).getByRole('button', { name: reason, exact: true }).click();
   }
   assert.match(await page.textContent('#toast'), /休むのも練習/);
-  await press(page, '体重').click();
+  await adjust(page, '体重');
   await sheet(page).getByRole('button', { name: '体重を減らす', exact: true }).click();
   await sheet(page).getByRole('button', { name: '保存', exact: true }).click();
-  await press(page, '体重').click();
+  await adjust(page, '体重');
   await sheet(page).getByRole('button', { name: '保存', exact: true }).click();
   const data = await stored(page);
   const today = localDate(new Date());
@@ -281,7 +426,7 @@ test('first body entry accepts weight with no waist', async () => {
   const data = fixture();
   data.body = [];
   const { page, close } = await open({ data });
-  await press(page, '体重').click();
+  await adjust(page, '体重');
   await sheet(page).getByLabel('体重 kg', { exact: true }).fill('68.4');
   await sheet(page).getByRole('button', { name: 'ウエストなし', exact: true }).click();
   await sheet(page).getByRole('button', { name: '保存', exact: true }).click();
@@ -322,13 +467,13 @@ test('GitHub: changes are pushed, failures retried, coach posts shown', async ()
     quote: '肩が重い', text: '1セット目だけ狙えば十分。' }, { broken: true }];
   await page.reload();
   await page.waitForFunction(() => document.querySelector('.see').textContent.includes('1セット目だけ狙えば十分'));
-  await press(page, '休む').click();
+  await adjust(page, '休む');
   await sheet(page).getByRole('button', { name: '予定', exact: true }).click();
   await page.waitForTimeout(6000);
   assert.ok(api.puts.at(-1)?.skips.some(s => s.reason === '予定'));
   assert.equal(api.puts.at(-1).exercises[0].name, '腕立て伏せ');
   api.fail = true;
-  await press(page, '休む').click();
+  await adjust(page, '休む');
   await sheet(page).getByRole('button', { name: '風邪', exact: true }).click();
   await page.waitForTimeout(6000);
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('kintore:github')).dirty), true);
@@ -370,8 +515,7 @@ test('today posts put the single coach or record label in the text block', async
       separate: post.querySelectorAll('.k').length,
       blocks: post.children.length
     }))), [
-    { labels: ['コーチ'], separate: 0, blocks: 1 },
-    { labels: ['記録'], separate: 0, blocks: 1 }
+    { labels: ['コーチ'], separate: 0, blocks: 1 }
   ]);
   assert.equal(await page.locator('.feed .post').first().textContent(), 'コーチ肩を休める。');
   await close();
@@ -502,13 +646,14 @@ test('complete immediately saves, shows first-set verdict and ring, then summary
     await press(page, '休憩を終える').click();
   }
   assert.equal((await stored(page)).sessions.at(-1).sets.length, 5, 'extra sets are added automatically');
-  await press(page, '次の種目 ▶').click();
-  await press(page, '次の種目 ▶').click();
+  await press(page, '次 ▶').click();
+  await press(page, '次 ▶').click();
   await press(page, '終了').click();
   assert.equal(await page.getAttribute('.app', 'data-mode'), 'summary');
   assert.match(await page.textContent('.see'), /今日の記録.*ライン突破 [01] \/ 1.*合計回数/s);
   await principles(page);
-  await press(page, '今日へ戻る').click();
+  await press(page, 'ホームへ').click();
+  await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'today');
   await press(page, '始める').click();
   await press(page, '完了').click();
   assert.equal((await stored(page)).sessions.length, data.sessions.length + 1, 'same-day restart appends');
@@ -523,7 +668,7 @@ test('training sheet keeps notes, coach opt-in, sets, additions and stage switch
     'kintore:menu': { kind: 'custom', exerciseIds: ['e1'] }
   } });
   await press(page, '始める').click();
-  await press(page, 'メモ・その他').click();
+  await press(page, 'メモ').click();
   await principles(page);
   await sheet(page).getByLabel('メモ', { exact: true }).fill('肩が重い');
   await sheet(page).getByRole('button', { name: 'コーチに送る：オフ', exact: true }).click();
@@ -534,10 +679,10 @@ test('training sheet keeps notes, coach opt-in, sets, additions and stage switch
   assert.equal(session.note, '肩が重い');
   assert.equal(session.toCoach, true);
   await press(page, '休憩を終える').click();
-  await press(page, 'メモ・その他').click();
+  await press(page, 'メモ').click();
   await sheet(page).getByRole('button', { name: '次の段階へ切り替え', exact: true }).click();
   assert.equal(await page.textContent('.exname'), '足上げ腕立て');
-  await press(page, 'メモ・その他').click();
+  await press(page, 'メモ').click();
   await sheet(page).getByRole('button', { name: '種目を追加', exact: true }).click();
   await sheet(page).getByRole('button', { name: 'バンドロウ', exact: true }).click();
   assert.equal(await page.textContent('.exname'), 'バンドロウ');
@@ -557,7 +702,7 @@ test('light mode and weight controls fit the small viewport, including rest and 
     'kintore:menu': { kind: 'custom', exerciseIds: ['weight'] }
   } });
   await page.setViewportSize({ width: 360, height: 640 });
-  await press(page, '軽めの日').click();
+  await adjust(page, '軽めの日');
   await principles(page);
   await press(page, '重さを増やす').click();
   await press(page, '完了').click();
@@ -566,7 +711,7 @@ test('light mode and weight controls fit the small viewport, including rest and 
   assert.equal(session.light, true);
   assert.equal(session.sets[0].kg, 5.5);
   assert.equal(await page.locator('.verdict b').textContent(), '基準');
-  await press(page, 'メモ・その他').click();
+  await press(page, 'メモ').click();
   await principles(page);
   await sheet(page).getByRole('button', { name: '閉じる', exact: true }).click();
   await press(page, '終了').click();
@@ -579,7 +724,7 @@ test('growth stairs, stats, load colors and twelve-week heat follow the records'
   const data = fixture();
   const { page, errors, close } = await open({ data });
   await press(page, '成長').click();
-  assert.equal(await page.textContent('.see > .k'), 'ラインの階段');
+  assert.equal(await page.textContent('.see > .k'), '成長');
   assert.equal(await page.textContent('.exname'), '腕立て伏せ');
   assert.match(await page.locator('.stairs path').first().getAttribute('d'), /H.*V/);
   assert.equal(await page.locator('.heat i').count(), 12);
@@ -590,24 +735,26 @@ test('growth stairs, stats, load colors and twelve-week heat follow the records'
     String(line(data, 'e1', today).value), String(clearCount(data, 'e1')),
     totals(data).e1.toLocaleString('ja-JP')
   ]);
-  await press(page, 'バンドロウ').click();
+  await press(page, '次の種目 ▶').click();
   assert.ok(await page.locator('.stairs path.old').count());
   assert.ok(await page.locator('.stairs path.now').count());
   assert.match(await page.locator('.stairs').textContent(), /黒へ/);
-  assert.equal(await press(page, 'バンドロウ').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('.exdots i.on').evaluate(dot => [...dot.parentNode.children].indexOf(dot)), 1);
   await principles(page);
+  await home(page);
   await press(page, '設定').click();
-  await press(page, '戻る').click();
+  await home(page);
+  await press(page, '成長').click();
   assert.equal(await page.textContent('.exname'), 'バンドロウ');
   assert.deepEqual(errors, []);
   await close();
 });
 
-test('body chip shows daily points, seven-day average and four-week difference', async () => {
+test('body item shows daily points, seven-day average and four-week difference', async () => {
   const data = fixture();
   const { page, errors, close } = await open({ data });
   await press(page, '成長').click();
-  await press(page, '体重').click();
+  for (let i = 0; i < 3; i++) await press(page, '次の種目 ▶').click();
   const today = localDate(new Date());
   const previous = new Date(today + 'T12:00:00');
   previous.setDate(previous.getDate() - 28);
@@ -637,7 +784,7 @@ test('growth empty state and a single line point explain the missing stairs', as
   await press(page, '成長').click();
   assert.match(await page.textContent('.see'), /記録が増えると、ここに階段ができる/);
   assert.equal(await page.locator('.stairs path').count(), 0);
-  assert.equal(await press(page, '体重').count(), 0);
+  assert.equal(await page.locator('.exdots i').count(), 3);
   await principles(page);
   assert.deepEqual(errors, []);
   await close();
@@ -703,8 +850,8 @@ test('growth news shows all items in time order and marks them read', async () =
   assert.ok(items.every(item => seen.includes(item.id)));
   await principles(page);
   await sheet(page).getByRole('button', { name: '閉じる', exact: true }).click();
-  await press(page, '今日').click();
-  assert.equal(await page.locator('.feed > .k').textContent(), '新着 0');
+  await home(page);
+  assert.equal(await page.locator('.feed > .k').last().textContent(), '新着 0');
   assert.deepEqual(errors, []);
   await close();
 });

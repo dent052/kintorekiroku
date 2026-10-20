@@ -1,0 +1,25 @@
+// Screens of v4: home, adjust sheet, training, rest, growth, summary, settings. Usage: node docs/handoff/shots-v4.mjs <dir>
+import { chromium } from '/home/user/kintorekiroku/node_modules/playwright/index.mjs';
+import { fixture } from '/home/user/kintorekiroku/e2e/fixture.mjs';
+const out = process.argv[2];
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const p = await (await b.newContext({ viewport: { width: 360, height: 760 }, hasTouch: true })).newPage();
+const errs = []; p.on('pageerror', e => errs.push(e.message));
+await p.goto('http://localhost:8080/');
+await p.evaluate(d => { localStorage.clear(); localStorage.setItem('kintore:data', JSON.stringify(d));
+  localStorage.setItem('kintore:posts', JSON.stringify([{ id: 'r1', at: new Date().toISOString(), kind: 'reply', quote: '肩が重かった', text: '重い日は1セット目だけラインを狙えば十分。' }])); }, fixture());
+await p.reload(); await p.waitForTimeout(1200);
+let n = 0; const shot = async name => { await p.waitForTimeout(300); await p.screenshot({ path: `${out}/${String(++n).padStart(2, '0')}-${name}.png` }); };
+const click = async (sel) => { try { await p.click(sel, { timeout: 1500 }); } catch { console.log('MISSING', sel); } };
+await shot('home');
+await click('.press >> text=今日の調整'); await shot('adjust'); await click('dialog[open] >> text=閉じる');
+await click('.press >> text=始める'); await shot('train');
+await click('.press >> text=完了'); await shot('rest');
+await click('.press >> text=ホーム'); await shot('home-resume');
+await click('.press >> text=成長'); await shot('growth');
+await click('.press >> text=次の種目'); await shot('growth-next');
+await click('.press >> text=ホーム'); await click('.press >> text=設定'); await shot('settings');
+await click('.press >> text=ホーム'); await click('.press >> text=続きから');
+for (let i = 0; i < 3; i++) await click('.press >> text=次 ▶');
+await click('.press >> text=終了'); await shot('summary');
+console.log('errors', errs); await b.close();

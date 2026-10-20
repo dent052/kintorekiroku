@@ -13,7 +13,7 @@ const dock = document.querySelector('.press');
 const toastElement = document.querySelector('#toast');
 const dialog = document.querySelector('#confirm-dialog');
 let currentMode = 'today';
-let settingsReturn = 'today';
+let homeHistory = false;
 let menu;
 let toastTimeout;
 
@@ -251,9 +251,46 @@ function loadMenu() {
 }
 
 function go(mode) {
-  if (mode === 'settings' && currentMode !== 'settings') settingsReturn = currentMode;
+  if (currentMode === 'today' && ['train', 'growth', 'settings'].includes(mode)) {
+    window.history.pushState(null, '');
+    homeHistory = true;
+  }
+  if (currentMode === 'train' && mode !== 'train') {
+    wakeLock?.release().catch(() => {});
+    wakeLock = null;
+  }
   currentMode = mode;
   render();
+  if (mode === 'train') requestWakeLock();
+}
+
+function returnHome() {
+  if (currentMode === 'summary') training = null;
+  if (homeHistory) window.history.back();
+  else go('today');
+}
+
+window.addEventListener('popstate', () => {
+  homeHistory = false;
+  for (const sheet of document.querySelectorAll('dialog[open]')) sheet.close();
+  if (currentMode === 'summary') training = null;
+  go('today');
+});
+
+function homeButton() {
+  const button = action('ホーム', returnHome, 'home');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(svg.namespaceURI, 'path');
+  path.setAttribute('d', 'M2 8 8 2.5 14 8M4 7v6.5h8V7');
+  svg.append(path);
+  button.prepend(svg);
+  return button;
 }
 
 let swipeStart = null;
@@ -272,8 +309,7 @@ app.addEventListener('touchend', event => {
   const elapsed = Date.now() - swipeStart.t;
   swipeStart = null;
   if (elapsed > 700 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
-  if (currentMode === 'today' && dx < 0) go('growth');
-  else if (currentMode === 'growth' && dx > 0) go('today');
+  if (currentMode === 'growth') moveGrowth(dx < 0 ? 1 : -1);
   else if (currentMode === 'train') moveExercise(dx < 0 ? 1 : -1);
   else return;
   view.classList.remove('slide-next', 'slide-prev');
@@ -293,18 +329,6 @@ function render() {
   else if (currentMode === 'settings') renderSettings();
   else if (currentMode === 'summary') renderSummary();
   else renderTrain();
-}
-
-function pager() {
-  const nav = element('nav', '', 'pager');
-  nav.setAttribute('aria-label', 'ページ');
-  for (const [mode, text] of [['today', '今日'], ['growth', '成長']]) {
-    const button = action(text, () => go(mode));
-    button.dataset.page = mode;
-    if (mode === currentMode) button.setAttribute('aria-current', 'page');
-    nav.append(button);
-  }
-  dock.append(nav);
 }
 
 function homeFeed() {
@@ -387,8 +411,10 @@ function renderToday() {
       editExercise();
     }, 'go'));
   } else {
+    const hello = element('p', '', 'hello');
+    hello.append(element('small', '今日のメニュー'), document.createTextNode(menuName()));
+    view.append(hello);
     const lines = element('div', '', 'lines');
-    lines.append(element('p', '今日のライン ・ ' + menuName(), 'k'));
     for (const id of menuExercises(state, menu, today)) {
       const ex = state.exercises.find(item => item.id === id);
       const target = line(state, id, today);
@@ -415,28 +441,87 @@ function renderToday() {
         number.append(document.createTextNode(String(target.value)));
         if (ex.type === 'time') number.append(element('small', '秒'));
       }
-      row.append(name, number);
+      row.append(name, miniChart(id), number);
       lines.append(row);
     }
     view.append(lines);
-    dock.append(action('始める', () => startWorkout(false), 'go'));
-    const sub = element('div', '', 'sub');
-    sub.append(action('メニュー変更', changeMenu), action('軽めの日', () => startWorkout(true)),
-      action('休む', recordRest), action('体重', recordBody));
-    dock.append(sub);
+    const resume = training?.date === today;
+    dock.append(action(resume ? '続きから' : '始める',
+      () => resume ? go('train') : startWorkout(false), 'go'));
   }
 
+  const sub = element('div', '', 'sub');
+  sub.append(action('今日の調整', adjustToday), action('成長', () => go('growth')),
+    action('設定', () => go('settings')));
+  dock.append(sub);
+
+  const news = element('div', '', 'feed');
+  news.append(element('p', '今週', 'k'));
+  const week = element('div', '', 'week');
+  const [year, month, day] = weekStart(today).split('-').map(Number);
+  const days = new Set(state.sessions.filter(session => session.sets.length)
+    .map(session => session.date));
+  [...'月火水木金土日'].forEach((name, index) => {
+    const date = localDate(new Date(year, month - 1, day + index));
+    const cell = element('span', name);
+    const mark = element('i', '', [days.has(date) ? 'd' : '', date === today ? 't' : '']
+      .filter(Boolean).join(' '));
+    cell.append(mark);
+    week.append(cell);
+  });
+  news.append(week);
   const { items, seen } = homeFeed();
   if (items.length) {
-    const news = element('div', '', 'feed');
-    news.append(element('p', '新着 ' + items.filter(item => !seen.includes(item.id)).length, 'k'));
-    const displayed = items.slice(0, 2);
+    const heading = element('p', '新着 ' + items.filter(item => !seen.includes(item.id)).length, 'k');
+    heading.style.marginTop = '14px';
+    news.append(heading);
+    const displayed = items.slice(0, 1);
     appendFeed(news, displayed);
-    view.append(news);
     markSeen(displayed);
   }
-  pager();
+  view.append(news);
   fetchFeedback();
+}
+
+function miniChart(id) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'mini');
+  svg.setAttribute('viewBox', '0 0 64 28');
+  svg.setAttribute('aria-hidden', 'true');
+  const points = lineHistory(state, id).slice(-8);
+  if (points.length < 2) return svg;
+  const min = Math.min(...points.map(point => point.value));
+  const max = Math.max(...points.map(point => point.value));
+  const y = point => min === max ? 14 : 24 - (point.value - min) / (max - min) * 20;
+  let d = 'M0 ' + y(points[0]);
+  points.slice(1).forEach((point, index) => {
+    d += ' H' + ((index + 1) / (points.length - 1) * 64) + ' V' + y(point);
+  });
+  const path = document.createElementNS(svg.namespaceURI, 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', 'var(--ai)');
+  path.setAttribute('stroke-width', '2.5');
+  svg.append(path);
+  return svg;
+}
+
+function adjustToday() {
+  const { sheet, content } = homeSheet('今日の調整');
+  sheet.classList.add('adjust');
+  for (const [name, detail, open] of [
+    ['メニュー', menuName() + ' ›', changeMenu],
+    ['軽めの日', '各1セットで始める', () => startWorkout(true)],
+    ['休む', '今日は休みにする', recordRest],
+    ['体重', '記録する', recordBody]
+  ]) {
+    const button = action('', () => {
+      sheet.close();
+      open();
+    }, 'row');
+    button.append(element('span', name), element('small', detail));
+    content.append(button);
+  }
 }
 
 function homeSheet(title) {
@@ -515,11 +600,11 @@ function startWorkout(light) {
   const session = state.sessions.find(item => item.date === date);
   const template = menu.kind === 'template'
     ? state.templates.find(item => item.id === menu.templateId) : null;
+  endRest(false);
   training = { date, light, index: 0, entries: [],
     note: session?.note ?? '', toCoach: session?.toCoach === true };
   training.entries = ids.map(id => trainingEntry(id, template?.sets));
   go('train');
-  requestWakeLock();
 }
 
 async function requestWakeLock() {
@@ -681,12 +766,12 @@ function renderTrain() {
   const number = element('span', String(value(ex, set)), 'num');
   big.append(number, element('small', ex.type === 'time' ? '秒' : '回'));
   dock.append(big, ruler(ex, set, number), action('完了', completeSet, 'go'));
-  const nav = element('div', '', 'nav3');
-  const previous = action('◀ 前の種目', () => moveExercise(-1));
+  const nav = element('div', '', 'nav');
+  const previous = action('◀ 前', () => moveExercise(-1));
   previous.disabled = training.index === 0;
-  nav.append(previous, action('メモ・その他', trainingMore),
+  nav.append(homeButton(), previous, action('メモ', trainingMore),
     training.index === training.entries.length - 1
-      ? action('終了', finishWorkout) : action('次の種目 ▶', () => moveExercise(1)));
+      ? action('終了', finishWorkout) : action('次 ▶', () => moveExercise(1)));
   dock.append(nav);
 }
 
@@ -937,26 +1022,42 @@ function renderSummary() {
   if (session) {
     for (const event of sessionEvents(state, session.id)) view.append(element('p', event.text, 'post'));
   }
-  dock.append(action('今日へ戻る', () => {
-    training = null;
-    go('today');
-  }, 'go'));
+  dock.append(action('ホームへ', returnHome, 'go'));
 }
 
 let growthExerciseId = null;
 
+function growthItems() {
+  const recorded = new Set(state.sessions.flatMap(session => session.sets.map(set => set.exerciseId)));
+  return [
+    ...state.exercises.filter(ex => recorded.has(ex.id)).map(ex => ex.id),
+    ...(state.body.length ? ['body'] : [])
+  ];
+}
+
+function moveGrowth(offset) {
+  const items = growthItems();
+  const next = items.indexOf(growthExerciseId) + offset;
+  if (next < 0 || next >= items.length) return;
+  growthExerciseId = items[next];
+  render();
+}
+
 function renderGrowth() {
   const today = localDate(new Date());
-  const recorded = new Set(state.sessions.flatMap(session => session.sets.map(set => set.exerciseId)));
-  const exercises = state.exercises.filter(ex => recorded.has(ex.id));
+  const items = growthItems();
+  const exercises = state.exercises.filter(ex => items.includes(ex.id));
   if (!exercises.some(ex => ex.id === growthExerciseId) &&
       !(growthExerciseId === 'body' && state.body.length)) {
     growthExerciseId = exercises[0]?.id ?? (state.body.length ? 'body' : null);
   }
   const body = growthExerciseId === 'body';
   const ex = exercises.find(ex => ex.id === growthExerciseId);
-  view.append(element('p', 'ラインの階段', 'k'),
+  view.append(element('p', '成長', 'k'),
     element('h1', body ? '体重' : ex?.name ?? '成長', 'exname'));
+  const dots = element('div', '', 'exdots');
+  for (const id of items) dots.append(element('i', '', id === growthExerciseId ? 'on' : ''));
+  view.append(dots);
   const entries = body
     ? [...state.body].sort((a, b) => a.date.localeCompare(b.date))
     : ex ? lineHistory(state, ex.id) : [];
@@ -996,28 +1097,21 @@ function renderGrowth() {
     heat.append(cell);
   });
   view.append(heat);
-  const chips = element('div', '', 'chips');
-  for (const [id, name] of [
-    ...exercises.map(ex => [ex.id, ex.name]),
-    ...(state.body.length ? [['body', '体重']] : [])
-  ]) {
-    const button = action(name, () => {
-      growthExerciseId = id;
-      render();
-    }, 'chip' + (id === growthExerciseId ? ' on' : ''));
-    button.setAttribute('aria-pressed', String(id === growthExerciseId));
-    chips.append(button);
-  }
-  if (chips.childElementCount) dock.append(chips);
   const sub = element('div', '', 'sub');
   sub.append(action('記録を見る・直す', recordHistory), action('新着', () => {
     const { items } = homeFeed();
     const { content } = homeSheet('新着');
     appendFeed(content, [...items].sort((a, b) => b.at.localeCompare(a.at)), true);
     markSeen(items);
-  }), action('設定', () => go('settings')));
-  dock.append(sub);
-  pager();
+  }));
+  const nav = element('div', '', 'nav');
+  const previous = action('◀ 前の種目', () => moveGrowth(-1));
+  const next = action('次の種目 ▶', () => moveGrowth(1));
+  const index = items.indexOf(growthExerciseId);
+  previous.disabled = index <= 0;
+  next.disabled = index < 0 || index >= items.length - 1;
+  nav.append(homeButton(), previous, next);
+  dock.append(sub, nav);
 }
 
 function growthChart(entries, ex, today) {
@@ -1384,12 +1478,10 @@ function renderSettings() {
   view.replaceChildren(element('h1', '設定'));
 
   dock.className = 'press';
-  const adds = element('div', '', 'row3');
-  adds.append(action('＋ 種目', () => editExercise()), action('＋ バンド', () => editBand()),
-    action('＋ テンプレ', () => editTemplate()));
-  const links = element('div', '', 'sub');
-  links.append(action('戻る', () => go(settingsReturn)));
-  dock.append(links, adds);
+  const nav = element('div', '', 'nav');
+  nav.append(homeButton(), action('＋ 種目', () => editExercise()),
+    action('＋ バンド', () => editBand()), action('＋ テンプレ', () => editTemplate()));
+  dock.append(nav);
   const exercises = settingsSection('種目');
   const toggle = action('アーカイブ済みを表示', () => {
     showArchived = !showArchived;
