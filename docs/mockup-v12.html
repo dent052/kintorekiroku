@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow">
+<title>画面イメージ v12</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--num:'Barlow Condensed',sans-serif;--ja:'Zen Kaku Gothic New',system-ui,sans-serif;
+  --paper:#F6F7F9;--ai:#1C2B4B;--ai2:#26375C;--shu:#D03C22;--shu-on-ai:#FF6A4D;--mute:#5E6B82;--mute-ai:#8FA0BF;--hair:#DDE2EA}
+*{box-sizing:border-box;margin:0}
+body{background:#C9CED6;color:var(--ai);font:16px/1.6 var(--ja);padding:24px 16px}
+.intro{max-width:1240px;margin:0 auto 18px}.intro h1{font:900 28px var(--ja)}.intro p{color:#222;max-width:900px}
+.wall{display:flex;flex-wrap:wrap;gap:22px;justify-content:center}
+figure{width:360px}figcaption{font-size:13px;color:#111;margin:0 4px 8px;line-height:1.5}
+.phone{border-radius:30px;height:760px;overflow:hidden;display:flex;flex-direction:column;background:var(--paper)}
+.num{font-family:var(--num);font-weight:700;line-height:.88;letter-spacing:-.01em}
+.see{flex:1;padding:26px 22px 16px;display:flex;flex-direction:column;overflow:hidden}
+.press{background:var(--ai);color:#fff;padding:18px 20px 12px;display:flex;flex-direction:column;gap:12px;border-radius:26px 26px 0 0}
+.k{font-size:12px;font-weight:700;color:var(--mute)}
+.press .k{color:var(--mute-ai)}
+.go{background:var(--shu);color:#fff;border-radius:18px;min-height:64px;display:flex;align-items:center;justify-content:center;font:700 20px var(--ja)}
+.sub{display:flex;justify-content:space-around}
+.sub span{min-height:44px;display:flex;align-items:center;padding:0 10px;font-weight:700;font-size:15px;color:#fff;border-bottom:1.5px solid var(--mute-ai)}
+/* 今日 */
+.date{display:flex;justify-content:space-between;align-items:baseline}
+.date .num{font-size:22px}
+.lines{margin-top:18px;display:flex;flex-direction:column}
+.ln{display:grid;grid-template-columns:1fr auto;align-items:end;padding:10px 0;border-bottom:1px solid var(--hair)}
+.ln .name{font:700 17px var(--ja)}
+.ln .name small{display:block;font-size:12px;color:var(--mute);font-weight:500}
+.ln .num{font-size:52px;color:var(--ai)}
+.ln .num.carry{color:var(--shu)}
+.ln .num small{font-size:16px;font-family:var(--ja);font-weight:700}
+.feed{margin-top:auto;padding-top:14px}
+.post{font-size:14px;line-height:1.55;padding:8px 0 0}
+.post b{color:var(--shu);font-size:12px;margin-right:6px}
+/* training */
+.tr-top{display:flex;justify-content:space-between;align-items:center}
+.dots{display:flex;gap:6px}.dots i{width:22px;height:4px;border-radius:2px;background:var(--hair)}.dots i.on{background:var(--ai)}.dots i.done{background:var(--shu)}
+.exname{font:900 34px/1.15 var(--ja);margin-top:22px}
+.prev{font:600 18px var(--num);color:var(--mute);margin-top:6px}
+.target{margin-top:auto;display:flex;align-items:baseline;gap:10px}
+.target .num{font-size:96px;color:var(--shu)}
+.target span{font-weight:700}
+.big{display:flex;align-items:baseline;justify-content:center;gap:4px}
+.big .num{font-size:76px}.big small{font-weight:700;color:var(--mute-ai)}
+.nav3{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:14px;color:var(--mute-ai)}
+/* rest */
+.ring{width:210px;height:210px;border-radius:50%;margin:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:conic-gradient(var(--ai) 0 78%, var(--hair) 78% 100%);position:relative}
+.ring::before{content:"";position:absolute;inset:12px;border-radius:50%;background:var(--paper)}
+.ring > *{position:relative}
+.ring .num{font-size:64px}
+.verdict{display:flex;align-items:center;gap:14px;background:var(--shu);color:#fff;border-radius:20px;padding:14px 18px}
+.verdict .num{font-size:72px}.verdict b{font:900 30px/1 var(--ja);display:block}.verdict small{font-size:13px;opacity:.9}
+/* growth */
+.stairs{margin-top:10px}
+.stat{display:flex;gap:26px;margin-top:6px}
+.stat .num{font-size:40px}
+.heat{display:grid;grid-template-columns:repeat(12,1fr);gap:3px;margin-top:auto}
+.heat i{aspect-ratio:1;border-radius:2px;background:var(--hair)}.heat i.d{background:var(--ai)}.heat i.l{background:var(--mute-ai)}
+/* v7 */
+.hello{font:900 34px/1.15 var(--ja);margin-top:14px}
+.hello small{display:block;font:700 13px var(--ja);color:var(--mute);margin-bottom:2px}
+.ln{grid-template-columns:1fr 64px 76px;gap:10px}
+.ln .num{text-align:right}
+.mini{width:64px;height:28px;align-self:center}
+.nav{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:14px;color:var(--mute-ai);min-height:40px}
+.nav .home{color:#fff;display:flex;align-items:center;gap:6px}
+.nav .home svg{width:16px;height:16px}
+.counter{display:grid;grid-template-columns:84px 1fr 84px;align-items:center;gap:8px}
+.counter .pm{font-weight:700;height:84px;border-radius:18px;background:var(--ai2);display:flex;align-items:center;justify-content:center;font:600 46px/1 var(--num);color:#fff}
+.counter .big .num{font-size:84px}
+.counter .over{color:var(--shu-on-ai)}
+.lineon{font-size:12px;font-weight:700;color:var(--mute-ai);text-align:center;margin-top:-6px}
+.lineon b{color:var(--shu-on-ai)}
+.done-sets{font:600 22px var(--num);margin-top:14px}
+.done-sets span{color:var(--mute);font:700 12px var(--ja);margin-right:8px}
+.exdots{display:flex;gap:6px;margin-top:8px}.exdots i{width:7px;height:7px;border-radius:50%;background:var(--hair)}.exdots i.on{background:var(--ai)}
+.sheet{background:var(--ai);color:#fff;border-radius:26px 26px 0 0;padding:20px 20px 12px;display:flex;flex-direction:column;gap:6px}
+.sheet h3{font:900 20px var(--ja);margin-bottom:6px}
+.row{min-height:56px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--ai2);font-weight:700}
+.row small{color:var(--mute-ai);font-weight:500;font-size:13px}
+.dim{position:relative}.dim::after{content:"";position:absolute;inset:0;background:rgba(20,28,45,.45)}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:6px;text-align:center}
+.week span{font-size:11px;font-weight:700;color:var(--mute)}
+.week i{display:block;height:28px;border-radius:6px;background:var(--hair);margin-top:3px}
+.week i.d{background:var(--ai)}.week i.t{background:transparent;border:2px solid var(--shu)}
+.overlay{position:absolute;left:0;right:0;bottom:0;z-index:2}
+/* v8 */
+.see.list{padding-bottom:8px}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);padding:6px 4px 10px;background:var(--ai)}
+.tabs span{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:700;color:var(--mute-ai);min-height:52px;justify-content:center;position:relative}
+.tabs svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.tabs span.on{color:#fff}
+.tabs span.on::before{content:"";position:absolute;top:0;width:28px;height:3px;border-radius:2px;background:var(--shu-on-ai)}
+.press.slim{padding:14px 20px 4px;gap:0}
+.head{display:flex;justify-content:space-between;align-items:flex-end;margin-top:14px}
+.head .hello{margin-top:0}
+.pill{display:inline-flex;align-items:center;gap:4px;min-height:40px;padding:0 14px;border-radius:20px;border:1.5px solid var(--ai);font-weight:700;font-size:14px;color:var(--ai);white-space:nowrap}
+.pill svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round}
+.tap{position:relative}
+.ln.tap{grid-template-columns:1fr 64px 64px 14px}
+.chev{color:var(--mute);font-weight:700;align-self:center;font-size:18px}
+.quick{display:flex;gap:8px;margin-top:12px}
+.quick .pill{flex:1;justify-content:center;border-color:var(--hair);background:#fff}
+.h1{font:900 28px/1.2 var(--ja)}
+.rec{display:grid;grid-template-columns:1fr 64px 54px 14px;gap:10px;align-items:center;padding:12px 0;border-bottom:1px solid var(--hair)}
+.rec b{font:700 16px var(--ja)}.rec b small{display:block;font-size:12px;color:var(--mute);font-weight:500}
+.rec .num{font-size:36px;text-align:right}
+.sec{margin-top:18px}
+.empty{margin:auto 0;text-align:center;padding:0 10px}
+.empty b{display:block;font:900 22px/1.4 var(--ja);margin-bottom:8px}
+.empty p{color:var(--mute);font-size:14px}
+.back{font-weight:700;font-size:14px;color:var(--mute);display:flex;align-items:center;gap:4px;min-height:40px}
+.check{display:grid;grid-template-columns:28px 1fr auto;gap:12px;align-items:center;min-height:54px;border-bottom:1px solid var(--ai2);font-weight:700}
+.check i{width:24px;height:24px;border-radius:50%;border:2px solid var(--mute-ai);display:flex;align-items:center;justify-content:center}
+.check.on i{background:#fff;border-color:#fff}
+.check.on i::after{content:"";width:10px;height:6px;border:2.5px solid var(--ai);border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.check small{color:var(--mute-ai);font-weight:500;font-size:12px}
+.chips2{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px}
+.chips2 span{min-height:40px;display:flex;align-items:center;padding:0 14px;border-radius:20px;border:1.5px solid var(--mute-ai);font-weight:700;font-size:13px}
+.chips2 span.on{background:#fff;color:var(--ai);border-color:#fff}
+.addrow{min-height:54px;display:flex;align-items:center;gap:10px;font-weight:700;color:var(--shu-on-ai)}
+.toggle{display:flex;justify-content:space-between;align-items:center;min-height:54px;font-weight:700}
+.toggle i{width:44px;height:26px;border-radius:13px;background:var(--ai2);position:relative}
+.toggle i::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:var(--mute-ai)}
+.group{font-size:12px;font-weight:700;color:var(--mute);margin-top:14px}
+.ex{display:flex;justify-content:space-between;align-items:center;min-height:52px;border-bottom:1px solid var(--hair);font-weight:700}
+.ex small{color:var(--mute);font-weight:500;font-size:12px;margin-left:8px}
+.go.sm{min-height:52px;font-size:17px}
+/* v9 */
+.sets{margin-top:auto;display:flex;flex-direction:column}
+.sets .hd,.sets .r{padding:0 8px;display:grid;grid-template-columns:56px 1fr 1fr 28px;align-items:center}
+.sets .hd{font-size:11px;font-weight:700;color:var(--mute);padding-bottom:4px;border-bottom:1px solid var(--hair)}
+.sets .r{min-height:46px;border-bottom:1px solid var(--hair);font:600 24px var(--num)}
+.sets .r .no{font:700 13px var(--ja);color:var(--mute)}
+.sets .r .pv{color:var(--mute)}
+.sets .r.done .td{color:var(--ai)}
+.sets .r.cur{background:#fff;border-radius:10px;border-bottom-color:transparent;box-shadow:inset 0 0 0 2px var(--ai)}
+.sets .r.cur .no{color:var(--ai)}
+.sets .r .td.over{color:var(--shu)}
+.sets .ok{width:22px;height:22px;border-radius:50%;background:var(--ai);position:relative}
+.sets .ok::after{content:"";position:absolute;left:6px;top:6px;width:9px;height:5px;border:2.5px solid #fff;border-top:0;border-right:0;transform:rotate(-45deg)}
+.sets .r .ed{font:700 12px var(--ja);color:var(--mute)}
+.subgo{display:flex;justify-content:center}
+.subgo span{min-height:44px;display:flex;align-items:center;padding:0 12px;font-weight:700;font-size:15px;color:#fff;border-bottom:1.5px solid var(--mute-ai)}
+.hist{margin-top:14px}
+.hist .r{display:grid;grid-template-columns:86px 1fr;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--hair)}
+.hist .d{font-size:13px;font-weight:700;color:var(--mute)}
+.hist .v{font:600 24px var(--num);letter-spacing:.02em}
+.hist .v b{color:var(--shu);font-weight:700}
+.hist .v small{font:700 12px var(--ja);color:var(--mute);margin-left:6px}
+.danger{color:var(--shu-on-ai)!important}
+.restore{display:flex;justify-content:space-between;align-items:center;min-height:52px;border-bottom:1px solid var(--hair);font-weight:700}
+.restore .pill{min-height:36px}
+/* v10 */
+.big input{width:120px;font:700 84px/.88 var(--num);color:#fff;background:var(--ai2);border:0;border-bottom:3px solid var(--shu-on-ai);border-radius:12px 12px 0 0;text-align:center;padding:4px 0}
+.hint2{font-size:12px;font-weight:700;color:var(--mute-ai);text-align:center;margin-top:-6px}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:#E9ECF1;border-radius:12px;padding:3px;margin-top:10px}
+.seg span{min-height:40px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:var(--mute);border-radius:10px}
+.seg span.on{background:#fff;color:var(--ai);box-shadow:0 0 0 1px var(--hair)}
+.day{display:grid;grid-template-columns:1fr 14px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--hair)}
+.day .d{font-weight:900;font-size:15px}
+.day .d small{font-weight:700;font-size:12px;color:var(--mute);margin-left:8px}
+.day p{font-size:13px;color:var(--mute);line-height:1.6}
+.day p b{color:var(--ai);font:600 17px var(--num);letter-spacing:.02em}
+.chart text{font-family:'Barlow Condensed';font-size:12px;fill:#5E6B82}
+.sumrow{padding:10px 0;border-bottom:1px solid var(--hair)}
+.sumrow .n{font-weight:900;font-size:16px;display:flex;justify-content:space-between}
+.sumrow .n em{font-style:normal;font-size:12px;font-weight:700;color:var(--shu)}
+.sumrow .t{font:600 26px var(--num)}
+.sumrow .p{font-size:12px;color:var(--mute)}
+.bl{display:grid;grid-template-columns:1fr auto 14px;gap:10px;align-items:baseline;min-height:50px;padding:8px 0;border-bottom:1px solid var(--hair)}
+.bl .num{font-size:28px}
+/* v11 */
+.tr-top{gap:10px}
+.tr-top .prog{display:flex;align-items:center;gap:10px;min-height:44px;flex:1}
+.tr-top .end{min-height:36px;display:flex;align-items:center;padding:0 14px;border-radius:18px;border:1.5px solid var(--ai);font-weight:700;font-size:13px;color:var(--ai)}
+.tr-top .prog .k::after{content:" ▾"}
+.verdict.pr{background:var(--ai)}
+.verdict.pr b{color:#fff}
+.jl{display:grid;grid-template-columns:1fr auto;align-items:center;min-height:56px;border-bottom:1px solid var(--ai2);font-weight:700}
+.jl small{display:block;font-weight:500;font-size:12px;color:var(--mute-ai)}
+.jl .c{font:600 18px var(--num);color:var(--mute-ai)}
+.jl.now{color:#fff}.jl.now .c{color:#fff}
+.jl.done .c{color:var(--shu-on-ai)}
+.msg{color:var(--mute-ai);font-size:14px;margin-bottom:8px}
+.rec .num small{font:700 11px var(--ja);color:var(--mute);display:block;text-align:right}
+/* v12 */
+.tabs{grid-template-columns:repeat(5,1fr)}
+.tabs span{position:relative}
+.tabs .badge{position:absolute;top:4px;left:calc(50% + 6px);min-width:18px;height:18px;border-radius:9px;background:var(--shu-on-ai);color:#fff;font:700 11px/18px var(--num);text-align:center;padding:0 4px}
+.tl{display:flex;flex-direction:column}
+.tw{display:grid;grid-template-columns:40px 1fr;gap:10px;padding:12px 0;border-bottom:1px solid var(--hair)}
+.av{width:40px;height:40px;border-radius:50%;background:var(--ai);color:#fff;display:flex;align-items:center;justify-content:center;font:900 15px var(--ja)}
+.av.me{background:#fff;color:var(--ai);border:1.5px solid var(--hair)}
+.tw .who{display:flex;gap:6px;align-items:baseline;font-weight:900;font-size:14px}
+.tw .who small{font-weight:500;color:var(--mute);font-size:12px}
+.tw .tag{font-size:11px;font-weight:700;color:var(--shu);margin-left:auto}
+.tw p.t{font-size:15px;line-height:1.6;margin-top:2px}
+.tw .q{border-left:3px solid var(--hair);padding-left:8px;color:var(--mute);font-size:13px;margin-top:4px}
+.tw .src{margin-top:8px;border:1px solid var(--hair);border-radius:12px;padding:8px 10px;font-size:12px;color:var(--mute);background:#fff}
+.tw .src b{display:block;color:var(--ai);font-size:13px}
+.tw.unread{background:linear-gradient(90deg,rgba(208,60,34,.06),transparent)}
+.compose{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:10px 16px;background:var(--ai)}
+.compose span:first-child{min-height:44px;border-radius:22px;background:var(--ai2);color:var(--mute-ai);display:flex;align-items:center;padding:0 16px;font-size:14px}
+.compose .send{min-height:44px;padding:0 18px;border-radius:22px;background:var(--shu);color:#fff;font-weight:700;display:flex;align-items:center}
+.card{border:1px solid var(--hair);background:#fff;border-radius:16px;padding:10px 12px;display:grid;grid-template-columns:32px 1fr;gap:10px;margin-top:12px}
+.card .av{width:32px;height:32px;font-size:13px}
+.card p{font-size:13px;line-height:1.55}
+.card .who{font-size:12px;font-weight:900}
+.card .who small{color:var(--mute);font-weight:500;margin-left:6px}
+.note{font-size:12px;color:var(--mute);text-align:center;padding:10px 0}
+</style></head><body>
+<div class="intro"><h1>画面イメージ v12 ─ コーチのタイムライン</h1>
+<p>下のタブに「コーチ」を足す（未読があれば朱の数字）。中はタイムライン：コーチの投稿と自分の書き込みが新しい順に並ぶ。下の欄からいつでもコーチに書ける。返事は翌朝 7:22 のコーチ便で届く（その日だけ通知）。ホームにも未読の投稿を1件出す。</p></div>
+<div class="wall">
+
+<figure><figcaption><b>ホーム</b>。未読のコーチの投稿があれば、今週の下にカードで1件。押すとコーチのタブへ。タブの「コーチ」に朱の数字。</figcaption><div class="phone">
+  <div class="see">
+    <div class="date"><span class="k">10月21日 水曜</span><span><span class="k">通算 </span><span class="num">19</span><span class="k"> 日</span></span></div>
+    <div class="head"><p class="hello"><small>今日のメニュー</small>胸</p><span class="pill">種目を変える</span></div>
+    <div class="lines">
+      <div class="ln tap"><span class="name">膝付き腕立て伏せ<small>前回 13・10・7</small></span><svg class="mini" viewBox="0 0 64 28"><path d="M0 22 L20 18 L40 14 L64 10" fill="none" stroke="#1C2B4B" stroke-width="2.5"/></svg><span class="num">13</span><span class="chev">›</span></div>
+    </div>
+    <div class="feed">
+      <p class="k">今週</p>
+      <div class="week"><span>月<i class="d"></i></span><span>火<i class="d"></i></span><span>水<i class="t"></i></span><span>木<i></i></span><span>金<i></i></span><span>土<i></i></span><span>日<i></i></span></div>
+      <div class="card"><span class="av">コ</span><div><p class="who">コーチ<small>7:23 ・ 読み物</small></p><p>膝付き腕立て伏せは、膝から頭までを一直線に保つのが要点。腰が落ちたり…</p></div></div>
+    </div>
+  </div>
+  <div class="press slim"><div class="go">始める</div></div>
+  <div class="tabs"><span class="on"><svg viewBox="0 0 24 24"><path d="M3 11 12 3.5 21 11M5.5 9.5V20h13V9.5"/></svg>ホーム</span><span class=""><svg viewBox="0 0 24 24"><path d="M4 20V14h5V9h5V4h6v16z"/></svg>記録</span><span class=""><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>コーチ<i class=badge>1</i></span><span class=""><svg viewBox="0 0 24 24"><path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/></svg>種目</span><span class=""><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>設定</span></div>
+</div></figure>
+
+<figure><figcaption><b>コーチ</b>（タブ）。新しい順のタイムライン。コーチ（藍の丸）と自分（白の丸）。読み物は出典のカード、返信は自分の書き込みを引用。未読は薄い朱の下地。</figcaption><div class="phone">
+  <div class="see list">
+    <p class="h1">コーチ</p>
+    <div class="tl">
+      <div class="tw unread"><span class="av">コ</span><div><p class="who">コーチ<small>今日 7:23</small><span class="tag">読み物</span></p><p class="t">膝付き腕立て伏せは、膝から頭までを一直線に保つのが要点。腰が落ちたり尻が上がったりすると、胸と腕に負荷が乗りにくくなる。</p><div class="src"><b>Modified Push-Up</b>NASM Exercise Library</div></div></div>
+      <div class="tw"><span class="av me">私</span><div><p class="who">自分<small>昨日 21:30</small></p><p class="t">今日は肩が重かった。3セット目で崩れた。</p></div></div>
+      <div class="tw"><span class="av">コ</span><div><p class="who">コーチ<small>10月19日</small><span class="tag">発見</span></p><p class="t">腕立ての1セット目が3回続けて先月の最高を上回っている。</p></div></div>
+    </div>
+  </div>
+  <div class="compose"><span>コーチに書く…</span><span class="send">送る</span></div>
+  <div class="tabs"><span class=""><svg viewBox="0 0 24 24"><path d="M3 11 12 3.5 21 11M5.5 9.5V20h13V9.5"/></svg>ホーム</span><span class=""><svg viewBox="0 0 24 24"><path d="M4 20V14h5V9h5V4h6v16z"/></svg>記録</span><span class="on"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>コーチ</span><span class=""><svg viewBox="0 0 24 24"><path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/></svg>種目</span><span class=""><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>設定</span></div>
+</div></figure>
+
+<figure><figcaption><b>書いた直後</b>。自分の書き込みがすぐタイムラインに出る。下に「返事は明日の朝 7:22 ごろ」と正直に出す。翌朝、コーチが引用つきで返信し、そのときだけ通知。</figcaption><div class="phone">
+  <div class="see list">
+    <p class="h1">コーチ</p>
+    <div class="tl">
+      <div class="tw"><span class="av me">私</span><div><p class="who">自分<small>いま</small></p><p class="t">膝付きなら20回いけそう。次は普通の腕立てに戻していい？</p></div></div>
+      <p class="note">返事は明日の朝 7:22 ごろ届きます</p>
+      <div class="tw"><span class="av">コ</span><div><p class="who">コーチ<small>今日 7:23</small><span class="tag">読み物</span></p><p class="t">膝付き腕立て伏せは、膝から頭までを一直線に保つのが要点。</p><div class="src"><b>Modified Push-Up</b>NASM Exercise Library</div></div></div>
+      <div class="tw"><span class="av">コ</span><div><p class="who">コーチ<small>10月20日</small><span class="tag">返信</span></p><p class="q">今日は肩が重かった</p><p class="t">重い日は1セット目だけラインを狙えば十分。</p></div></div>
+    </div>
+  </div>
+  <div class="compose"><span>コーチに書く…</span><span class="send">送る</span></div>
+  <div class="tabs"><span class=""><svg viewBox="0 0 24 24"><path d="M3 11 12 3.5 21 11M5.5 9.5V20h13V9.5"/></svg>ホーム</span><span class=""><svg viewBox="0 0 24 24"><path d="M4 20V14h5V9h5V4h6v16z"/></svg>記録</span><span class="on"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>コーチ</span><span class=""><svg viewBox="0 0 24 24"><path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/></svg>種目</span><span class=""><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>設定</span></div>
+</div></figure>
+
+</div></body></html>
