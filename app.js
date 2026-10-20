@@ -1401,7 +1401,7 @@ function renderRecords() {
       const text = element('div');
       const heading = element('p', dayLabel(date), 'd');
       heading.append(element('small', ids.length ? ids.length + '種目' +
-        (sessions.some(session => session.light) ? '・軽め' : '') : skips.length ? '休み' : ''));
+        (skips.length ? '・休み' : sessions.some(session => session.light) ? '・軽め' : '') : skips.length ? '休み' : ''));
       const detail = element('p');
       for (const id of ids) {
         const ex = state.exercises.find(ex => ex.id === id);
@@ -1413,7 +1413,7 @@ function renderRecords() {
       }
       for (const skip of skips) {
         if (detail.childNodes.length) detail.append(element('br'));
-        detail.append(document.createTextNode(skip.reason));
+        detail.append(document.createTextNode((ids.length ? '休み ' : '') + skip.reason));
       }
       if (!ids.length && !skips.length && body) detail.textContent = '体重 ' + body.kg.toFixed(1) + 'kg';
       text.append(heading, detail);

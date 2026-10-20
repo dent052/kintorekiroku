@@ -1418,7 +1418,10 @@ test('planned table uses the previous set number and only adds an explicit fourt
 test('done rows edit during rest, delete without confirmation and undo in place for four seconds', async () => {
   const data = fixture();
   const { page, errors, close } = await open({ data });
-  await page.clock.install();
+  const time = new Date(localDate(new Date()) + 'T12:00:00');
+  await page.clock.install({ time });
+  // install() keeps time running; pause before the toast is scheduled.
+  await page.clock.pauseAt(new Date(time.getTime() + 60000));
   await press(page, '始める').click();
   await complete(page);
   await page.locator('.sets .done').first().click();
@@ -1936,7 +1939,10 @@ test('by-day records include training, light, rest and body-only dates and remem
   assert.deepEqual(await page.locator('.day').evaluateAll(rows => rows.map(row => row.dataset.date)), expected);
   const latest = page.locator('.day[data-date="' + data.sessions.at(-1).date + '"]');
   assert.match(await latest.textContent(), /3種目・軽め.*腕立て伏せ.*バンドロウ 黒.*プランク.*秒/s);
-  assert.match(await page.locator('.day[data-date="' + data.skips[0].date + '"]').textContent(), /休み.*風邪/s);
+  const restRow = page.locator('.day[data-date="' + data.skips[0].date + '"]');
+  assert.equal(await restRow.locator('.d small').textContent(), '3種目・休み');
+  assert.equal(await restRow.locator('p').last().evaluate(node =>
+    node.innerText.split('\n').at(-1)), '休み 風邪');
   const bodyRow = page.locator('.day[data-date="' + bodyOnly.date + '"]');
   assert.equal(await bodyRow.locator('p').last().textContent(), '体重 67.8kg');
   assert.equal((await stored(page)).body.find(entry => entry.date === bodyOnly.date).kg, 67.83);
