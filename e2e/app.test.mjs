@@ -271,14 +271,14 @@ test('training home preserves exercise, set, input and rest for resume', async (
   await press(page, '始める').click();
   await press(page, '次 ▶').click();
   await press(page, '完了').click();
-  await page.getByRole('slider').press('ArrowRight');
-  const amount = await page.getByRole('slider').getAttribute('aria-valuenow');
+  await press(page, 'バンドロウ 1回増やす').click();
+  const amount = await page.locator('.counter .num').textContent();
   await home(page);
   await press(page, '続きから').click();
   assert.equal(await page.getAttribute('.app', 'data-mode'), 'train');
   assert.match(await page.textContent('.tr-top'), /2 \/ 3 ・ 2セット目へ/);
-  assert.equal(await page.getByRole('slider').getAttribute('aria-valuenow'), amount);
-  assert.equal(await page.getByRole('slider').getAttribute('aria-label'), 'バンドロウ 回数');
+  assert.equal(await page.locator('.counter .num').textContent(), amount);
+  assert.equal(await page.locator('.counter .pm').last().getAttribute('aria-label'), 'バンドロウ 1回増やす');
   assert.equal(await page.locator('.ring').count(), 1);
   await press(page, '休憩を終える').click();
   await home(page);
@@ -386,7 +386,6 @@ test('first use adds an exercise without creating a session; an empty menu opens
   await page.getByLabel('名前', { exact: true }).fill('腕立て伏せ');
   await press(page, '保存').click();
   await home(page);
-  assert.equal(await page.getAttribute('.app', 'data-mode'), 'today');
   await press(page, '始める').click();
   await sheet(page).getByRole('button', { name: '種目を選ぶ', exact: true }).click();
   assert.ok(await sheet(page).getByRole('button', { name: '決定' }).isDisabled());
@@ -521,87 +520,162 @@ test('today posts put the single coach or record label in the text block', async
   await close();
 });
 
-test('ruler renders every tick, moves with the finger, supports thirds and arrow keys', async () => {
+test('counter steps, clamps, vibrates and shows the line only on the first set', async () => {
   const data = fixture();
   const { page, errors, close } = await open({ data });
-  const today = localDate(new Date());
-  await press(page, '始める').click();
-  const slider = page.getByRole('slider', { name: '腕立て伏せ 回数' });
-  const initial = prefill(data, 'e1', today)[0].reps;
-  const target = line(data, 'e1', today).value;
-  assert.equal(await slider.getAttribute('aria-valuenow'), String(initial));
-  assert.equal(await slider.getAttribute('aria-valuemin'), '0');
-  assert.equal(await slider.getAttribute('aria-valuemax'), '200');
-  assert.equal(await slider.locator('.t').count(), 201);
-  assert.equal(await slider.locator('.line b').textContent(), 'ライン' + target);
-  assert.equal(await slider.locator('.t.over').count(), 201 - target);
-  assert.deepEqual(await slider.locator('.t').evaluateAll(ticks =>
-    ticks.map((tick, i) => tick.classList.contains('over') === (i >= Number(
-      document.querySelector('.line b').textContent.replace('ライン', '')))).every(Boolean)), true);
-  const box = await slider.boundingBox();
-  const x = box.x + box.width / 2;
-  const y = box.y + box.height / 2;
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x - 60, y, { steps: 6 });
-  await page.mouse.up();
-  assert.equal(await slider.getAttribute('aria-valuenow'), String(initial + 2));
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x + 30, y, { steps: 3 });
-  await page.mouse.up();
-  assert.equal(await slider.getAttribute('aria-valuenow'), String(initial + 1));
-  await slider.click({ position: { x: 10, y: 30 } });
-  assert.equal(await slider.getAttribute('aria-valuenow'), String(initial));
-  await slider.click({ position: { x: box.width - 10, y: 30 } });
-  await slider.press('ArrowRight');
-  assert.equal(await slider.getAttribute('aria-valuenow'), String(initial + 2));
-  await slider.press('ArrowLeft');
-  assert.equal(await page.locator('.big .num').textContent(), String(initial + 1));
-  const center = await slider.evaluate(el => {
-    const bounds = el.getBoundingClientRect();
-    const n = Number(el.getAttribute('aria-valuenow'));
-    const tick = el.querySelectorAll('.t')[n].getBoundingClientRect();
-    return Math.abs(tick.x + tick.width / 2 - bounds.x - bounds.width / 2);
+  await page.evaluate(() => {
+    window.vibrations = [];
+    navigator.vibrate = value => { window.vibrations.push(value); return true; };
   });
-  assert.ok(center < 1, 'selected tick is centered');
-  const name = await page.textContent('.exname');
-  await swipe(page, -100, 0, '.ruler');
-  assert.equal(await page.textContent('.exname'), name);
-  await swipe(page, -100);
+  await press(page, '始める').click();
+  const target = line(data, 'e1', localDate(new Date())).value;
+  const number = page.locator('.counter .num');
+  const minus = press(page, '腕立て伏せ 1回減らす');
+  const plus = press(page, '腕立て伏せ 1回増やす');
+  assert.equal(await number.textContent(), String(target));
+  assert.equal(await page.textContent('.lineon'), 'ライン' + target + ' 突破');
+  assert.equal(await number.evaluate(el => el.classList.contains('over')), true);
+  await minus.click();
+  assert.equal(await number.textContent(), String(target - 1));
+  assert.equal(await page.textContent('.lineon'), 'ライン' + target + ' まで あと1');
+  assert.equal(await number.evaluate(el => el.classList.contains('over')), false);
+  await plus.click();
+  assert.equal(await number.textContent(), String(target));
+  assert.equal(await page.textContent('.lineon'), 'ライン' + target + ' 突破');
+  assert.equal(await number.evaluate(el => el.classList.contains('over')), true);
+  assert.deepEqual(await page.evaluate(() => window.vibrations), [5, 5]);
+  await minus.evaluate(button => { for (let i = 0; i < 210; i++) button.click(); });
+  assert.equal(await number.textContent(), '0');
+  const count = await page.evaluate(() => window.vibrations.length);
+  await minus.click();
+  assert.equal(await number.textContent(), '0');
+  assert.equal(await page.evaluate(() => window.vibrations.length), count);
+  await plus.evaluate(button => { for (let i = 0; i < 210; i++) button.click(); });
+  assert.equal(await number.textContent(), '200');
+  await plus.click();
+  assert.equal(await number.textContent(), '200');
+  await press(page, '完了').click();
+  assert.equal(await page.locator('.lineon').count(), 0);
+  assert.equal(await number.evaluate(el => el.classList.contains('over')), false);
+  assert.equal(await number.textContent(), String(prefill(data, 'e1', localDate(new Date()))[1].reps));
+  await press(page, '休憩を終える').click();
+  assert.equal(await page.locator('.lineon').count(), 0);
+  await swipe(page, -100, 0, '.counter');
   assert.equal(await page.textContent('.exname'), 'バンドロウ');
   await swipe(page, 100);
-  assert.equal(await page.textContent('.exname'), name);
+  assert.equal(await page.textContent('.exname'), '腕立て伏せ');
   await principles(page);
   assert.deepEqual(errors, []);
   await close();
 });
 
-test('time ruler uses five-second steps, all 121 ticks, and clamps at both ends', async () => {
-  const { page, close } = await open({ data: fixture(), extra: {
+test('time counter steps by five seconds, clamps, and includes seconds in line feedback', async () => {
+  const data = fixture();
+  const { page, close } = await open({ data, extra: {
     'kintore:menu': { kind: 'custom', exerciseIds: ['e3'] }
   } });
   await press(page, '始める').click();
-  const slider = page.getByRole('slider', { name: 'プランク 秒数' });
-  assert.equal(await slider.locator('.t').count(), 121);
-  assert.equal(await slider.getAttribute('aria-valuemax'), '600');
-  const initial = Number(await slider.getAttribute('aria-valuenow'));
-  await slider.press('ArrowRight');
-  assert.equal(await slider.getAttribute('aria-valuenow'), String(initial + 5));
-  const box = await slider.boundingBox();
-  await page.mouse.move(box.x + box.width / 2, box.y + 30);
+  const number = page.locator('.counter .num');
+  const minus = press(page, 'プランク 5秒減らす');
+  const plus = press(page, 'プランク 5秒増やす');
+  const target = line(data, 'e3', localDate(new Date())).value;
+  assert.equal(await number.textContent(), String(target));
+  assert.equal(await page.textContent('.lineon'), 'ライン' + target + '秒 突破');
+  await minus.click();
+  assert.equal(await number.textContent(), String(target - 5));
+  assert.equal(await page.textContent('.lineon'), 'ライン' + target + '秒 まで あと5秒');
+  assert.equal(await number.evaluate(el => el.classList.contains('over')), false);
+  await plus.click();
+  assert.equal(await number.textContent(), String(target));
+  assert.equal(await number.evaluate(el => el.classList.contains('over')), true);
+  await plus.click();
+  assert.equal(await number.textContent(), String(target + 5));
+  await minus.evaluate(button => { for (let i = 0; i < 140; i++) button.click(); });
+  assert.equal(await number.textContent(), '0');
+  await plus.evaluate(button => { for (let i = 0; i < 140; i++) button.click(); });
+  assert.equal(await number.textContent(), '600');
+  await plus.click();
+  assert.equal(await number.textContent(), '600');
+  await close();
+});
+
+test('counter long press repeats after 400ms and stops on release, exit and cancel', async () => {
+  const { page, close } = await open({ data: fixture() });
+  await page.clock.install();
+  await press(page, '始める').click();
+  const number = page.locator('.counter .num');
+  const plus = press(page, '腕立て伏せ 1回増やす');
+  const initial = Number(await number.textContent());
+  const box = await plus.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 - 30, box.y + 30);
+  assert.equal(await number.textContent(), String(initial + 1));
+  await page.clock.runFor(399);
+  assert.equal(await number.textContent(), String(initial + 1));
+  await page.clock.runFor(401);
+  const held = Number(await number.textContent());
+  assert.ok(held > initial + 1);
   await page.mouse.up();
-  assert.equal(await slider.getAttribute('aria-valuenow'), String(initial + 10));
-  await slider.evaluate(el => {
-    for (let i = 0; i < 140; i++) el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
-  });
-  assert.equal(await slider.getAttribute('aria-valuenow'), '0');
-  await slider.evaluate(el => {
-    for (let i = 0; i < 140; i++) el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
-  });
-  assert.equal(await slider.getAttribute('aria-valuenow'), '600');
+  await page.clock.runFor(500);
+  assert.equal(await number.textContent(), String(held));
+  await page.mouse.down();
+  await page.mouse.move(box.x - 10, box.y);
+  const left = await number.textContent();
+  await page.clock.runFor(800);
+  assert.equal(await number.textContent(), left);
+  await page.mouse.up();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await plus.dispatchEvent('pointercancel');
+  const cancelled = await number.textContent();
+  await page.clock.runFor(800);
+  assert.equal(await number.textContent(), cancelled);
+  await page.mouse.up();
+  await plus.focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await number.textContent(), String(Number(cancelled) + 1));
+  await close();
+});
+
+test('a first set without a line keeps its previous prefill and has no line feedback', async () => {
+  const data = fixture();
+  data.sessions = [];
+  const { page, close } = await open({ data, extra: {
+    'kintore:menu': { kind: 'custom', exerciseIds: ['e1'] }
+  } });
+  await press(page, '始める').click();
+  assert.equal(await page.textContent('.counter .num'), String(prefill(data, 'e1', localDate(new Date()))[0].reps));
+  assert.equal(await page.locator('.lineon, .counter .over').count(), 0);
+  await close();
+});
+
+test('settings navigation labels stay on one line and fit at 360x640', async () => {
+  const { page, close } = await open({ data: fixture() });
+  await page.setViewportSize({ width: 360, height: 640 });
+  await settings(page);
+  await page.evaluate(() => document.fonts.ready);
+  const buttons = await page.locator('.nav button').evaluateAll(buttons => buttons.map(button => {
+    const range = document.createRange();
+    range.selectNodeContents([...button.childNodes].find(node => node.nodeType === Node.TEXT_NODE));
+    const lines = [...range.getClientRects()];
+    const bounds = button.getBoundingClientRect();
+    const style = getComputedStyle(button);
+    return {
+      text: button.textContent, lines: lines.length,
+      fits: bounds.left >= 0 && bounds.right <= innerWidth && button.scrollWidth <= button.clientWidth,
+      nowrap: style.whiteSpace, size: style.fontSize, weight: style.fontWeight
+    };
+  }));
+  assert.deepEqual(buttons.map(button => button.text), ['ホーム', '＋ 種目', '＋ バンド', '＋ テンプレ']);
+  for (const button of buttons) {
+    assert.equal(button.lines, 1, button.text);
+    assert.equal(button.fits, true, button.text);
+    assert.equal(button.nowrap, 'nowrap');
+    assert.equal(button.size, '14px');
+    assert.equal(button.weight, '700');
+  }
+  assert.equal(await page.locator('.nav').evaluate(nav => getComputedStyle(nav).justifyContent), 'space-between');
+  await principles(page);
   await close();
 });
 
@@ -615,10 +689,10 @@ test('complete immediately saves, shows first-set verdict and ring, then summary
   });
   await press(page, '始める').click();
   assert.equal((await stored(page)).sessions.length, data.sessions.length);
-  const slider = page.getByRole('slider');
+  const number = page.locator('.counter .num');
   const target = line(data, 'e1', localDate(new Date())).value;
-  await slider.press('ArrowRight');
-  const reps = Number(await slider.getAttribute('aria-valuenow'));
+  await press(page, '腕立て伏せ 1回増やす').click();
+  const reps = Number(await number.textContent());
   await press(page, '完了').click();
   const session = (await stored(page)).sessions.at(-1);
   assert.equal(session.sets[0].reps, reps);

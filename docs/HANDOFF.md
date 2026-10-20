@@ -9,7 +9,9 @@
 - 記録の保存先：`dent052/kintorekiroku-data`（**非公開**。`data.json`＝アプリが自動保存、`posts.json`＝コーチ便、`topics.json`、`README.md`＝コーチ手順書）
 - 記録はスマホの `localStorage`（`kintore:data`）。アプリが5秒後に GitHub へ PUT（利用者のトークンはスマホの中だけにある。fine-grained、Contents R/W、`kintorekiroku-data` のみ、期限1年＝2027年10月ごろ作り直し）
 
-## 2. 現在の状態（v3 公開済み）
+## 2. 現在の状態
+- **v4（ホーム中心の行き来・左右カウンタ）を作業ブランチ `ccr-7676d6d6-1kyvh4` で実装済み、main へは未公開**（利用者の確認待ち）。設計 `docs/superpowers/specs/2026-10-20-kintore-v4-design.md`、計画 `docs/superpowers/plans/2026-10-20-kintore-v4.md`、見本 `docs/mockup-v7.html`、Codex ルール `docs/handoff/codex-rules-v4.txt`、撮影 `node docs/handoff/shots-v4.mjs <dir>`。計算 55・画面 30 件通過。
+- 以下は v3 時点の記述。
 - **v3 を `main` に公開済み**（コミット `5d15552`）。計算テスト 55 件、画面テスト 23 件（`npm test` / `npm run e2e`）すべて通過。
 - **実機（Android）では未確認**：目盛りの指ざわり・振動、画面が下にずれないか（直前に「少し下にスクロールして下が隠れる」と報告があり、画面を `position:fixed` に固定して対処済みだが実機で未確認）、ホーム画面に追加、バイブ、画面を消さない機能。
 - **定期タスク（コーチ便）**：`trig_012GiBuApW9QRo1EdXAouNAZ` 毎日 07:22 JST（`CRON_TZ=Asia/Tokyo 22 7 * * *`）、完了通知 push あり。**まだ一度も動いていない**。初回は 2026-10-20 07:22 JST。確認すること：①投稿されるか（`posts.json` が更新されるか）②通知が「返信のときだけ」になるか、毎日来るなら通知をオフに。旧タスク（週次・水曜）は削除済み。

@@ -297,7 +297,7 @@ let swipeStart = null;
 app.addEventListener('touchstart', event => {
   const touch = event.touches[0];
   swipeStart = event.touches.length === 1 &&
-    !event.target.closest('input, textarea, select, .ruler, .chips')
+    !event.target.closest('input, textarea, select, .chips')
     ? { x: touch.clientX, y: touch.clientY, t: Date.now() } : null;
 }, { passive: true });
 app.addEventListener('touchcancel', () => { swipeStart = null; });
@@ -318,6 +318,7 @@ app.addEventListener('touchend', event => {
 }, { passive: true });
 
 function render() {
+  stopCounter();
   app.dataset.mode = currentMode;
   view.className = currentMode === 'settings' ? 'see slab' : 'see';
   view.replaceChildren();
@@ -583,10 +584,17 @@ let training = null;
 let rest = null;
 let restInterval;
 let wakeLock = null;
+let stopCounter = () => {};
 
 function trainingEntry(id, count) {
   const sets = prefill(state, id, training.date);
   const planned = rows(sets, training.light ? 1 : count ?? sets.length);
+  const ex = state.exercises.find(item => item.id === id);
+  const target = line(state, id, training.date);
+  if (!trainingSession()?.sets.some(set => set.exerciseId === id) && target.value !== undefined) {
+    planned[0][ex.type === 'time' ? 'sec' : 'reps'] =
+      Math.max(0, Math.min(ex.type === 'time' ? 600 : 200, target.value));
+  }
   return { id, sets: planned, cursor: 0, goal: planned.length };
 }
 
@@ -762,10 +770,8 @@ function renderTrain() {
     }
     dock.append(chips);
   }
-  const big = element('div', '', 'big');
-  const number = element('span', String(value(ex, set)), 'num');
-  big.append(number, element('small', ex.type === 'time' ? '秒' : '回'));
-  dock.append(big, ruler(ex, set, number), action('完了', completeSet, 'go'));
+  counter(ex, set);
+  dock.append(action('完了', completeSet, 'go'));
   const nav = element('div', '', 'nav');
   const previous = action('◀ 前', () => moveExercise(-1));
   previous.disabled = training.index === 0;
@@ -775,85 +781,76 @@ function renderTrain() {
   dock.append(nav);
 }
 
-function ruler(ex, set, number) {
-  const step = ex.type === 'time' ? 5 : 1;
-  const max = ex.type === 'time' ? 600 : 200;
-  const key = ex.type === 'time' ? 'sec' : 'reps';
-  const l = line(state, ex.id, training.date);
-  const slider = element('div', '', 'ruler');
-  slider.tabIndex = 0;
-  slider.setAttribute('role', 'slider');
-  slider.setAttribute('aria-label', ex.name + (ex.type === 'time' ? ' 秒数' : ' 回数'));
-  slider.setAttribute('aria-valuemin', '0');
-  slider.setAttribute('aria-valuemax', String(max));
-  const ticks = element('div', '', 'ticks');
-  for (let n = 0; n <= max; n += step) {
-    const tick = element('div', '', 't' + (n % (step * 5) === 0 ? ' major' : '') +
-      (l.value !== undefined && n >= l.value ? ' over' : ''));
-    tick.append(element('i'));
-    if (n % (step * 5) === 0) tick.append(element('em', String(n)));
-    ticks.append(tick);
-  }
-  slider.append(ticks);
-  let marker;
-  if (l.value !== undefined) {
-    marker = element('div', '', 'line');
-    marker.append(element('b', 'ライン' + l.value));
-    slider.append(marker);
-  }
-  slider.append(element('div', '', 'center'));
-  function draw(position = set[key]) {
+function counter(ex, set) {
+  const time = ex.type === 'time';
+  const step = time ? 5 : 1;
+  const max = time ? 600 : 200;
+  const key = time ? 'sec' : 'reps';
+  const target = line(state, ex.id, training.date);
+  const first = !trainingSession()?.sets.some(item => item.exerciseId === ex.id);
+  const row = element('div', '', 'counter');
+  const big = element('div', '', 'big');
+  const number = element('span', '', 'num');
+  big.append(number, element('small', time ? '秒' : '回'));
+  const status = first && target.value !== undefined ? element('p', '', 'lineon') : null;
+  function draw() {
     number.textContent = String(set[key]);
-    slider.setAttribute('aria-valuenow', String(set[key]));
-    ticks.style.transform = 'translateX(calc(50% - ' + (position / step * 30 + 15) + 'px))';
-    if (marker) marker.style.left = 'calc(50% + ' + ((l.value - position) / step * 30) + 'px)';
+    if (!status) return;
+    const over = set[key] >= target.value;
+    number.classList.toggle('over', over);
+    status.replaceChildren(element('b', 'ライン' + target.value + (time ? '秒' : '')),
+      document.createTextNode(over ? ' 突破' :
+        ' まで あと' + (target.value - set[key]) + (time ? '秒' : '')));
   }
-  function change(next) {
-    next = Math.max(0, Math.min(max, next));
+  function change(direction) {
+    dismissVerdict();
+    const next = Math.max(0, Math.min(max, set[key] + direction * step));
     if (next === set[key]) return;
     set[key] = next;
     navigator.vibrate?.(5);
     draw();
   }
+  let delay;
+  let repeat;
   let pointer = null;
-  slider.addEventListener('pointerdown', event => {
-    if (!event.isPrimary || event.button !== 0) return;
-    dismissVerdict();
-    pointer = { id: event.pointerId, x: event.clientX, value: set[key], moved: false };
-    slider.setPointerCapture(event.pointerId);
-    slider.focus({ preventScroll: true });
-  });
-  slider.addEventListener('pointermove', event => {
-    if (!pointer || event.pointerId !== pointer.id) return;
-    const dx = event.clientX - pointer.x;
-    if (Math.abs(dx) >= 5) pointer.moved = true;
-    if (pointer.moved) {
-      change(pointer.value - Math.round(dx / 30) * step);
-      draw(Math.max(0, Math.min(max, pointer.value - dx / 30 * step)));
-    }
-  });
-  slider.addEventListener('pointerup', event => {
-    if (!pointer || event.pointerId !== pointer.id) return;
-    if (!pointer.moved) {
-      const rect = slider.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      if (x < rect.width / 3) change(set[key] - step);
-      else if (x > rect.width * 2 / 3) change(set[key] + step);
-    }
-    draw();
+  function stop() {
+    clearTimeout(delay);
+    clearInterval(repeat);
     pointer = null;
-    slider.releasePointerCapture(event.pointerId);
-  });
-  slider.addEventListener('pointercancel', () => { pointer = null; draw(); });
-  slider.addEventListener('lostpointercapture', () => { pointer = null; });
-  slider.addEventListener('keydown', event => {
-    if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
-    event.preventDefault();
-    dismissVerdict();
-    change(set[key] + (event.key === 'ArrowRight' ? step : -step));
-  });
+  }
+  stopCounter = stop;
+  function button(direction) {
+    const control = action(direction < 0 ? '−' : '＋', event => {
+      // Keyboard and assistive clicks have no pointerdown.
+      if (event.detail === 0) change(direction);
+    }, 'pm');
+    control.setAttribute('aria-label', ex.name + ' ' + (time ? '5秒' : '1回') +
+      (direction < 0 ? '減らす' : '増やす'));
+    control.addEventListener('pointerdown', event => {
+      if (!event.isPrimary || event.button !== 0) return;
+      stop();
+      pointer = event.pointerId;
+      change(direction);
+      delay = setTimeout(() => {
+        change(direction);
+        repeat = setInterval(() => change(direction), 100);
+      }, 400);
+    });
+    control.addEventListener('pointermove', event => {
+      if (event.pointerId !== pointer) return;
+      const bounds = control.getBoundingClientRect();
+      if (event.clientX < bounds.left || event.clientX >= bounds.right ||
+          event.clientY < bounds.top || event.clientY >= bounds.bottom) stop();
+    });
+    for (const event of ['pointerup', 'pointerleave', 'pointercancel', 'lostpointercapture']) {
+      control.addEventListener(event, stop);
+    }
+    return control;
+  }
+  row.append(button(-1), big, button(1));
+  dock.append(row);
+  if (status) dock.append(status);
   draw();
-  return slider;
 }
 
 function completeSet() {
