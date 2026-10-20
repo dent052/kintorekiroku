@@ -507,7 +507,8 @@ test('back first closes a sheet on home, records and settings', async () => {
   await page.waitForFunction(() => document.querySelectorAll('dialog[open]').length === 0);
   assert.equal(await page.getAttribute('.app', 'data-mode'), 'today');
   await tab(page, '記録').click();
-  await pill(page, '日付から探す').click();
+  await page.locator('.seg').getByRole('button', { name: '日ごと', exact: true }).click();
+  await pill(page, '＋ 過去の日を記録').click();
   await page.evaluate(() => window.history.back());
   await page.waitForFunction(() => document.querySelectorAll('dialog[open]').length === 0);
   assert.equal(await page.getAttribute('.app', 'data-mode'), 'records');
@@ -1020,7 +1021,8 @@ test('complete immediately saves, shows first-set verdict and rest bar, then sum
   assert.equal(await press(page, '終了').count(), 0);
   await press(page, 'トレーニングを終える').click();
   assert.equal(await page.getAttribute('.app', 'data-mode'), 'summary');
-  assert.match(await page.textContent('.see'), /今日の記録.*ライン突破 [0-2] \/ 2.*合計回数/s);
+  assert.match(await page.textContent('.see'), /今日の記録.*腕立て伏せ.*前回.*プランク.*前回/s);
+  assert.doesNotMatch(await page.textContent('.see'), /合計回数|前回より|ライン突破/);
   await principles(page);
   await press(page, 'ホームへ').click();
   await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'today');
@@ -1283,40 +1285,42 @@ test('records empty state contains only its explanation and optional unread news
   await close();
 });
 
-test('records calendar edits values and notes, deletes sets and confirms day deletion', async () => {
+test('day sheets edit sets and notes, delete and undo sets, and confirm session deletion', async () => {
   const data = fixture();
   const date = data.sessions.at(-1).date;
   const { page, errors, close } = await open({ data });
   await tab(page, '記録').click();
+  await page.locator('.seg').getByRole('button', { name: '日ごと', exact: true }).click();
   for (const size of [{ width: 390, height: 844 }, { width: 360, height: 640 }]) {
     await page.setViewportSize(size);
-    await pill(page, '日付から探す').click();
-    assert.equal(await sheet(page).getAttribute('aria-label'), '日付から探す');
-    assert.equal(await sheet(page).locator('.calendar button').count(), 84);
+    await page.locator('.day[data-date="' + date + '"]').click();
+    const token = await page.evaluate(() => window.history.state.sheet);
     await principles(page);
-    await sheet(page).getByRole('button', { name: date + ' トレーニング', exact: true }).click();
-    await principles(page);
-    await sheet(page).getByRole('button', { name: '腕立て伏せ 1セットを増やす', exact: true }).click();
-    const expected = data.sessions.at(-1).sets[0].reps + 1;
-    assert.equal((await stored(page)).sessions.find(s => s.date === date).sets[0].reps, expected);
-    data.sessions.at(-1).sets[0].reps = expected;
+    await sheet(page).locator('.row').first().click();
+    assert.equal(await page.locator('dialog[open]').count(), 1);
+    assert.equal(await page.evaluate(() => window.history.state.sheet), token);
+    await sheet(page).getByRole('button', { name: '腕立て伏せ 1回増やす', exact: true }).click();
+    await sheet(page).getByRole('button', { name: '保存', exact: true }).click();
+    data.sessions.at(-1).sets[0].reps++;
+    assert.equal((await stored(page)).sessions.find(s => s.date === date).sets[0].reps,
+      data.sessions.at(-1).sets[0].reps);
     await sheet(page).getByLabel('メモ', { exact: true }).fill('今日は軽い');
     await closeSheet(page);
   }
-  await pill(page, '日付から探す').click();
-  await sheet(page).getByRole('button', { name: date + ' トレーニング', exact: true }).click();
+  await page.locator('.day[data-date="' + date + '"]').click();
   assert.equal(await sheet(page).getByLabel('メモ', { exact: true }).inputValue(), '今日は軽い');
-  const count = (await stored(page)).sessions.find(s => s.date === date).sets.length;
-  await sheet(page).getByRole('button', { name: '削除', exact: true }).first().click();
-  assert.equal((await stored(page)).sessions.find(s => s.date === date).sets.length, count - 1);
+  const before = (await stored(page)).sessions.find(s => s.date === date).sets;
+  await sheet(page).locator('.row').first().click();
+  await sheet(page).getByRole('button', { name: 'このセットを消す', exact: true }).click();
+  assert.equal((await stored(page)).sessions.find(s => s.date === date).sets.length, before.length - 1);
+  await sheet(page).getByRole('button', { name: '元に戻す', exact: true }).click();
+  assert.deepEqual((await stored(page)).sessions.find(s => s.date === date).sets, before);
   await sheet(page).getByRole('button', { name: 'この日の記録を削除', exact: true }).click();
-  await principles(page);
   await page.locator('#confirm-dialog button[value=cancel]').click();
-  await page.waitForFunction(() => document.querySelector('#confirm-dialog').open === false);
+  await page.waitForFunction(() => !document.querySelector('#confirm-dialog').open);
   assert.ok((await stored(page)).sessions.some(s => s.date === date));
   await sheet(page).getByRole('button', { name: 'この日の記録を削除', exact: true }).click();
   await page.locator('#confirm-dialog button[value=confirm]').click();
-  // The delete is saved after the confirm dialog's promise resolves.
   await page.waitForFunction(d => !JSON.parse(localStorage.getItem('kintore:data')).sessions.some(s => s.date === d), date);
   assert.match(await sheet(page).textContent(), /記録なし/);
   await closeSheet(page);
@@ -1642,7 +1646,8 @@ test('changing the first-set load gives a new-load result and is excluded from b
     await press(page, '休憩を終える').click();
     assert.equal(await page.locator('.prev').textContent(), '新しい負荷');
     await press(page, '終了').click();
-    assert.match(await page.textContent('.see'), /ライン突破 0 \/ 0/);
+    assert.doesNotMatch(await page.textContent('.see'), /合計回数|前回より|ライン突破/);
+    assert.equal(await page.locator('.sumrow').count(), 1);
     await press(page, 'ホームへ').click();
     await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'today');
     await tab(page, '記録').click();
@@ -1833,4 +1838,265 @@ test('failed set edits and deletions keep the current sheet and saved record unt
     assert.deepEqual(errors, []);
     await close();
   }
+});
+
+test('direct counters select all, clamp on Enter, commit on blur and cancel on Escape', async () => {
+  const { page, errors, close } = await open({ data: fixture() });
+  await press(page, '始める').click();
+  const original = await page.locator('.counter .num').textContent();
+  await page.locator('.counter .num').click();
+  const input = page.locator('.counter input');
+  assert.equal(await input.getAttribute('inputmode'), 'numeric');
+  assert.deepEqual(await input.evaluate(node => [node.selectionStart, node.selectionEnd]),
+    [0, original.length]);
+  await input.fill('999');
+  await input.press('Enter');
+  assert.equal(await page.locator('.counter .num').textContent(), '200');
+  await page.locator('.counter .num').click();
+  await input.fill('37');
+  await input.press('Escape');
+  assert.equal(await page.locator('.counter .num').textContent(), '200');
+  await page.locator('.counter .num').click();
+  await input.fill('not a number');
+  await input.press('Enter');
+  assert.equal(await page.locator('.counter .num').textContent(), '200');
+  await page.locator('.counter .num').click();
+  await input.fill('-8');
+  await input.press('Enter');
+  assert.equal(await page.locator('.counter .num').textContent(), '0');
+  await page.locator('.counter .num').click();
+  await input.fill('12.7');
+  await complete(page);
+  assert.equal((await stored(page)).sessions.at(-1).sets[0].reps, 13);
+  await page.locator('.sets .done').click();
+  await sheet(page).locator('.counter .num').click();
+  await sheet(page).locator('.counter input').fill('19');
+  await sheet(page).locator('.counter input').press('Escape');
+  assert.equal(await sheet(page).isVisible(), true);
+  assert.equal(await sheet(page).locator('.counter .num').textContent(), '13');
+  await sheet(page).locator('.counter .num').click();
+  await sheet(page).locator('.counter input').fill('18');
+  await sheet(page).getByRole('button', { name: '保存', exact: true }).click();
+  assert.equal((await stored(page)).sessions.at(-1).sets[0].reps, 18);
+  await page.waitForFunction(() => !window.history.state?.sheet);
+  await press(page, '休憩を終える').click();
+  await press(page, '次 ▶').click();
+  await press(page, '次 ▶').click();
+  await page.locator('.counter .num').click();
+  await input.fill('47');
+  await input.press('Enter');
+  assert.equal(await page.locator('.counter .num').textContent(), '47');
+  await page.locator('.counter .num').click();
+  await input.fill('601');
+  await input.press('Enter');
+  assert.equal(await page.locator('.counter .num').textContent(), '600');
+  await principles(page);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('weight direct input accepts decimals, rounds and clamps without losing the complete click', async () => {
+  const data = fixture();
+  data.exercises.push({ id: 'ew', name: 'ダンベル', type: 'weight', part: '腕', nextId: null, archived: false });
+  const { page, errors, close } = await open({ data,
+    extra: { 'kintore:menu': { kind: 'custom', exerciseIds: ['ew'] } } });
+  await press(page, '始める').click();
+  await page.locator('.stepper .num').click();
+  const input = page.locator('.stepper input');
+  assert.equal(await input.getAttribute('inputmode'), 'decimal');
+  await input.fill('900');
+  await input.press('Enter');
+  assert.match(await page.locator('.stepper .num').textContent(), /^500/);
+  await page.locator('.stepper .num').click();
+  await input.fill('12.54');
+  await input.press('Enter');
+  assert.match(await page.locator('.stepper .num').textContent(), /^12.5/);
+  await page.locator('.stepper .num').click();
+  await input.fill('12.5');
+  await complete(page);
+  assert.equal((await stored(page)).sessions.at(-1).sets[0].kg, 12.5);
+  await principles(page);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('by-day records include training, light, rest and body-only dates and remember the view', async () => {
+  const data = fixture();
+  data.sessions.at(-1).light = true;
+  const bodyOnly = data.body.find(entry => !data.sessions.some(s => s.date === entry.date) &&
+    !data.skips.some(s => s.date === entry.date));
+  bodyOnly.kg = 67.83;
+  const { page, errors, close } = await open({ data });
+  await page.setViewportSize({ width: 360, height: 760 });
+  await tab(page, '記録').click();
+  assert.equal(await pill(page, '日付から探す').count(), 0);
+  await page.locator('.seg').getByRole('button', { name: '日ごと', exact: true }).click();
+  const expected = [...new Set([...data.sessions.map(s => s.date),
+    ...data.skips.map(s => s.date), ...data.body.map(b => b.date)])].sort().reverse();
+  assert.deepEqual(await page.locator('.day').evaluateAll(rows => rows.map(row => row.dataset.date)), expected);
+  const latest = page.locator('.day[data-date="' + data.sessions.at(-1).date + '"]');
+  assert.match(await latest.textContent(), /3種目・軽め.*腕立て伏せ.*バンドロウ 黒.*プランク.*秒/s);
+  assert.match(await page.locator('.day[data-date="' + data.skips[0].date + '"]').textContent(), /休み.*風邪/s);
+  const bodyRow = page.locator('.day[data-date="' + bodyOnly.date + '"]');
+  assert.equal(await bodyRow.locator('p').last().textContent(), '体重 67.8kg');
+  assert.equal((await stored(page)).body.find(entry => entry.date === bodyOnly.date).kg, 67.83);
+  await bodyRow.click();
+  assert.ok((await sheet(page).textContent()).includes('体重 67.8kg'));
+  assert.ok(!(await sheet(page).textContent()).includes('67.83'));
+  await closeSheet(page);
+  await principles(page);
+  await page.reload();
+  await tab(page, '記録').click();
+  assert.equal(await page.locator('.seg .on').textContent(), '日ごと');
+  assert.equal(await page.locator('.day').count(), expected.length);
+  await page.locator('.seg').getByRole('button', { name: '種目ごと', exact: true }).click();
+  assert.equal(await page.locator('.heat i').count(), 12);
+  assert.ok(await page.locator('.rec').count());
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('past-day entry creates no empty session and adds, edits and repeats sets on that date', async () => {
+  const data = fixture();
+  data.sessions = [];
+  const { page, errors, close } = await open({ data });
+  await tab(page, '記録').click();
+  await page.locator('.seg').getByRole('button', { name: '日ごと', exact: true }).click();
+  await pill(page, '＋ 過去の日を記録').click();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const date = localDate(yesterday);
+  assert.equal(await sheet(page).locator('input[type=date]').inputValue(), date);
+  assert.equal(await sheet(page).locator('input[type=date]').getAttribute('max'), date);
+  await sheet(page).locator('input[type=date]').fill(localDate(new Date()));
+  assert.equal(await sheet(page).getByRole('button', { name: '決定', exact: true }).isDisabled(), true);
+  await sheet(page).locator('input[type=date]').fill(date);
+  await sheet(page).getByRole('button', { name: '決定', exact: true }).click();
+  assert.equal((await stored(page)).sessions.length, 0);
+  const token = await page.evaluate(() => window.history.state.sheet);
+  await sheet(page).getByRole('button', { name: '＋ 種目を足す', exact: true }).click();
+  await sheet(page).locator('.row').filter({ hasText: '腕立て伏せ' }).click();
+  assert.equal((await stored(page)).sessions[0].date, date);
+  assert.equal((await stored(page)).sessions[0].light, false);
+  await sheet(page).locator('.counter .num').click();
+  await sheet(page).locator('.counter input').fill('23');
+  await sheet(page).getByRole('button', { name: '保存', exact: true }).click();
+  assert.equal(await page.evaluate(() => window.history.state.sheet), token);
+  assert.equal(await page.locator('dialog[open]').count(), 1);
+  assert.equal((await stored(page)).sessions[0].sets[0].reps, 23);
+  await sheet(page).getByRole('button', { name: '＋ セット', exact: true }).click();
+  assert.equal(await sheet(page).locator('.counter .num').textContent(), '23');
+  assert.equal((await stored(page)).sessions[0].sets.length, 2);
+  await sheet(page).locator('.counter .num').click();
+  await sheet(page).locator('.counter input').fill('17');
+  await sheet(page).getByRole('button', { name: '保存', exact: true }).click();
+  assert.deepEqual((await stored(page)).sessions[0].sets.map(set => set.reps), [23, 17]);
+  await closeSheet(page);
+  assert.match(await page.locator('.day[data-date="' + date + '"]').textContent(), /23 ・ 17/);
+  await principles(page);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('failed past-day additions keep the picker open and create no session', async () => {
+  const data = fixture();
+  data.sessions = [];
+  const { page, errors, close } = await open({ data });
+  await tab(page, '記録').click();
+  await page.locator('.seg').getByRole('button', { name: '日ごと', exact: true }).click();
+  await pill(page, '＋ 過去の日を記録').click();
+  await sheet(page).getByRole('button', { name: '決定', exact: true }).click();
+  await sheet(page).getByRole('button', { name: '＋ 種目を足す', exact: true }).click();
+  await page.evaluate(() => {
+    window.originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+      if (key === 'kintore:data') throw new Error('full');
+      return window.originalSetItem.call(this, key, value);
+    };
+  });
+  await sheet(page).locator('.row').filter({ hasText: '腕立て伏せ' }).click();
+  assert.equal((await stored(page)).sessions.length, 0);
+  assert.equal(await sheet(page).getAttribute('aria-label'), '種目を足す');
+  assert.equal(await page.textContent('#toast'), '保存できませんでした。もう一度押してください');
+  await page.evaluate(() => { Storage.prototype.setItem = window.originalSetItem; });
+  await sheet(page).locator('.row').filter({ hasText: '腕立て伏せ' }).click();
+  assert.equal((await stored(page)).sessions.length, 1);
+  assert.equal(await sheet(page).getAttribute('aria-label'), '1セット目を直す');
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('body rows fill the paper, edit kg while retaining waist, delete without confirmation and undo', async () => {
+  const data = fixture();
+  const original = structuredClone(data.body);
+  const latest = data.body.at(-1);
+  const { page, errors, close } = await open({ data });
+  await page.setViewportSize({ width: 360, height: 760 });
+  await tab(page, '記録').click();
+  await page.locator('.rec[data-exercise-id=body]').click();
+  assert.deepEqual(await page.locator('.bl').evaluateAll(rows => rows.map(row => row.dataset.date)),
+    data.body.map(entry => entry.date).sort().reverse());
+  const bounds = await page.locator('.hist').evaluate(list => {
+    const paper = list.closest('.see');
+    const rect = paper.getBoundingClientRect();
+    const style = getComputedStyle(paper);
+    return {
+      left: rect.left + parseFloat(style.paddingLeft),
+      right: rect.right - parseFloat(style.paddingRight),
+      rows: [...list.querySelectorAll('.bl')].map(row => {
+        const box = row.getBoundingClientRect();
+        return { left: box.left, right: box.right };
+      })
+    };
+  });
+  for (const row of bounds.rows) {
+    assert.ok(Math.abs(row.left - bounds.left) <= 1, 'body row must start at the paper content edge');
+    assert.ok(Math.abs(row.right - bounds.right) <= 1, 'body row must reach the paper content edge');
+  }
+  await page.locator('.bl').first().click();
+  await sheet(page).locator('.big .num').click();
+  await sheet(page).locator('.big input').fill('67.8');
+  await sheet(page).getByRole('button', { name: '保存', exact: true }).click();
+  await page.waitForFunction(() => !window.history.state?.sheet);
+  const updated = (await stored(page)).body.find(entry => entry.date === latest.date);
+  assert.equal(updated.kg, 67.8);
+  assert.equal(updated.waist, latest.waist);
+  await page.locator('.bl').first().click();
+  await sheet(page).getByRole('button', { name: 'この日の体重を消す', exact: true }).click();
+  await page.waitForFunction(() => !window.history.state?.sheet);
+  assert.equal((await stored(page)).body.length, original.length - 1);
+  assert.equal(await page.locator('#confirm-dialog[open]').count(), 0);
+  await page.locator('#toast').getByRole('button', { name: '元に戻す', exact: true }).click();
+  const restored = (await stored(page)).body;
+  assert.deepEqual(restored, original.map(entry => entry.date === latest.date ? { ...entry, kg: 67.8 } : entry));
+  await principles(page);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('summary shows each exercise and its actual previous sets, PR badges and first-time copy', async () => {
+  const data = fixture();
+  const { page, errors, close } = await open({ data,
+    extra: { 'kintore:menu': { kind: 'custom', exerciseIds: ['e1', 'e4'] } } });
+  await press(page, '始める').click();
+  await page.locator('.counter .num').click();
+  await page.locator('.counter input').fill('200');
+  await complete(page);
+  await press(page, '休憩を終える').click();
+  await press(page, '次 ▶').click();
+  await complete(page);
+  await press(page, '休憩を終える').click();
+  await press(page, 'トレーニングを終える').click();
+  const rows = page.locator('.sumrow');
+  assert.equal(await rows.count(), 2);
+  assert.equal(await rows.nth(0).locator('.n').textContent(), '腕立て伏せ自己ベスト');
+  assert.equal(await rows.nth(0).locator('.t').textContent(), '200');
+  const previous = data.sessions.at(-1).sets.filter(set => set.exerciseId === 'e1').map(set => set.reps).join(' ・ ');
+  assert.equal(await rows.nth(0).locator('.p').textContent(), '前回 ' + previous);
+  assert.equal(await rows.nth(1).locator('.p').textContent(), '初回');
+  assert.equal(await rows.nth(1).locator('em').count(), 0);
+  assert.doesNotMatch(await page.textContent('.see'), /合計回数|前回より|ライン突破/);
+  await principles(page);
+  assert.deepEqual(errors, []);
+  await close();
 });
