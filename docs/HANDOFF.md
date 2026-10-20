@@ -36,7 +36,7 @@
 
 ## 5. Codex の使い方（実装担当）
 - `codex` CLI は入っている。**セッションが変わるとログインが切れている可能性**：`codex login status`。未ログインなら `codex login --device-auth` を実行し、出たコードと URL（https://auth.openai.com/codex/device）を利用者に渡して ChatGPT アカウントでログインしてもらう（バックグラウンドで実行し、ログファイルから URL とコードを読む）。環境の OpenAI API キーは枠なしで使えない（使わない）。
-- 設定：`~/.codex/config.toml` に `model_reasoning_effort = "medium"`（初期値は none だった。**medium にすること**）。
+- 設定：`~/.codex/config.toml` に `model = "gpt-6.1-sol"` と `model_reasoning_effort = "medium"`（利用者の指定。2026-10-20）。
 - 実行はいつも **read-only で、全ファイルを出力させて Claude が書き込む**：
   `codex exec -s read-only -o OUT.txt "$(cat docs/handoff/codex-rules.txt)
 
