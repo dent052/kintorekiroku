@@ -62,3 +62,10 @@
 - 済んだ行を押して値を直す・消す・元に戻すができる。記録の種目画面の日の行からも直せる
 - 削除した種目を元に戻せる
 - `npm test` と `npm run e2e` が通る。原則テスト（v5）は §1 の追加を反映
+
+## 9. 細部の決定（実装者の質問への答え）
+- `.restbar` の CSS：`display:grid; grid-template-columns:auto 1fr; align-items:baseline; column-gap:12px; margin-top:10px;` 残り時間 `.num` は `font-size:44px; color:var(--ai);`。棒は `grid-column:1/-1; margin-top:8px; height:6px; border-radius:3px; background:var(--hair);` の中に `height:100%; border-radius:3px; background:var(--ai); width:{残りの割合}%` の子
+- §4 の日のセットのシートの行：v5 の `.row`（ボタン、`min-height:56px`、下線）を使う。左に `{n}セット目`、右に値（band／weight は後ろに小さく負荷、time は `秒`）と `›`
+- 消したあとの `元に戻す`：
+  - トレーニング中の直すシート（§3）から消したとき：シートは閉じ、ページのトースト（`#toast`）に `{n}セット目を消しました` とボタン `元に戻す`。トーストは4秒で消える。トーストのボタンは原則テストの許可リストに加える
+  - 日のセットのシート（§4）から消したとき：シートは開いたままセットの一覧に戻り、一覧の一番上に1行 `{n}セット目を消しました` とボタン `元に戻す`（`.pill`）。4秒後か、次の操作で消える
