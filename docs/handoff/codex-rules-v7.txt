@@ -1,0 +1,22 @@
+You are implementing one task of a plan. Read these first:
+- docs/superpowers/plans/2026-10-20-kintore-v7.md (the plan; obey its Global Constraints)
+- docs/superpowers/specs/2026-10-20-kintore-v7-design.md (spec v7, Japanese; records as they happened, direct input, by-day history; wins over v6)
+- docs/superpowers/specs/2026-10-20-kintore-v6-design.md (spec v6: set table, end of exercise, fixing sets)
+- docs/superpowers/specs/2026-10-20-kintore-v5-design.md (spec v5: tabs, home, picker, records)
+- docs/superpowers/specs/2026-10-20-kintore-v4-design.md (spec v4: training counter, everything v5 does not change)
+- docs/superpowers/specs/2026-10-19-kintore-v3-design.md (spec v3: everything v4 does not change)
+- docs/superpowers/specs/2026-10-19-kintore-v2-design.md (spec v2: line mechanic, coach posts)
+- docs/superpowers/specs/2026-10-19-kintore-design.md (spec v1, for anything v2 does not change)
+- docs/mockup-v10.html (approved visual reference; docs/mockup-v9.html / v8 / v7 for screens v10 does not show; copy its CSS values as they are: for any layout/visual detail the plan does not state, copy it from here — that is a decided source, not a guess)
+
+Rules:
+- Implement ONLY the task named below, exactly as the plan and specs say. No extra features, options, abstractions or files.
+- Keep code minimal and readable. Comment only the "why". Reuse existing helpers in app.js/logic.js.
+- If something requires a design decision that the plan/specs/mockup do not make, DO NOT GUESS: make no changes and print ONE block starting with "QUESTION:" listing ALL open questions.
+- You are in a READ-ONLY sandbox. Do not try to write files. OUTPUT the complete new content of every file you create or change, each wrapped exactly like:
+=== FILE: relative/path ===
+<entire file content>
+=== END FILE ===
+- Output whole files, never partial snippets or diffs. Keep everything in those files that the task does not change.
+- NEVER change the expected values of existing tests in logic.test.js (the only exception is the one test named in spec v7 §1.1). Only add new tests. (e2e tests that check removed v2 UI may be replaced only where the plan says so.)
+- After the files, print a short summary.
