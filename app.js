@@ -10,12 +10,16 @@ import {
 const app = document.querySelector('.app');
 const view = document.querySelector('.see');
 const dock = document.querySelector('.press');
+const tabs = document.querySelector('.tabs');
 const toastElement = document.querySelector('#toast');
 const dialog = document.querySelector('#confirm-dialog');
 let currentMode = 'today';
-let homeHistory = false;
+let screen = { mode: 'today', depth: 0 };
+let pendingTab = null;
 let menu;
 let toastTimeout;
+
+window.history.replaceState(screen, '');
 
 /** @returns {Data} */
 function loadData() {
@@ -220,7 +224,7 @@ async function fetchFeedback() {
     const raw = JSON.stringify(parsePosts(decodeGithub(file.content)));
     if (github !== settings || localStorage.getItem('kintore:posts') === raw) return;
     localStorage.setItem('kintore:posts', raw);
-    if (currentMode === 'today') renderToday();
+    if (currentMode === 'today' || currentMode === 'records') render();
   } catch {}
 }
 
@@ -250,32 +254,84 @@ function loadMenu() {
   return state.sessions.length ? { kind: 'same' } : { kind: 'custom', exerciseIds: [] };
 }
 
-function go(mode) {
-  if (currentMode === 'today' && ['train', 'growth', 'settings'].includes(mode)) {
-    window.history.pushState(null, '');
-    homeHistory = true;
-  }
-  if (currentMode === 'train' && mode !== 'train') {
+function showScreen(next) {
+  if (currentMode === 'train' && next.mode !== 'train') {
     wakeLock?.release().catch(() => {});
     wakeLock = null;
   }
-  currentMode = mode;
+  screen = next;
+  currentMode = next.mode;
   render();
-  if (mode === 'train') requestWakeLock();
+  if (currentMode === 'train') requestWakeLock();
+}
+
+function go(mode, details = {}) {
+  const next = { mode, depth: screen.depth + (mode === 'summary' ? 0 : 1), ...details };
+  if (mode === 'summary' || window.history.state?.sheet) {
+    window.history.replaceState(next, '');
+  } else {
+    window.history.pushState(next, '');
+  }
+  showScreen(next);
+}
+
+function selectTab(mode) {
+  if (mode === 'today') {
+    returnHome();
+    return;
+  }
+  if (screen.depth > 1) {
+    pendingTab = mode;
+    window.history.go(1 - screen.depth);
+    return;
+  }
+  if (currentMode === mode) return;
+  if (currentMode === 'today') {
+    go(mode);
+    return;
+  }
+  const next = { mode, depth: 1 };
+  window.history.replaceState(next, '');
+  showScreen(next);
 }
 
 function returnHome() {
   if (currentMode === 'summary') training = null;
-  if (homeHistory) window.history.back();
-  else go('today');
+  if (screen.depth) window.history.go(-screen.depth);
+  else if (currentMode !== 'today') showScreen({ mode: 'today', depth: 0 });
 }
 
-window.addEventListener('popstate', () => {
-  homeHistory = false;
-  for (const sheet of document.querySelectorAll('dialog[open]')) sheet.close();
-  if (currentMode === 'summary') training = null;
-  go('today');
+function back() {
+  window.history.back();
+}
+
+window.addEventListener('popstate', event => {
+  const open = [...document.querySelectorAll('dialog[open]')].at(-1);
+  if (open) open.close();
+  if (!open && currentMode === 'summary') training = null;
+  const next = event.state ?? { mode: 'today', depth: 0 };
+  const { sheet, ...destination } = next;
+  showScreen(destination);
+  if (pendingTab) {
+    const mode = pendingTab;
+    pendingTab = null;
+    selectTab(mode);
+  }
 });
+
+function trackSheet(sheet) {
+  const token = uid('sheet');
+  const next = { ...screen, sheet: token };
+  // シートを続けて開く操作では、閉じかけのシートの履歴を引き継ぐ。
+  if (window.history.state?.sheet && !document.querySelector('dialog[open]')) {
+    window.history.replaceState(next, '');
+  } else {
+    window.history.pushState(next, '');
+  }
+  sheet.addEventListener('close', () => {
+    if (window.history.state?.sheet === token) window.history.back();
+  }, { once: true });
+}
 
 function homeButton() {
   const button = action('ホーム', returnHome, 'home');
@@ -291,6 +347,29 @@ function homeButton() {
   svg.append(path);
   button.prepend(svg);
   return button;
+}
+
+function renderTabs() {
+  tabs.hidden = !['today', 'records', 'detail', 'exercises', 'settings'].includes(currentMode);
+  tabs.replaceChildren();
+  const icons = [
+    ['today', 'ホーム', '<path d="M3 11 12 3.5 21 11M5.5 9.5V20h13V9.5"/>'],
+    ['records', '記録', '<path d="M4 20V14h5V9h5V4h6v16z"/>'],
+    ['exercises', '種目', '<path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/>'],
+    ['settings', '設定', '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>']
+  ];
+  for (const [mode, name, drawing] of icons) {
+    const button = action(name, () => selectTab(mode));
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.innerHTML = drawing;
+    button.prepend(svg);
+    if (mode === (currentMode === 'detail' ? 'records' : currentMode)) {
+      button.setAttribute('aria-current', 'page');
+    }
+    tabs.append(button);
+  }
 }
 
 let swipeStart = null;
@@ -309,9 +388,8 @@ app.addEventListener('touchend', event => {
   const elapsed = Date.now() - swipeStart.t;
   swipeStart = null;
   if (elapsed > 700 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
-  if (currentMode === 'growth') moveGrowth(dx < 0 ? 1 : -1);
-  else if (currentMode === 'train') moveExercise(dx < 0 ? 1 : -1);
-  else return;
+  if (currentMode !== 'train') return;
+  moveExercise(dx < 0 ? 1 : -1);
   view.classList.remove('slide-next', 'slide-prev');
   void view.offsetWidth;
   view.classList.add(dx < 0 ? 'slide-next' : 'slide-prev');
@@ -320,15 +398,25 @@ app.addEventListener('touchend', event => {
 function render() {
   stopCounter();
   app.dataset.mode = currentMode;
-  view.className = currentMode === 'settings' ? 'see slab' : 'see';
+  view.className = currentMode === 'settings' || currentMode.endsWith('-editor')
+    ? 'see slab' : ['records', 'exercises'].includes(currentMode) ? 'see list' : 'see';
   view.replaceChildren();
   view.scrollTop = 0;
-  dock.className = 'press';
+  dock.className = ['today', 'exercises'].includes(currentMode) ? 'press slim' : 'press';
   dock.replaceChildren();
+  renderTabs();
   if (currentMode === 'today') renderToday();
-  else if (currentMode === 'growth') renderGrowth();
+  else if (currentMode === 'records') renderRecords();
+  else if (currentMode === 'detail') renderDetail();
+  else if (currentMode === 'exercises') renderExercises();
   else if (currentMode === 'settings') renderSettings();
-  else if (currentMode === 'summary') renderSummary();
+  else if (currentMode === 'exercise-editor') {
+    editExercise(state.exercises.find(ex => ex.id === screen.id), false);
+  } else if (currentMode === 'band-editor') {
+    editBand(state.bands.find(band => band.id === screen.id), false);
+  } else if (currentMode === 'template-editor') {
+    editTemplate(state.templates.find(template => template.id === screen.id), false);
+  } else if (currentMode === 'summary') renderSummary();
   else renderTrain();
 }
 
@@ -407,10 +495,7 @@ function renderToday() {
 
   if (!state.exercises.length) {
     view.append(element('p', 'まず種目を登録しましょう', 'lines'));
-    dock.append(action('種目を追加', () => {
-      go('settings');
-      editExercise();
-    }, 'go'));
+    dock.append(action('種目を追加', () => editExercise(), 'go'));
   } else {
     const hello = element('p', '', 'hello');
     hello.append(element('small', '今日のメニュー'), document.createTextNode(menuName()));
@@ -451,11 +536,6 @@ function renderToday() {
       () => resume ? go('train') : startWorkout(false), 'go'));
   }
 
-  const sub = element('div', '', 'sub');
-  sub.append(action('今日の調整', adjustToday), action('成長', () => go('growth')),
-    action('設定', () => go('settings')));
-  dock.append(sub);
-
   const news = element('div', '', 'feed');
   news.append(element('p', '今週', 'k'));
   const week = element('div', '', 'week');
@@ -471,6 +551,9 @@ function renderToday() {
     week.append(cell);
   });
   news.append(week);
+  const quick = element('div', '', 'quick');
+  quick.append(action('今日の調整', adjustToday, 'pill'));
+  news.append(quick);
   const { items, seen } = homeFeed();
   if (items.length) {
     const heading = element('p', '新着 ' + items.filter(item => !seen.includes(item.id)).length, 'k');
@@ -489,14 +572,19 @@ function miniChart(id) {
   svg.setAttribute('class', 'mini');
   svg.setAttribute('viewBox', '0 0 64 28');
   svg.setAttribute('aria-hidden', 'true');
-  const points = lineHistory(state, id).slice(-8);
+  const body = id === 'body';
+  const points = body
+    ? [...state.body].sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-8).map(entry => ({ value: entry.kg }))
+    : lineHistory(state, id).slice(-8);
   if (points.length < 2) return svg;
   const min = Math.min(...points.map(point => point.value));
   const max = Math.max(...points.map(point => point.value));
   const y = point => min === max ? 14 : 24 - (point.value - min) / (max - min) * 20;
   let d = 'M0 ' + y(points[0]);
   points.slice(1).forEach((point, index) => {
-    d += ' H' + ((index + 1) / (points.length - 1) * 64) + ' V' + y(point);
+    const x = (index + 1) / (points.length - 1) * 64;
+    d += body ? ' L' + x + ' ' + y(point) : ' H' + x + ' V' + y(point);
   });
   const path = document.createElementNS(svg.namespaceURI, 'path');
   path.setAttribute('d', d);
@@ -533,6 +621,7 @@ function homeSheet(title) {
   const actions = element('div', '', 'dialog-actions sub');
   actions.append(action('閉じる', () => sheet.close()));
   sheet.append(content, actions);
+  trackSheet(sheet);
   sheet.addEventListener('close', () => sheet.remove(), { once: true });
   document.body.append(sheet);
   sheet.showModal();
@@ -1022,42 +1111,86 @@ function renderSummary() {
   dock.append(action('ホームへ', returnHome, 'go'));
 }
 
-let growthExerciseId = null;
-
-function growthItems() {
-  const recorded = new Set(state.sessions.flatMap(session => session.sets.map(set => set.exerciseId)));
-  return [
-    ...state.exercises.filter(ex => recorded.has(ex.id)).map(ex => ex.id),
-    ...(state.body.length ? ['body'] : [])
-  ];
+function openNews() {
+  const { items } = homeFeed();
+  const { content } = homeSheet('新着');
+  appendFeed(content, [...items].sort((a, b) => b.at.localeCompare(a.at)), true);
+  markSeen(items);
+  if (currentMode === 'records') render();
 }
 
-function moveGrowth(offset) {
-  const items = growthItems();
-  const next = items.indexOf(growthExerciseId) + offset;
-  if (next < 0 || next >= items.length) return;
-  growthExerciseId = items[next];
-  render();
-}
-
-function renderGrowth() {
+function renderRecords() {
   const today = localDate(new Date());
-  const items = growthItems();
-  const exercises = state.exercises.filter(ex => items.includes(ex.id));
-  if (!exercises.some(ex => ex.id === growthExerciseId) &&
-      !(growthExerciseId === 'body' && state.body.length)) {
-    growthExerciseId = exercises[0]?.id ?? (state.body.length ? 'body' : null);
+  const { items, seen } = homeFeed();
+  const unread = items.filter(item => !seen.includes(item.id)).length;
+  view.append(element('h1', '記録', 'h1'));
+  if (!state.sessions.some(session => session.sets.length) && !state.body.length) {
+    const empty = element('div', '', 'empty');
+    empty.append(element('b', 'まだ記録がありません'),
+      element('p', '1回トレーニングすると、ここに種目ごとの伸びが階段で出ます。'));
+    if (unread) {
+      const quick = element('div', '', 'quick');
+      quick.append(action('新着 ' + unread, openNews, 'pill'));
+      empty.append(quick);
+    }
+    view.append(empty);
+    return;
   }
-  const body = growthExerciseId === 'body';
-  const ex = exercises.find(ex => ex.id === growthExerciseId);
-  view.append(element('p', '成長', 'k'),
-    element('h1', body ? '体重' : ex?.name ?? '成長', 'exname'));
-  const dots = element('div', '', 'exdots');
-  for (const id of items) dots.append(element('i', '', id === growthExerciseId ? 'on' : ''));
-  view.append(dots);
+
+  const recorded = new Set(state.sessions.flatMap(session => session.sets.map(set => set.exerciseId)));
+  const total = totals(state);
+  for (const ex of state.exercises.filter(ex => recorded.has(ex.id))) {
+    const row = action('', () => go('detail', { id: ex.id, from: 'records' }), 'rec');
+    row.dataset.exerciseId = ex.id;
+    const name = element('b', ex.name);
+    const load = history(state, ex.id, today).load;
+    const band = ex.type === 'band' ? state.bands.find(band => band.order === load) : null;
+    name.append(element('small', (band ? band.name + ' ・ ' : '') +
+      '突破 ' + clearCount(state, ex.id) + '回 ・ 累計 ' +
+      (total[ex.id] ?? 0).toLocaleString('ja-JP')));
+    row.append(name, miniChart(ex.id),
+      element('span', String(line(state, ex.id, today).value ?? '—'), 'num'),
+      element('span', '›', 'chev'));
+    view.append(row);
+  }
+  if (state.body.length) {
+    const latest = [...state.body].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
+    const average = bodyAvg7(state.body, today, 'kg');
+    const row = action('', () => go('detail', { id: 'body', from: 'records' }), 'rec');
+    row.dataset.exerciseId = 'body';
+    const name = element('b', '体重');
+    name.append(element('small', '7日平均 ' + (average === null ? '—' : average.toFixed(1)) + 'kg'));
+    row.append(name, miniChart('body'), element('span', latest.kg.toFixed(1), 'num'),
+      element('span', '›', 'chev'));
+    view.append(row);
+  }
+
+  const section = element('div', '', 'sec');
+  section.append(element('p', '12週間', 'k'));
+  const heat = element('div', '', 'heat');
+  heat.style.marginTop = '6px';
+  weekHeat(state, today).forEach(days => {
+    const cell = element('i', '', days >= 3 ? 'd' : days ? 'l' : '');
+    cell.setAttribute('aria-label', days + '日');
+    heat.append(cell);
+  });
+  section.append(heat);
+  const quick = element('div', '', 'quick');
+  quick.style.marginTop = '14px';
+  quick.append(action('カレンダーで見る・直す', recordHistory, 'pill'),
+    action('新着 ' + unread, openNews, 'pill'));
+  view.append(section, quick);
+}
+
+function renderDetail() {
+  const today = localDate(new Date());
+  const body = screen.id === 'body';
+  const ex = state.exercises.find(ex => ex.id === screen.id);
+  view.append(action(screen.from === 'today' ? '‹ ホーム' : '‹ 記録', back, 'back'),
+    element('h1', body ? '体重' : ex.name, 'exname'));
   const entries = body
     ? [...state.body].sort((a, b) => a.date.localeCompare(b.date))
-    : ex ? lineHistory(state, ex.id) : [];
+    : lineHistory(state, ex.id);
   if (body || entries.length >= 2) {
     view.append(growthChart(entries, ex, today));
   } else {
@@ -1082,33 +1215,11 @@ function renderGrowth() {
     stat('7日平均', average === null ? '—' : average.toFixed(1));
     stat('4週間前との差', diff === null ? '—' : (diff > 0 ? '+' : '') + diff.toFixed(1));
   } else {
-    stat('今のライン', ex ? line(state, ex.id, today).value ?? '—' : '—');
-    stat('突破', ex ? clearCount(state, ex.id) : 0, ' 回');
-    stat('累計', (ex ? totals(state)[ex.id] ?? 0 : 0).toLocaleString('ja-JP'));
+    stat('今のライン', line(state, ex.id, today).value ?? '—');
+    stat('突破', clearCount(state, ex.id), ' 回');
+    stat('累計', (totals(state)[ex.id] ?? 0).toLocaleString('ja-JP'));
   }
-  view.append(stats, element('p', '12週間', 'k heat-title'));
-  const heat = element('div', '', 'heat');
-  weekHeat(state, today).forEach(days => {
-    const cell = element('i', '', days >= 3 ? 'd' : days ? 'l' : '');
-    cell.setAttribute('aria-label', days + '日');
-    heat.append(cell);
-  });
-  view.append(heat);
-  const sub = element('div', '', 'sub');
-  sub.append(action('記録を見る・直す', recordHistory), action('新着', () => {
-    const { items } = homeFeed();
-    const { content } = homeSheet('新着');
-    appendFeed(content, [...items].sort((a, b) => b.at.localeCompare(a.at)), true);
-    markSeen(items);
-  }));
-  const nav = element('div', '', 'nav');
-  const previous = action('◀ 前の種目', () => moveGrowth(-1));
-  const next = action('次の種目 ▶', () => moveGrowth(1));
-  const index = items.indexOf(growthExerciseId);
-  previous.disabled = index <= 0;
-  next.disabled = index < 0 || index >= items.length - 1;
-  nav.append(homeButton(), previous, next);
-  dock.append(sub, nav);
+  view.append(stats);
 }
 
 function growthChart(entries, ex, today) {
@@ -1190,7 +1301,7 @@ function shortDate(date) {
 }
 
 function recordHistory() {
-  const { content } = homeSheet('記録を見る・直す');
+  const { content } = homeSheet('カレンダーで見る・直す');
   const today = localDate(new Date());
   let selectedDate = null;
   const grid = element('div', '', 'calendar');
@@ -1228,7 +1339,7 @@ function recordHistory() {
 }
 
 function renderDayHistory(parent, date, refresh) {
-  const section = element('section', '', 'ex stack');
+  const section = element('section', '', 'settings-section stack');
   section.append(element('h2', shortDate(date)));
   const sessions = state.sessions.filter(session => session.date === date);
   if (!sessions.length) {
@@ -1408,8 +1519,41 @@ function action(text, onClick, className = '') {
   return button;
 }
 
+function renderExercises() {
+  view.append(element('h1', '種目', 'h1'));
+  for (const part of parts) {
+    const items = state.exercises.filter(ex => ex.part === part && (showArchived || !ex.archived));
+    if (!items.length) continue;
+    view.append(element('h2', part, 'group'));
+    for (const ex of items) {
+      const button = action('', () => editExercise(ex), 'ex');
+      button.dataset.exerciseId = ex.id;
+      const name = element('span', ex.name);
+      name.append(element('small', exerciseTypes.find(([type]) => type === ex.type)[1]));
+      if (ex.archived) name.append(element('small', 'アーカイブ済み'));
+      button.append(name, element('span', '›', 'chev'));
+      view.append(button);
+    }
+  }
+  const toggle = action('アーカイブ済みを表示', () => {
+    showArchived = !showArchived;
+    render();
+  }, 'pill');
+  toggle.setAttribute('aria-pressed', String(showArchived));
+  view.append(toggle, element('h2', 'テンプレート', 'group'));
+  for (const template of state.templates) {
+    const button = action('', () => editTemplate(template), 'ex');
+    const name = element('span', template.name);
+    name.append(element('small', template.exerciseIds.length + '種目'));
+    button.append(name, element('span', '›', 'chev'));
+    view.append(button);
+  }
+  view.append(action('＋ テンプレート', () => editTemplate(), 'pill'));
+  dock.append(action('＋ 新しい種目', () => editExercise(), 'go sm'));
+}
+
 function settingsSection(title) {
-  const section = element('section', '', 'ex stack');
+  const section = element('section', '', 'settings-section stack');
   section.append(element('h2', title));
   view.append(section);
   return section;
@@ -1417,9 +1561,9 @@ function settingsSection(title) {
 
 function settingsEditor(title) {
   dock.className = 'press';
-  dock.replaceChildren(action('キャンセル', renderSettings));
+  dock.replaceChildren(action('キャンセル', back));
   view.replaceChildren(element('h1', title));
-  const form = element('form', '', 'ex stack');
+  const form = element('form', '', 'settings-section stack');
   form.addEventListener('submit', event => event.preventDefault());
   view.append(form);
   return form;
@@ -1474,34 +1618,8 @@ function renderSettings() {
   dock.replaceChildren();
   view.replaceChildren(element('h1', '設定'));
 
-  dock.className = 'press';
-  const nav = element('div', '', 'nav');
-  nav.append(homeButton(), action('＋ 種目', () => editExercise()),
-    action('＋ バンド', () => editBand()), action('＋ テンプレ', () => editTemplate()));
-  dock.append(nav);
-  const exercises = settingsSection('種目');
-  const toggle = action('アーカイブ済みを表示', () => {
-    showArchived = !showArchived;
-    render();
-  }, `chip${showArchived ? ' on' : ''}`);
-  toggle.setAttribute('aria-pressed', String(showArchived));
-  exercises.append(toggle);
-  for (const part of parts) {
-    const items = state.exercises.filter(ex =>
-      ex.part === part && (showArchived || !ex.archived));
-    if (!items.length) continue;
-    const group = element('div', '', 'stack');
-    group.append(element('h3', part));
-    for (const ex of items) {
-      const button = action('', () => editExercise(ex), 'settings-item');
-      button.append(element('span', ex.name, 'name'));
-      if (ex.archived) button.append(element('span', 'アーカイブ済み', 'dim'));
-      group.append(button);
-    }
-    exercises.append(group);
-  }
-
   const bands = settingsSection('バンド');
+  bands.append(action('＋ バンド', () => editBand()));
   const orderedBands = [...state.bands].sort((a, b) => a.order - b.order);
   orderedBands.forEach((band, index) => {
     const row = element('div', '', 'head');
@@ -1524,11 +1642,6 @@ function renderSettings() {
     row.append(edit, controls);
     bands.append(row);
   });
-
-  const templates = settingsSection('テンプレート');
-  for (const template of state.templates) {
-    templates.append(action(template.name, () => editTemplate(template), 'settings-item'));
-  }
 
   const general = settingsSection('一般');
   general.append(
@@ -1640,7 +1753,11 @@ function renderGithubSettings() {
   );
 }
 
-function editExercise(existing) {
+function editExercise(existing, navigate = true) {
+  if (navigate) {
+    go('exercise-editor', { id: existing?.id });
+    return;
+  }
   const draft = existing ? { ...existing } : {
     id: uid('e'),
     name: '',
@@ -1658,7 +1775,7 @@ function editExercise(existing) {
       if (existing) Object.assign(existing, draft);
       else state.exercises.push(draft);
       save();
-      render();
+      back();
     }, 'go');
     saveButton.disabled = !draft.name.trim();
     textField(form, '名前', draft.name, value => {
@@ -1690,12 +1807,36 @@ function editExercise(existing) {
     });
     label.append(element('span', '次の段階'), select);
     form.append(label);
+    if (existing) {
+      const controls = element('div', '', 'actions');
+      const index = state.exercises.indexOf(existing);
+      for (const [offset, text] of [[-1, '↑'], [1, '↓']]) {
+        const button = action(text, () => {
+          moveItem(state.exercises, index, offset);
+          save();
+          draw();
+        });
+        button.disabled = index + offset < 0 || index + offset >= state.exercises.length;
+        button.setAttribute('aria-label', `${existing.name}を${offset < 0 ? '上' : '下'}へ`);
+        controls.append(button);
+      }
+      form.append(controls);
+    }
     dock.prepend(saveButton);
     if (existing && !existing.archived) {
       dock.insertBefore(action('アーカイブ', () => {
         existing.archived = true;
         save();
-        render();
+        back();
+      }, 'danger'), dock.lastElementChild);
+    }
+    if (existing) {
+      dock.insertBefore(action('削除', async () => {
+        if (!await confirmDialog('この種目を削除します。よろしいですか？')) return;
+        // 過去の記録から種目を参照できるよう、削除もアーカイブとして保存する。
+        existing.archived = true;
+        save();
+        back();
       }, 'danger'), dock.lastElementChild);
     }
   }
@@ -1703,7 +1844,11 @@ function editExercise(existing) {
   draw();
 }
 
-function editBand(existing) {
+function editBand(existing, navigate = true) {
+  if (navigate) {
+    go('band-editor', { id: existing?.id });
+    return;
+  }
   const draft = existing ? { ...existing } : {
     id: uid('b'),
     name: '',
@@ -1717,7 +1862,7 @@ function editBand(existing) {
     if (existing) Object.assign(existing, draft);
     else state.bands.push(draft);
     save();
-    render();
+    back();
   }, 'go');
   saveButton.disabled = !draft.name.trim();
   textField(form, '名前', draft.name, value => {
@@ -1734,12 +1879,16 @@ function editBand(existing) {
       state.bands.sort((a, b) => a.order - b.order);
       state.bands.forEach((band, i) => { band.order = i + 1; });
       save();
-      render();
+      back();
     }, 'danger'), dock.lastElementChild);
   }
 }
 
-function editTemplate(existing) {
+function editTemplate(existing, navigate = true) {
+  if (navigate) {
+    go('template-editor', { id: existing?.id });
+    return;
+  }
   const draft = existing ? { ...existing, exerciseIds: [...existing.exerciseIds] } : {
     id: uid('t'),
     name: '',
@@ -1755,7 +1904,7 @@ function editTemplate(existing) {
       if (existing) Object.assign(existing, draft);
       else state.templates.push(draft);
       save();
-      render();
+      back();
     }, 'go');
     saveButton.disabled = !draft.name.trim() || !draft.exerciseIds.length;
     textField(form, '名前', draft.name, value => {
@@ -1828,8 +1977,15 @@ function confirmDialog(text) {
   document.querySelector('#confirm-text').textContent = text;
   dialog.returnValue = '';
   return new Promise(resolve => {
+    trackSheet(dialog);
     dialog.addEventListener('close', () => {
-      resolve(dialog.returnValue === 'confirm');
+      const confirmed = dialog.returnValue === 'confirm';
+      // 確認シートの履歴を戻してから、保存後の画面遷移を行う。
+      if (window.history.state?.sheet) {
+        window.addEventListener('popstate', () => resolve(confirmed), { once: true });
+      } else {
+        resolve(confirmed);
+      }
     }, { once: true });
     dialog.showModal();
   });
