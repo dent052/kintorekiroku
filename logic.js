@@ -124,6 +124,18 @@ export function lineResult(l, firstValue) {
     : { kind: 'short', diff: l.value - firstValue };
 }
 
+/** @param {Data} data @param {Set} set */
+export function firstSetResult(data, exerciseId, date, set) {
+  const ex = data.exercises.find(ex => ex.id === exerciseId);
+  const target = line(data, exerciseId, date);
+  const h = history(data, exerciseId, date);
+  if (h.values.length && load(data, ex, set) !== h.load) return { kind: 'newload' };
+  if (target.kind === 'up') {
+    return { kind: 'previous', diff: value(ex, set) - h.values[0], next: target.next };
+  }
+  return lineResult(target, value(ex, set));
+}
+
 /** @param {Exercise} ex */
 export function lineText(l, ex) {
   if (l.kind === 'base') return '初回。この1セットが基準になる';
@@ -152,16 +164,6 @@ export function prefill(data, exerciseId, today) {
   const sets = session.sets
     .filter(set => set.exerciseId === exerciseId)
     .map(set => ({ ...set }));
-  if (line(data, exerciseId, today).kind === 'up' && !ex.nextId) {
-    const currentLoad = load(data, ex, firstSet(data, ex, session));
-    if (ex.type === 'band') {
-      const band = nextBand(data, currentLoad);
-      return sets.map(set => ({ ...set, bandId: band.id }));
-    }
-    if (ex.type === 'weight') {
-      return sets.map(set => ({ ...set, kg: currentLoad + 1 }));
-    }
-  }
   return sets;
 }
 
@@ -336,8 +338,7 @@ export function feed(data, today) {
     const first = firstSet(current, ex, session);
     if (first) {
       const l = line(current, ex.id, session.date);
-      if (load(current, ex, first) === history(current, ex.id, session.date).load &&
-          lineResult(l, value(ex, first)).kind === 'clear') {
+      if (firstSetResult(current, ex.id, session.date, first).kind === 'clear') {
         items.push({
           id: `clear:${ex.id}:${session.date}`, at: session.date,
           kind: 'clear', text: `${ex.name} ライン${l.value}を突破`
@@ -496,12 +497,30 @@ export function lineHistory(data, exerciseId) {
 }
 
 /** @param {Data} data */
+export function setHistory(data, exerciseId) {
+  const ex = data.exercises.find(ex => ex.id === exerciseId);
+  const days = new Map();
+  for (const session of data.sessions) {
+    const sets = session.sets.filter(set => set.exerciseId === exerciseId);
+    if (!sets.length) continue;
+    if (!days.has(session.date)) days.set(session.date, []);
+    days.get(session.date).push(...sets);
+  }
+  return [...days].sort(([a], [b]) => a.localeCompare(b)).map(([date, sets]) => ({
+    date,
+    value: value(ex, sets[0]),
+    load: load(data, ex, sets[0]),
+    others: sets.slice(1).map(set => value(ex, set))
+  }));
+}
+
+/** @param {Data} data */
 export function clearCount(data, exerciseId) {
   const ex = data.exercises.find(ex => ex.id === exerciseId);
   return data.sessions.filter(session => {
     if (session.light !== false) return false;
     const first = firstSet(data, ex, session);
-    return first && lineResult(line(data, exerciseId, session.date), value(ex, first)).kind === 'clear';
+    return first && firstSetResult(data, exerciseId, session.date, first).kind === 'clear';
   }).length;
 }
 

@@ -116,9 +116,7 @@ button, a, input, select, textarea { touch-action:manipulation; }
 .counter { display:grid; grid-template-columns:84px 1fr 84px; align-items:center; gap:8px; }
 .counter .pm { font-weight:700; height:84px; border-radius:18px; background:var(--ai2); display:flex; align-items:center; justify-content:center; font:600 46px/1 var(--num); color:#fff; user-select:none; }
 .counter .big .num { font-size:84px; }
-.counter .over { color:var(--shu-on-ai); }
-.lineon { font-size:12px; font-weight:700; color:var(--mute-ai); text-align:center; margin-top:-6px; }
-.lineon b { color:var(--shu-on-ai); }
+.hint2 { font-size:12px; font-weight:700; color:var(--mute-ai); text-align:center; margin-top:-6px; }
 .nav { display:flex; justify-content:space-between; align-items:center; font-weight:700; font-size:14px; color:var(--mute-ai); min-height:40px; }
 .nav button { font:inherit; white-space:nowrap; }
 .nav .home { color:#fff; display:flex; align-items:center; gap:6px; }
@@ -132,6 +130,7 @@ button, a, input, select, textarea { touch-action:manipulation; }
 .summary-total small { font-weight:700; }
 .summary-up { color:var(--shu); }
 .stairs { margin-top:10px; flex:none; width:100%; }
+.chart text { font-family:'Barlow Condensed'; font-size:12px; fill:#5E6B82; }
 .stat { display:flex; gap:26px; margin-top:6px; }
 .stat .num { font-size:40px; }
 .hist { margin-top:14px; }

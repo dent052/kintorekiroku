@@ -1,7 +1,7 @@
 import {
-  localDate, parseImport, value, recent, totalDays, feed, mergeFeed,
-  firstSet, line, lineResult, lineText, prefill, rows, sessionEvents,
-  menuExercises, lineHistory, clearCount, weekHeat, history, bodyAvg7,
+  localDate, parseImport, value, load, recent, totalDays, feed, mergeFeed,
+  firstSet, line, firstSetResult, lineText, prefill, rows, sessionEvents,
+  menuExercises, setHistory, clearCount, weekHeat, history, bodyAvg7,
   calendar, weekStart, toBase64Utf8, consultText, parsePosts
 } from './logic.js';
 
@@ -58,15 +58,18 @@ let state = loadData();
 menu = loadMenu();
 
 function save() {
+  const updatedAt = state.updatedAt;
   state.updatedAt = new Date().toISOString();
   try {
     // shortcut: localStorage は約5MB上限、10年分程度で IndexedDB へ移行
     localStorage.setItem('kintore:data', JSON.stringify(state));
   } catch {
-    toast('保存できませんでした。容量を確認してください');
-    return;
+    state.updatedAt = updatedAt;
+    toast('保存できませんでした。もう一度押してください');
+    return false;
   }
   scheduleSync();
+  return true;
 }
 
 let github = loadGithub();
@@ -315,7 +318,10 @@ function selectTab(mode) {
 }
 
 function returnHome() {
-  if (currentMode === 'summary') training = null;
+  if (currentMode === 'summary') {
+    training = null;
+    saveTraining();
+  }
   if (screen.depth) window.history.go(-screen.depth);
   else if (currentMode !== 'today') showScreen({ mode: 'today', depth: 0 });
 }
@@ -329,7 +335,10 @@ window.addEventListener('popstate', event => {
   const open = [...document.querySelectorAll('dialog[open]')].at(-1);
   if (open && open.dataset.historySheet !== next.sheet) open.close();
   if (next.sheet) return;
-  if (!open && currentMode === 'summary') training = null;
+  if (!open && currentMode === 'summary') {
+    training = null;
+    saveTraining();
+  }
   const { sheet, ...destination } = next;
   showScreen(destination);
   if (pendingTab) {
@@ -439,6 +448,7 @@ function render() {
     editTemplate(state.templates.find(template => template.id === screen.id), false);
   } else if (currentMode === 'summary') renderSummary();
   else renderTrain();
+  saveTraining();
 }
 
 function homeFeed() {
@@ -537,7 +547,7 @@ function renderToday() {
       const target = line(state, id, today);
       const [previous] = recent(state, id, today, 1);
       const first = previous && firstSet(state, ex, previous);
-      const result = first && lineResult(line(state, id, previous.date), value(ex, first));
+      const result = first && firstSetResult(state, id, previous.date, first);
       let detail = first ? '前回 ' + value(ex, first) + (ex.type === 'time' ? '秒' : '') : '初回';
       if (result?.kind === 'clear') detail += ' ・ 突破';
       if (result?.kind === 'short') detail += ' ・ あと' + result.diff;
@@ -595,11 +605,12 @@ function miniChart(id) {
   svg.setAttribute('class', 'mini');
   svg.setAttribute('viewBox', '0 0 64 28');
   svg.setAttribute('aria-hidden', 'true');
-  const body = id === 'body';
-  const points = body
+  const entries = id === 'body'
     ? [...state.body].sort((a, b) => a.date.localeCompare(b.date))
-      .slice(-8).map(entry => ({ value: entry.kg }))
-    : lineHistory(state, id).slice(-8);
+      .map(entry => ({ value: entry.kg }))
+    : setHistory(state, id);
+  const points = (id === 'body' ? entries :
+    entries.filter(point => point.load === entries.at(-1)?.load)).slice(-8);
   if (points.length < 2) return svg;
   const min = Math.min(...points.map(point => point.value));
   const max = Math.max(...points.map(point => point.value));
@@ -607,7 +618,7 @@ function miniChart(id) {
   let d = 'M0 ' + y(points[0]);
   points.slice(1).forEach((point, index) => {
     const x = (index + 1) / (points.length - 1) * 64;
-    d += body ? ' L' + x + ' ' + y(point) : ' H' + x + ' V' + y(point);
+    d += ' L' + x + ' ' + y(point);
   });
   const path = document.createElementNS(svg.namespaceURI, 'path');
   path.setAttribute('d', d);
@@ -725,16 +736,50 @@ let restInterval;
 let wakeLock = null;
 let stopCounter = () => {};
 
+function saveTraining() {
+  try {
+    if (training) {
+      localStorage.setItem('kintore:training', JSON.stringify({ training, rest }));
+    } else {
+      localStorage.removeItem('kintore:training');
+    }
+    return true;
+  } catch {
+    toast('保存できませんでした。もう一度押してください');
+    return false;
+  }
+}
+
+function loadTraining() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('kintore:training'));
+    const saved = stored?.training;
+    if (!saved || saved.date !== localDate(new Date()) ||
+        !Array.isArray(saved.entries) || !saved.entries.length ||
+        !Number.isInteger(saved.index) || saved.index < 0 || saved.index >= saved.entries.length ||
+        !saved.entries.every(entry => state.exercises.some(ex => ex.id === entry.id) &&
+          Array.isArray(entry.sets) && entry.sets.length &&
+          Number.isInteger(entry.goal) && entry.goal > 0)) {
+      localStorage.removeItem('kintore:training');
+      return;
+    }
+    training = saved;
+    if (Number.isFinite(stored.rest?.end) && stored.rest.end > Date.now() &&
+        Number.isFinite(stored.rest.duration) && stored.rest.duration > 0) {
+      rest = stored.rest;
+      if (Date.now() >= rest.verdictUntil) rest.verdict = null;
+      restInterval = setInterval(updateRest, 250);
+    }
+  } catch {
+    training = null;
+    rest = null;
+  }
+}
+
 function trainingEntry(id, count) {
   const sets = prefill(state, id, training.date);
   const planned = rows(sets, training.light ? 1 : count ?? sets.length);
-  const ex = state.exercises.find(item => item.id === id);
-  const target = line(state, id, training.date);
   const done = trainingSession()?.sets.filter(set => set.exerciseId === id) ?? [];
-  if (!done.length && target.value !== undefined) {
-    planned[0][ex.type === 'time' ? 'sec' : 'reps'] =
-      Math.max(0, Math.min(ex.type === 'time' ? 600 : 200, target.value));
-  }
   return { id, sets: planned, cursor: done.length, goal: planned.length };
 }
 
@@ -786,7 +831,10 @@ function currentEntry() {
 }
 
 function dismissVerdict() {
-  if (rest) rest.verdict = null;
+  if (rest?.verdict) {
+    rest.verdict = null;
+    saveTraining();
+  }
   view.querySelector('.verdict')?.remove();
 }
 
@@ -823,6 +871,7 @@ function renderTrainPaper() {
   const [previous] = recent(state, ex.id, training.date, 1);
   const previousSets = previous?.sets.filter(set => set.exerciseId === ex.id) ?? [];
   const target = line(state, ex.id, training.date);
+  const result = done.length ? firstSetResult(state, ex.id, training.date, done[0]) : null;
   view.replaceChildren(trainingTop(Boolean(rest)), element('h1', ex.name, 'exname'));
   if (rest) {
     if (rest.verdict && Date.now() < rest.verdictUntil) {
@@ -840,9 +889,13 @@ function renderTrainPaper() {
     view.append(bar);
   } else {
     let text = lineText(target, ex);
-    if (target.value !== undefined) {
+    if (result?.kind === 'newload') {
+      text = '新しい負荷';
+    } else if (target.kind === 'up') {
+      text = '前回' + (ex.type === 'time' ? '60秒' : '20回') + '以上' +
+        (done.length ? ' ・ ' : '。') + target.next + 'を検討';
+    } else if (target.value !== undefined) {
       text = 'ライン ' + target.value + (ex.type === 'time' ? '秒' : '') + ' ・ ';
-      const result = done.length && lineResult(target, value(ex, done[0]));
       text += !result ? '1セット目' :
         result.kind === 'clear' ? '突破' : 'あと' + result.diff;
     }
@@ -864,8 +917,7 @@ function renderTrainPaper() {
     const today = saved ?? (current ? entry.sets[index] : null);
     const number = setValue(ex, today, 'td');
     if (!today) number.style.color = 'var(--hair)';
-    if (index === 0 && today && target.value !== undefined &&
-        value(ex, today) >= target.value) number.classList.add('over');
+    if (index === 0 && saved && result.kind === 'clear') number.classList.add('over');
     row.append(element('span', String(index + 1), 'no'),
       setValue(ex, previousSets[index], 'pv'), number,
       element('span', '', saved ? 'ok' : ''));
@@ -908,6 +960,10 @@ function appendSetHistory(parent, ex, sets, highlight = false) {
 }
 
 function renderTrain() {
+  if (rest && rest.end <= Date.now()) {
+    endRest(true);
+    return;
+  }
   renderTrainPaper();
   const entry = currentEntry();
   const ex = state.exercises.find(item => item.id === entry.id);
@@ -918,6 +974,7 @@ function renderTrain() {
       dismissVerdict();
       rest.end += 15000;
       rest.duration += 15000;
+      saveTraining();
       updateRest();
     }), action('休憩を終える', () => endRest(false)));
     dock.append(sub);
@@ -980,21 +1037,12 @@ function counter(ex, set, parent = dock) {
   const step = time ? 5 : 1;
   const max = time ? 600 : 200;
   const key = time ? 'sec' : 'reps';
-  const target = line(state, ex.id, training?.date ?? localDate(new Date()));
-  const first = parent === dock && !trainingSession()?.sets.some(item => item.exerciseId === ex.id);
   const row = element('div', '', 'counter');
   const big = element('div', '', 'big');
   const number = element('span', '', 'num');
   big.append(number, element('small', time ? '秒' : '回'));
-  const status = first && target.value !== undefined ? element('p', '', 'lineon') : null;
   function draw() {
     number.textContent = String(set[key]);
-    if (!status) return;
-    const over = set[key] >= target.value;
-    number.classList.toggle('over', over);
-    status.replaceChildren(element('b', 'ライン' + target.value + (time ? '秒' : '')),
-      document.createTextNode(over ? ' 突破' :
-        ' まで あと' + (target.value - set[key]) + (time ? '秒' : '')));
   }
   function change(direction) {
     dismissVerdict();
@@ -1003,7 +1051,10 @@ function counter(ex, set, parent = dock) {
     set[key] = next;
     navigator.vibrate?.(5);
     draw();
-    if (parent === dock) renderTrainPaper();
+    if (parent === dock) {
+      renderTrainPaper();
+      saveTraining();
+    }
   }
   let delay;
   let repeat;
@@ -1043,8 +1094,7 @@ function counter(ex, set, parent = dock) {
     return control;
   }
   row.append(button(-1), big, button(1));
-  parent.append(row);
-  if (status) parent.append(status);
+  parent.append(row, element('p', '数字を押すと直接入力', 'hint2'));
   draw();
 }
 
@@ -1066,8 +1116,12 @@ function editSet(session, set, index, context) {
     counter(ex, draft, content);
     content.append(action('保存', () => {
       stopCounter();
+      const previous = { ...set };
       Object.assign(set, draft);
-      save();
+      if (!save()) {
+        Object.assign(set, previous);
+        return;
+      }
       render();
       if (context) context.back();
       else sheet.close();
@@ -1078,14 +1132,24 @@ function editSet(session, set, index, context) {
       const position = session.sets.indexOf(set);
       const sessionPosition = state.sessions.indexOf(session);
       session.sets.splice(position, 1);
-      if (!session.sets.length) state.sessions.splice(sessionPosition, 1);
-      save();
+      const removedSession = !session.sets.length;
+      if (removedSession) state.sessions.splice(sessionPosition, 1);
+      if (!save()) {
+        if (removedSession) state.sessions.splice(sessionPosition, 0, session);
+        session.sets.splice(position, 0, set);
+        return;
+      }
       render();
       const message = (index + 1) + 'セット目を消しました';
       const undo = () => {
-        if (!state.sessions.includes(session)) state.sessions.splice(sessionPosition, 0, session);
+        const restoreSession = !state.sessions.includes(session);
+        if (restoreSession) state.sessions.splice(sessionPosition, 0, session);
         session.sets.splice(position, 0, set);
-        save();
+        if (!save()) {
+          session.sets.splice(position, 1);
+          if (restoreSession) state.sessions.splice(state.sessions.indexOf(session), 1);
+          return;
+        }
         render();
         if (context) context.back();
       };
@@ -1107,37 +1171,44 @@ function completeSet() {
   const ex = state.exercises.find(item => item.id === entry.id);
   const set = { ...entry.sets[entry.cursor] };
   let session = trainingSession();
+  const created = !session;
   const first = !session?.sets.some(item => item.exerciseId === ex.id);
-  const l = line(state, ex.id, training.date);
+  const result = first ? firstSetResult(state, ex.id, training.date, set) : null;
   if (!session) {
     session = { id: uid('s'), date: training.date, light: training.light,
       note: training.note, toCoach: training.toCoach, sets: [] };
     state.sessions.push(session);
   }
   session.sets.push(set);
-  save();
+  if (!save()) {
+    session.sets.pop();
+    if (created) state.sessions.splice(state.sessions.indexOf(session), 1);
+    return;
+  }
   entry.cursor++;
   let verdict = null;
   if (first) {
-    const result = lineResult(l, value(ex, set));
     let title = '基準';
     let small = '';
-    if (result.kind === 'clear') {
-      title = '突破';
+    if (result.kind === 'clear' || result.kind === 'short') {
+      title = result.kind === 'clear' ? '突破' : 'あと' + result.diff;
       const date = new Date(training.date + 'T12:00:00');
       date.setDate(date.getDate() + 1);
       const next = line(state, ex.id, localDate(date));
-      small = next.value === undefined ? lineText(next, ex) :
-        '次のライン ' + next.value + (ex.type === 'time' ? '秒' : '');
-      navigator.vibrate?.(60);
-    } else if (result.kind === 'short') {
-      title = 'あと' + result.diff;
-      small = 'ラインは次回へ';
+      if (result.kind === 'clear') {
+        small = next.value === undefined ? lineText(next, ex) :
+          '次のライン ' + next.value + (ex.type === 'time' ? '秒' : '');
+        navigator.vibrate?.(60);
+      } else if (next.value !== undefined) {
+        small = '次回のライン ' + next.value + (ex.type === 'time' ? '秒' : '');
+      }
+    } else if (result.kind === 'previous') {
+      title = result.diff > 0 ? '前回より +' + result.diff :
+        result.diff < 0 ? '前回より −' + Math.abs(result.diff) : '前回と同じ';
+      small = result.next + 'を検討';
     } else if (result.kind === 'newload') {
-      title = '新しい基準';
-      small = (ex.type === 'band'
-        ? state.bands.find(band => band.id === set.bandId)?.name ?? 'なし'
-        : ex.type === 'weight' ? set.kg + 'kg' : ex.name) + 'の1本目';
+      title = '新しい負荷';
+      small = (loadText(ex, set) || ex.name) + 'の1本目';
     }
     verdict = { value: value(ex, set), title, small };
   }
@@ -1168,6 +1239,7 @@ function updateRest() {
 function endRest(vibrate) {
   clearInterval(restInterval);
   rest = null;
+  saveTraining();
   if (vibrate) navigator.vibrate?.([300, 100, 300]);
   if (currentMode === 'train') render();
 }
@@ -1185,6 +1257,7 @@ function trainingMore() {
       session.toCoach = training.toCoach;
       save();
     }
+    saveTraining();
   }
   note.addEventListener('input', () => {
     training.note = note.value;
@@ -1244,7 +1317,7 @@ function renderSummary() {
   const ids = [...new Set(sets.map(set => set.exerciseId))];
   const results = ids.map(id => {
     const ex = state.exercises.find(item => item.id === id);
-    return lineResult(line(state, id, training.date), value(ex, firstSet(state, ex, session)));
+    return firstSetResult(state, id, training.date, firstSet(state, ex, session));
   }).filter(result => ['clear', 'short'].includes(result.kind));
   view.append(element('p', 'ライン突破 ' +
     results.filter(result => result.kind === 'clear').length + ' / ' + results.length, 'lines'));
@@ -1347,8 +1420,8 @@ function renderDetail() {
     element('h1', body ? '体重' : ex.name, 'exname'));
   const entries = body
     ? [...state.body].sort((a, b) => a.date.localeCompare(b.date))
-    : lineHistory(state, ex.id);
-  if (body || entries.length >= 2) {
+    : setHistory(state, ex.id);
+  if (entries.length) {
     view.append(growthChart(entries, ex, today));
   } else {
     view.append(element('p', '記録が増えると、ここに階段ができる', 'stairs k'));
@@ -1372,8 +1445,13 @@ function renderDetail() {
     stat('7日平均', average === null ? '—' : average.toFixed(1));
     stat('4週間前との差', diff === null ? '—' : (diff > 0 ? '+' : '') + diff.toFixed(1));
   } else {
-    stat('今のライン', line(state, ex.id, today).value ?? '—');
-    stat('突破', clearCount(state, ex.id), ' 回');
+    const latest = entries.at(-1);
+    const sets = state.sessions.flatMap(session => session.sets)
+      .filter(set => set.exerciseId === ex.id && load(state, ex, set) === latest?.load);
+    stat('自己ベスト', sets.length ? Math.max(...sets.map(set => value(ex, set))) : '—',
+      ex.type === 'time' ? ' 秒' : ' 回');
+    stat('前回', latest?.value ?? '—');
+    stat('ライン', line(state, ex.id, today).value ?? '—');
   }
   view.append(stats);
   if (!body) {
@@ -1388,7 +1466,7 @@ function renderDetail() {
       row.dataset.date = date;
       const numbers = element('span', '', 'v');
       appendSetHistory(numbers, ex, sets,
-        lineResult(line(state, ex.id, date), value(ex, sets[0])).kind === 'clear');
+        firstSetResult(state, ex.id, date, sets[0]).kind === 'clear');
       numbers.append(element('small', sets.length + 'セット'));
       row.append(element('span', dayLabel(date), 'd'), numbers);
       hist.append(row);
@@ -1445,10 +1523,10 @@ function exerciseDay(ex, date) {
 
 function growthChart(entries, ex, today) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', ex ? '0 0 316 120' : '0 0 316 190');
-  svg.setAttribute('class', 'stairs');
+  svg.setAttribute('viewBox', ex ? '0 0 316 175' : '0 0 316 190');
+  svg.setAttribute('class', ex ? 'stairs chart' : 'stairs');
   svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', ex ? ex.name + ' ラインの階段' : '体重と7日平均');
+  svg.setAttribute('aria-label', ex ? ex.name + ' 日ごとの記録' : '体重と7日平均');
   function add(tag, attrs, text) {
     const node = document.createElementNS(svg.namespaceURI, tag);
     for (const [key, val] of Object.entries(attrs)) node.setAttribute(key, String(val));
@@ -1463,19 +1541,19 @@ function growthChart(entries, ex, today) {
   const averages = body ? points.map(point => ({
     date: point.date, value: bodyAvg7(state.body, point.date, 'kg')
   })) : [];
-  const values = [...points, ...averages].map(point => point.value);
-  const min = body ? Math.floor(Math.min(...values) - 1) : 0;
-  const max = body ? Math.ceil(Math.max(...values) + 1) :
-    Math.max(5, Math.ceil(Math.max(...values) / 5) * 5);
+  const values = body ? [...points, ...averages].map(point => point.value) :
+    points.flatMap(point => [point.value, ...point.others]);
+  const min = body ? Math.floor(Math.min(...values) - 1) : Math.min(...values);
+  const max = body ? Math.ceil(Math.max(...values) + 1) : Math.max(...values);
   const dateNumber = date => new Date(date + 'T12:00:00').getTime();
   const first = dateNumber(points[0].date);
   const last = dateNumber(points.at(-1).date);
-  const x = point => first === last ? 158 :
-    (dateNumber(point.date) - first) / (last - first) * 316;
-  const y = point => (body ? 160 : 100) -
-    (point.value - min) / (max - min) * (body ? 130 : 80);
-  for (const height of body ? [30, 95, 160] : [20, 100]) {
-    add('line', { x1: 0, y1: height, x2: 316, y2: height, stroke: 'var(--hair)' });
+  const x = point => first === last ? (body ? 158 : 172) :
+    (body ? 0 : 32) + (dateNumber(point.date) - first) / (last - first) * (body ? 316 : 280);
+  const y = point => min === max ? (body ? 95 : 87) :
+    (body ? 160 : 136) - (point.value - min) / (max - min) * (body ? 130 : 98);
+  for (const height of body ? [30, 95, 160] : [38, 136]) {
+    add('line', { x1: body ? 0 : 22, y1: height, x2: 316, y2: height, stroke: 'var(--hair)' });
   }
   if (body) {
     for (const point of points) {
@@ -1486,32 +1564,49 @@ function growthChart(entries, ex, today) {
         fill: 'none', stroke: 'var(--ai)', 'stroke-width': 3 });
     }
   } else {
-    const currentLoad = history(state, ex.id, today).load;
+    add('text', { x: 0, y: 42 }, max);
+    add('text', { x: 0, y: 140 }, min);
+    for (const point of points) {
+      for (const amount of point.others) {
+        add('circle', { class: 'other', cx: x(point), cy: y({ value: amount }),
+          r: 3, fill: '#B5BECC' });
+      }
+    }
+    const currentLoad = points.at(-1).load;
     let start = 0;
     while (start < points.length) {
       let end = start;
       while (end + 1 < points.length && points[end + 1].load === points[start].load) end++;
-      let path = 'M' + x(points[start]) + ' ' + y(points[start]);
-      for (let i = start + 1; i <= end; i++) {
-        path += ' H' + x(points[i]) + ' V' + y(points[i]);
-      }
-      path += ' H' + (end + 1 < points.length ? x(points[end + 1]) : 316);
       const current = points[start].load === currentLoad;
-      add('path', { d: path, class: current ? 'now' : 'old', fill: 'none',
-        stroke: current ? 'var(--shu)' : 'var(--ai)', 'stroke-width': 3 });
+      const color = current ? 'var(--shu)' : 'var(--ai)';
+      if (end > start) {
+        let path = 'M' + x(points[start]) + ' ' + y(points[start]);
+        for (let i = start + 1; i <= end; i++) {
+          path += ' L' + x(points[i]) + ' ' + y(points[i]);
+        }
+        add('path', { d: path, class: current ? 'now' : 'old', fill: 'none',
+          stroke: color, 'stroke-width': 2.5 });
+      }
+      for (let i = start; i <= end; i++) {
+        add('circle', { class: 'first', cx: x(points[i]), cy: y(points[i]), r: 4, fill: color });
+      }
       if (start > 0) {
         const name = ex.type === 'band'
           ? state.bands.find(band => band.order === points[start].load)?.name ?? 'なし'
           : ex.type === 'weight' ? points[start].load + 'kg' : ex.name;
-        add('text', { x: x(points[start]) + 2, y: 112, 'font-size': 12,
-          'font-weight': 700, fill: 'var(--shu)', 'font-family': 'Zen Kaku Gothic New',
+        const label = add('text', { x: x(points[start]), y: Math.min(155, y(points[start]) + 18),
           'text-anchor': x(points[start]) > 250 ? 'end' : 'start' }, name + 'へ');
+        label.style.fontFamily = 'var(--ja)';
+        label.style.fontWeight = '700';
+        label.style.fill = 'var(--shu)';
       }
       start = end + 1;
     }
   }
-  for (const [point, position, anchor] of [[points[0], 0, 'start'], [points.at(-1), 316, 'end']]) {
-    add('text', { x: position, y: body ? 182 : 112, 'font-size': 12, fill: 'var(--mute)',
+  for (const [point, position, anchor] of [
+    [points[0], body ? 0 : 22, 'start'], [points.at(-1), 316, 'end']
+  ]) {
+    add('text', { x: position, y: body ? 182 : 172, 'font-size': 12, fill: 'var(--mute)',
       'font-family': 'Barlow Condensed', 'text-anchor': anchor },
     Number(point.date.slice(5, 7)) + '月');
   }
@@ -1595,14 +1690,26 @@ function renderDayHistory(parent, date, refresh) {
         row.append(
           stepper(ex.name + ' ' + (index + 1) + 'セット', value(ex, set),
             0, Infinity, time ? 5 : 1, next => {
-              set[time ? 'sec' : 'reps'] = next;
-              save();
+              const key = time ? 'sec' : 'reps';
+              const previous = set[key];
+              set[key] = next;
+              if (!save()) {
+                set[key] = previous;
+                return;
+              }
               refresh();
             }, time ? '秒' : '回'),
           action('削除', () => {
-            session.sets.splice(session.sets.indexOf(set), 1);
-            if (!session.sets.length) state.sessions = state.sessions.filter(item => item !== session);
-            save();
+            const position = session.sets.indexOf(set);
+            const sessionPosition = state.sessions.indexOf(session);
+            session.sets.splice(position, 1);
+            const removedSession = !session.sets.length;
+            if (removedSession) state.sessions.splice(sessionPosition, 1);
+            if (!save()) {
+              if (removedSession) state.sessions.splice(sessionPosition, 0, session);
+              session.sets.splice(position, 0, set);
+              return;
+            }
             refresh();
           }, 'danger')
         );
@@ -1622,8 +1729,12 @@ function renderDayHistory(parent, date, refresh) {
   }
   section.append(action('この日の記録を削除', async () => {
     if (!await confirmDialog('この日の記録を削除します。よろしいですか？')) return;
+    const previous = state.sessions;
     state.sessions = state.sessions.filter(session => session.date !== date);
-    save();
+    if (!save()) {
+      state.sessions = previous;
+      return;
+    }
     refresh();
   }, 'danger'));
   parent.append(section);
@@ -1639,8 +1750,8 @@ function recordRest() {
       else state.skips.push({ date: today, reason });
       save();
       sheet.close();
+      toast('休むのも練習');
       render();
-      toast('休むのも練習。また明日');
     }));
   }
 }
@@ -2224,6 +2335,7 @@ function confirmDialog(text) {
   });
 }
 
+loadTraining();
 render();
 if (github.dirty) pushData();
 fetchFeedback();

@@ -4,7 +4,8 @@ import {
   localDate, value, load, recent, top, firstSet, history, line, lineResult, lineText, prefill, rows,
   prKind, isStageUp, sessionEvents, totals,
   weekStart, weekStats, calendar, totalDays, feed, mergeFeed, bodyAvg7, consultText,
-  parseImport, toBase64Utf8, parsePosts, lineHistory, clearCount, weekHeat, menuExercises
+  parseImport, toBase64Utf8, parsePosts, lineHistory, clearCount, weekHeat, menuExercises,
+  firstSetResult, setHistory
 } from './logic.js';
 
 const ex = (o) => ({ id: 'e1', name: '腕立て', type: 'reps', part: '胸', min: 8, max: 15, nextId: null, archived: false, ...o });
@@ -626,15 +627,18 @@ test('prefill uses fixed defaults without eligible history', () => {
     [set({ reps: 10 })]);
 });
 
-test('prefill upgrades every set from the first-set load and otherwise keeps values', () => {
+test('prefill keeps every previous set unchanged even when the line suggests a load increase', () => {
   for (const type of ['band', 'weight']) {
     const d = withHistory([20], ex({ type }), { bandId: type === 'band' ? 'r' : null, kg: type === 'weight' ? 5 : null });
     d.sessions[0].sets.push(set({ reps: 8, bandId: type === 'band' ? 'y' : null, kg: type === 'weight' ? 10 : null }));
     const before = structuredClone(d);
     const result = prefill(d, 'e1', today);
     assert.deepEqual(result.map(s => type === 'band' ? s.bandId : s.kg),
-      type === 'band' ? ['k', 'k'] : [6, 6]);
+      type === 'band' ? ['r', 'y'] : [5, 10]);
     assert.deepEqual(result.map(s => s.reps), [20, 8]);
+    assert.deepEqual(result, before.sessions[0].sets);
+    assert.notStrictEqual(result[0], d.sessions[0].sets[0]);
+    result[0].reps = 1;
     assert.deepEqual(d, before);
     d.sessions[0].sets[0].reps = 19;
     assert.deepEqual(prefill(d, 'e1', today), d.sessions[0].sets);
@@ -937,4 +941,97 @@ test('menuExercises returns empty when no selected or previous exercises exist',
     ses(today, [set({ reps: 10 })]),
     ses('2026-10-19', [set({ reps: 10 })], { light: true })
   ] }), { kind: 'same' }, today), []);
+});
+
+test('firstSetResult compares completed first sets only at the line load', () => {
+  for (const [type, previous, changed] of [
+    ['band', { bandId: 'r' }, { bandId: 'k' }],
+    ['weight', { kg: 5 }, { kg: 6 }]
+  ]) {
+    const d = withHistory([15], ex({ type }), previous);
+    const before = structuredClone(d);
+    assert.deepEqual(firstSetResult(d, 'e1', today, set({ reps: 16, ...previous })),
+      { kind: 'clear' });
+    assert.deepEqual(firstSetResult(d, 'e1', today, set({ reps: 14, ...previous })),
+      { kind: 'short', diff: 2 });
+    assert.deepEqual(firstSetResult(d, 'e1', today, set({ reps: 99, ...changed })),
+      { kind: 'newload' });
+    assert.deepEqual(d, before);
+  }
+});
+
+test('firstSetResult reports factual differences for up at the same load', () => {
+  for (const [type, previous, threshold, next] of [
+    ['band', { bandId: 'r' }, 20, '黒'],
+    ['weight', { kg: 5 }, 20, '6kg'],
+    ['time', {}, 60, '次']
+  ]) {
+    const d = withHistory([threshold], ex({ type, nextId: type === 'time' ? 'e2' : null }), previous);
+    if (type === 'time') d.exercises.push(ex({ id: 'e2', name: '次' }));
+    const before = structuredClone(d);
+    for (const diff of [-2, 0, 3]) {
+      const entry = set({ ...previous, [type === 'time' ? 'sec' : 'reps']: threshold + diff });
+      assert.deepEqual(firstSetResult(d, 'e1', today, entry),
+        { kind: 'previous', diff, next });
+    }
+    if (type !== 'time') {
+      assert.deepEqual(firstSetResult(d, 'e1', today,
+        set({ reps: threshold + 3, bandId: 'k', kg: 6 })), { kind: 'newload' });
+    }
+    assert.deepEqual(d, before);
+  }
+});
+
+test('firstSetResult keeps first-ever sets as a baseline and compares seconds', () => {
+  const d = data({ exercises: [ex({ type: 'band' })], bands });
+  assert.deepEqual(firstSetResult(d, 'e1', today, set({ reps: 10, bandId: 'y' })),
+    { kind: 'base' });
+  const timed = withHistory([30], ex({ type: 'time' }));
+  assert.deepEqual(firstSetResult(timed, 'e1', today, set({ sec: 35 })), { kind: 'clear' });
+  assert.deepEqual(firstSetResult(timed, 'e1', today, set({ sec: 34 })),
+    { kind: 'short', diff: 1 });
+});
+
+test('clearCount and feed exclude changed loads and same-load up comparisons', () => {
+  for (const reps of [15, 20]) {
+    for (const bandId of ['r', 'k']) {
+      const d = withHistory([reps], ex({ type: 'band' }), { bandId: 'r' });
+      d.sessions.push(ses(today, [set({ reps: 22, bandId })]));
+      const expected = reps === 15 && bandId === 'r';
+      assert.equal(clearCount(d, 'e1'), expected ? 1 : 0);
+      assert.equal(feed(d, today).some(item => item.kind === 'clear'), expected);
+    }
+  }
+});
+
+test('setHistory groups actual sets by day, including light days and all later sets', () => {
+  const d = data({ exercises: [ex({ type: 'band' })], bands, sessions: [
+    ses('2026-10-19', [set({ reps: 12, bandId: 'k' }), set({ reps: 9, bandId: 'r' })]),
+    ses('2026-10-17', [set({ exerciseId: 'e2', reps: 99 }),
+      set({ reps: 20, bandId: 'r' }), set({ reps: 16, bandId: 'r' })]),
+    ses('2026-10-18', [set({ reps: 8, bandId: 'r' })], { light: true }),
+    ses('2026-10-19', [set({ reps: 7, bandId: 'k' })], { id: 'later' }),
+    ses(today, [set({ exerciseId: 'e2', reps: 99 })])
+  ] });
+  const before = structuredClone(d);
+  assert.deepEqual(setHistory(d, 'e1'), [
+    { date: '2026-10-17', value: 20, load: 2, others: [16] },
+    { date: '2026-10-18', value: 8, load: 2, others: [] },
+    { date: '2026-10-19', value: 12, load: 3, others: [9, 7] }
+  ]);
+  assert.deepEqual(setHistory(data(), 'e1'), []);
+  assert.deepEqual(d, before);
+});
+
+test('setHistory uses seconds and preserves weight loads and zero values', () => {
+  for (const type of ['time', 'weight']) {
+    const d = data({ exercises: [ex({ type })], sessions: [
+      ses(today, [set({ reps: 0, sec: 0, kg: 12.5 }),
+        set({ reps: 8, sec: 25, kg: 5 })], { light: true })
+    ] });
+    assert.deepEqual(setHistory(d, 'e1'), [
+      { date: today, value: 0, load: type === 'weight' ? 12.5 : 0,
+        others: [type === 'time' ? 25 : 8] }
+    ]);
+  }
 });

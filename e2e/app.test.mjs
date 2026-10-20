@@ -7,8 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { fixture } from './fixture.mjs';
-import { localDate, line, lineResult, menuExercises, prefill, weekHeat, clearCount,
-  bodyAvg7, feed, mergeFeed, lineHistory, weekStart } from '../logic.js';
+import { localDate, line, firstSetResult, menuExercises, prefill, weekHeat, clearCount,
+  bodyAvg7, feed, mergeFeed, setHistory, weekStart, value, load } from '../logic.js';
 
 const root = path.resolve(import.meta.dirname, '..');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
@@ -100,7 +100,7 @@ async function leaveTraining(page) {
 async function principles(page) {
   assert.deepEqual(await page.$$eval('button, a[href], select, input, textarea, [role=slider]', elements =>
     elements.filter(element => !element.closest('.press, dialog.sheet, .slab, .tabs, #toast button') &&
-      !element.closest('.see .ln, .see .rec, .see .ex, .see .pill, .see .back, .see .sets .r.done, .see .hist .r'))
+      !element.closest('.see .ln, .see .rec, .see .ex, .see .pill, .see .back, .see .sets .r.done, .see .hist .r, .see .seg, .see .day, .see .bl, .see .big input'))
       .map(element => element.outerHTML)), []);
   const size = await page.evaluate(() => {
     const tabs = document.querySelector('.tabs');
@@ -555,7 +555,7 @@ test('home quick actions open their sheets and light start uses one set per exer
   await close();
 });
 
-test('home has seven week cells and miniature stairs from the last eight line points', async () => {
+test('home has seven week cells and miniature lines from eight actual first sets at the current load', async () => {
   const data = fixture();
   const today = localDate(new Date());
   data.sessions.push({ id: 'today', date: today, light: true, note: '', sets: [{ exerciseId: 'e1', reps: 10 }] });
@@ -570,11 +570,16 @@ test('home has seven week cells and miniature stairs from the last eight line po
     today: date === today
   })));
   for (const id of menuExercises(data, { kind: 'same' }, today)) {
-    const points = lineHistory(data, id).slice(-8);
+    const entries = setHistory(data, id);
+    const points = entries.filter(point => point.load === entries.at(-1).load).slice(-8);
     const mini = page.locator('.ln[data-exercise-id="' + id + '"] .mini');
     assert.equal(await mini.getAttribute('viewBox'), '0 0 64 28');
-    assert.match(await mini.locator('path').getAttribute('d'), /H.*V/);
-    assert.equal((await mini.locator('path').getAttribute('d')).match(/H/g).length, points.length - 1);
+    const min = Math.min(...points.map(point => point.value));
+    const max = Math.max(...points.map(point => point.value));
+    const y = point => min === max ? 14 : 24 - (point.value - min) / (max - min) * 20;
+    const expected = 'M0 ' + y(points[0]) + points.slice(1).map((point, index) =>
+      ' L' + (index + 1) / (points.length - 1) * 64 + ' ' + y(point)).join('');
+    assert.equal(await mini.locator('path').getAttribute('d'), expected);
     assert.equal(await mini.locator('path').getAttribute('stroke'), 'var(--ai)');
   }
   assert.deepEqual(errors, []);
@@ -741,7 +746,7 @@ test('home leaves news unread; records news puts its label in the text block', a
   await close();
 });
 
-test('counter steps, clamps, vibrates and shows the line only on the first set', async () => {
+test('counter starts at the actual previous value, steps, clamps and waits for completion to judge', async () => {
   const data = fixture();
   const { page, errors, close } = await open({ data });
   await page.evaluate(() => {
@@ -749,22 +754,27 @@ test('counter steps, clamps, vibrates and shows the line only on the first set',
     navigator.vibrate = value => { window.vibrations.push(value); return true; };
   });
   await press(page, '始める').click();
-  const target = line(data, 'e1', localDate(new Date())).value;
+  const today = localDate(new Date());
+  const initial = prefill(data, 'e1', today)[0].reps;
+  const target = line(data, 'e1', today).value;
   const number = page.locator('.counter .num');
   const minus = press(page, '腕立て伏せ 1回減らす');
   const plus = press(page, '腕立て伏せ 1回増やす');
-  assert.equal(await number.textContent(), String(target));
-  assert.equal(await page.textContent('.lineon'), 'ライン' + target + ' 突破');
-  assert.equal(await number.evaluate(el => el.classList.contains('over')), true);
+  assert.equal(await number.textContent(), String(initial));
+  assert.equal(await page.textContent('.prev'), 'ライン ' + target + ' ・ 1セット目');
+  assert.equal(await page.textContent('.hint2'), '数字を押すと直接入力');
+  assert.equal(await page.locator('.lineon, .counter .over, .sets .cur .over').count(), 0);
   await minus.click();
-  assert.equal(await number.textContent(), String(target - 1));
-  assert.equal(await page.textContent('.lineon'), 'ライン' + target + ' まで あと1');
-  assert.equal(await number.evaluate(el => el.classList.contains('over')), false);
+  assert.equal(await number.textContent(), String(initial - 1));
   await plus.click();
-  assert.equal(await number.textContent(), String(target));
-  assert.equal(await page.textContent('.lineon'), 'ライン' + target + ' 突破');
-  assert.equal(await number.evaluate(el => el.classList.contains('over')), true);
+  assert.equal(await number.textContent(), String(initial));
   assert.deepEqual(await page.evaluate(() => window.vibrations), [5, 5]);
+  await plus.evaluate(button => { for (let i = 0; i < 210; i++) button.click(); });
+  assert.equal(await number.textContent(), '200');
+  assert.equal(await page.locator('.lineon, .counter .over, .sets .cur .over, .verdict').count(), 0);
+  assert.ok(!(await page.textContent('.see')).includes('突破'));
+  await plus.click();
+  assert.equal(await number.textContent(), '200');
   await minus.evaluate(button => { for (let i = 0; i < 210; i++) button.click(); });
   assert.equal(await number.textContent(), '0');
   const count = await page.evaluate(() => window.vibrations.length);
@@ -772,13 +782,11 @@ test('counter steps, clamps, vibrates and shows the line only on the first set',
   assert.equal(await number.textContent(), '0');
   assert.equal(await page.evaluate(() => window.vibrations.length), count);
   await plus.evaluate(button => { for (let i = 0; i < 210; i++) button.click(); });
-  assert.equal(await number.textContent(), '200');
-  await plus.click();
-  assert.equal(await number.textContent(), '200');
   await complete(page);
-  assert.equal(await page.locator('.lineon').count(), 0);
-  assert.equal(await number.evaluate(el => el.classList.contains('over')), false);
-  assert.equal(await number.textContent(), String(prefill(data, 'e1', localDate(new Date()))[1].reps));
+  assert.equal(await page.locator('.verdict b').textContent(), '突破');
+  assert.equal(await page.locator('.sets .done .over').count(), 1);
+  assert.equal(await page.locator('.lineon, .counter .over').count(), 0);
+  assert.equal(await number.textContent(), String(prefill(data, 'e1', today)[1].reps));
   await press(page, '休憩を終える').click();
   assert.equal(await page.locator('.lineon').count(), 0);
   await swipe(page, -100, 0, '.counter');
@@ -790,7 +798,7 @@ test('counter steps, clamps, vibrates and shows the line only on the first set',
   await close();
 });
 
-test('time counter steps by five seconds, clamps, and includes seconds in line feedback', async () => {
+test('time counter starts at previous seconds, steps by five and clamps without an early verdict', async () => {
   const data = fixture();
   const { page, close } = await open({ data, extra: {
     'kintore:menu': { kind: 'custom', exerciseIds: ['e3'] }
@@ -799,18 +807,16 @@ test('time counter steps by five seconds, clamps, and includes seconds in line f
   const number = page.locator('.counter .num');
   const minus = press(page, 'プランク 5秒減らす');
   const plus = press(page, 'プランク 5秒増やす');
-  const target = line(data, 'e3', localDate(new Date())).value;
-  assert.equal(await number.textContent(), String(target));
-  assert.equal(await page.textContent('.lineon'), 'ライン' + target + '秒 突破');
+  const initial = prefill(data, 'e3', localDate(new Date()))[0].sec;
+  assert.equal(await number.textContent(), String(initial));
+  assert.equal(await page.locator('.lineon, .counter .over, .sets .cur .over').count(), 0);
   await minus.click();
-  assert.equal(await number.textContent(), String(target - 5));
-  assert.equal(await page.textContent('.lineon'), 'ライン' + target + '秒 まで あと5秒');
-  assert.equal(await number.evaluate(el => el.classList.contains('over')), false);
+  assert.equal(await number.textContent(), String(initial - 5));
   await plus.click();
-  assert.equal(await number.textContent(), String(target));
-  assert.equal(await number.evaluate(el => el.classList.contains('over')), true);
+  assert.equal(await number.textContent(), String(initial));
   await plus.click();
-  assert.equal(await number.textContent(), String(target + 5));
+  assert.equal(await number.textContent(), String(initial + 5));
+  assert.equal(await page.locator('.lineon, .counter .over, .sets .cur .over').count(), 0);
   await minus.evaluate(button => { for (let i = 0; i < 140; i++) button.click(); });
   assert.equal(await number.textContent(), '0');
   await plus.evaluate(button => { for (let i = 0; i < 140; i++) button.click(); });
@@ -1018,6 +1024,7 @@ test('complete immediately saves, shows first-set verdict and rest bar, then sum
   await principles(page);
   await press(page, 'ホームへ').click();
   await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'today');
+  assert.equal(await page.evaluate(() => localStorage.getItem('kintore:training')), null);
   await press(page, '始める').click();
   assert.equal(await page.locator('.press .counter').count(), 0);
   assert.equal(await press(page, '次の種目へ ▶').count(), 1);
@@ -1093,8 +1100,9 @@ test('light mode and weight controls fit the small viewport, including rest and 
   await close();
 });
 
-test('records list and detail stairs, stats, load colors and twelve-week heat follow the records', async () => {
+test('records list, actual daily chart, stats, load colors and twelve-week heat follow stored sets', async () => {
   const data = fixture();
+  data.sessions[2].light = true;
   const { page, errors, close } = await open({ data });
   await tab(page, '記録').click();
   assert.equal(await page.textContent('.h1'), '記録');
@@ -1119,35 +1127,82 @@ test('records list and detail stairs, stats, load colors and twelve-week heat fo
   assert.deepEqual(await page.locator('.heat i').evaluateAll(cells =>
     cells.map(cell => cell.className)), weekHeat(data, today).map(n => n >= 3 ? 'd' : n ? 'l' : ''));
   assert.equal(await page.locator('.press').evaluate(dock => dock.getBoundingClientRect().height), 0);
-  await page.locator('.rec[data-exercise-id=e1]').click();
-  assert.equal(await page.getAttribute('.app', 'data-mode'), 'detail');
-  assert.equal(await page.textContent('.exname'), '腕立て伏せ');
-  assert.equal(await tab(page, '記録').getAttribute('aria-current'), 'page');
-  assert.match(await page.locator('.stairs path').first().getAttribute('d'), /H.*V/);
-  assert.equal(await page.locator('.stairs').getAttribute('viewBox'), '0 0 316 120');
-  assert.equal(await page.locator('.heat').count(), 0);
-  assert.deepEqual(await page.locator('.stat .num').allTextContents(), [
-    String(line(data, 'e1', today).value), String(clearCount(data, 'e1'))
-  ]);
-  const sessions = [...data.sessions].reverse();
-  assert.deepEqual(await page.locator('.hist .r').evaluateAll(rows => rows.map(row => row.dataset.date)),
-    sessions.map(session => session.date));
-  for (const session of sessions) {
-    const sets = session.sets.filter(set => set.exerciseId === 'e1');
-    const row = page.locator('.hist .r[data-date="' + session.date + '"]');
-    assert.equal(await row.locator('.v').textContent(),
-      sets.map(set => set.reps).join(' ・ ') + sets.length + 'セット');
-    assert.equal(await row.locator('.v b').count(),
-      lineResult(line(data, 'e1', session.date), sets[0].reps).kind === 'clear' ? 1 : 0);
+
+  for (const id of ['e1', 'e2', 'e3']) {
+    await page.locator('.rec[data-exercise-id="' + id + '"]').click();
+    const ex = data.exercises.find(ex => ex.id === id);
+    const points = setHistory(data, id);
+    const amounts = points.flatMap(point => [point.value, ...point.others]);
+    const min = Math.min(...amounts);
+    const max = Math.max(...amounts);
+    const y = amount => min === max ? 87 : 136 - (amount - min) / (max - min) * 98;
+    const first = new Date(points[0].date + 'T12:00:00').getTime();
+    const last = new Date(points.at(-1).date + 'T12:00:00').getTime();
+    const x = point => first === last ? 172 :
+      32 + (new Date(point.date + 'T12:00:00').getTime() - first) / (last - first) * 280;
+    assert.equal(await page.getAttribute('.app', 'data-mode'), 'detail');
+    assert.equal(await page.textContent('.exname'), ex.name);
+    assert.equal(await tab(page, '記録').getAttribute('aria-current'), 'page');
+    assert.equal(await page.locator('.chart').getAttribute('viewBox'), '0 0 316 175');
+    assert.equal(await page.locator('.heat').count(), 0);
+    const circles = await page.locator('.chart circle.first').evaluateAll(nodes =>
+      nodes.map(node => ({
+        x: Number(node.getAttribute('cx')), y: Number(node.getAttribute('cy')),
+        r: Number(node.getAttribute('r')), fill: node.getAttribute('fill')
+      })));
+    assert.deepEqual(circles, points.map(point => ({
+      x: x(point), y: y(point.value), r: 4,
+      fill: point.load === points.at(-1).load ? 'var(--shu)' : 'var(--ai)'
+    })));
+    assert.deepEqual(await page.locator('.chart circle.other').evaluateAll(nodes =>
+      nodes.map(node => ({
+        x: Number(node.getAttribute('cx')), y: Number(node.getAttribute('cy')),
+        r: Number(node.getAttribute('r')), fill: node.getAttribute('fill')
+      }))), points.flatMap(point => point.others.map(amount => ({
+      x: x(point), y: y(amount), r: 3, fill: '#B5BECC'
+    }))));
+    const expectedPaths = [];
+    for (let start = 0; start < points.length;) {
+      let end = start;
+      while (end + 1 < points.length && points[end + 1].load === points[start].load) end++;
+      if (end > start) {
+        expectedPaths.push('M' + x(points[start]) + ' ' + y(points[start].value) +
+          points.slice(start + 1, end + 1).map(point => ' L' + x(point) + ' ' + y(point.value)).join(''));
+      }
+      start = end + 1;
+    }
+    assert.deepEqual(await page.locator('.chart path').evaluateAll(nodes =>
+      nodes.map(node => node.getAttribute('d'))), expectedPaths);
+    const sameLoad = data.sessions.flatMap(session => session.sets)
+      .filter(set => set.exerciseId === id && load(data, ex, set) === points.at(-1).load);
+    assert.deepEqual(await page.locator('.stat .num').allTextContents(), [
+      String(Math.max(...sameLoad.map(set => value(ex, set)))),
+      String(points.at(-1).value), String(line(data, id, today).value ?? '—')
+    ]);
+    assert.deepEqual(await page.locator('.stat > div > p').allTextContents(),
+      ['自己ベスト', '前回', 'ライン']);
+    const sessions = [...data.sessions].reverse();
+    assert.deepEqual(await page.locator('.hist .r').evaluateAll(rows => rows.map(row => row.dataset.date)),
+      sessions.map(session => session.date));
+    if (id === 'e1') {
+      for (const session of sessions) {
+        const sets = session.sets.filter(set => set.exerciseId === id);
+        const row = page.locator('.hist .r[data-date="' + session.date + '"]');
+        assert.equal(await row.locator('.v').textContent(),
+          sets.map(set => set.reps).join(' ・ ') + sets.length + 'セット');
+        assert.equal(await row.locator('.v b').count(),
+          firstSetResult(data, id, session.date, sets[0]).kind === 'clear' ? 1 : 0);
+      }
+    }
+    if (id === 'e2') {
+      assert.ok(await page.locator('.chart path.old').count());
+      assert.ok(await page.locator('.chart path.now').count());
+      assert.match(await page.locator('.chart').textContent(), /黒へ/);
+    }
+    await principles(page);
+    await page.getByRole('button', { name: '‹ 記録', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'records');
   }
-  await page.getByRole('button', { name: '‹ 記録', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'records');
-  await page.locator('.rec[data-exercise-id=e2]').click();
-  assert.ok(await page.locator('.stairs path.old').count());
-  assert.ok(await page.locator('.stairs path.now').count());
-  assert.match(await page.locator('.stairs').textContent(), /黒へ/);
-  await principles(page);
-  await backTo(page, 'records');
   await backTo(page, 'today');
   assert.deepEqual(errors, []);
   await close();
@@ -1185,15 +1240,17 @@ test('body item shows daily points, seven-day average and four-week difference',
   await close();
 });
 
-test('a single line point explains the missing stairs in detail', async () => {
+test('one actual first set is drawn as a point and has no miniature line', async () => {
   const data = fixture();
   data.sessions = [data.sessions[0]];
   data.body = [];
   const { page, errors, close } = await open({ data });
+  assert.equal(await page.locator('.ln[data-exercise-id=e1] .mini path').count(), 0);
   await tab(page, '記録').click();
   await page.locator('.rec[data-exercise-id=e1]').click();
-  assert.match(await page.textContent('.see'), /記録が増えると、ここに階段ができる/);
-  assert.equal(await page.locator('.stairs path').count(), 0);
+  assert.equal(await page.locator('.chart circle.first').count(), 1);
+  assert.equal(await page.locator('.chart circle.other').count(), 2);
+  assert.equal(await page.locator('.chart path').count(), 0);
   assert.equal(await page.locator('.exdots').count(), 0);
   await principles(page);
   assert.deepEqual(errors, []);
@@ -1517,4 +1574,263 @@ test('band and weight edits save loads and history groups values by load', async
   assert.equal(await weight.page.locator('.sets .done .td small').textContent(), '5.5kg');
   assert.deepEqual(weight.errors, []);
   await weight.close();
+});
+
+test('up suggests the next band without changing the load and compares completed values factually', async () => {
+  for (const diff of [-1, 0, 1]) {
+    const data = fixture();
+    const latest = data.sessions.at(-1);
+    latest.sets.filter(set => set.exerciseId === 'e2').forEach((set, index) => {
+      set.bandId = 'r';
+      set.reps = index === 0 ? 20 : 12;
+    });
+    const { page, errors, close } = await open({ data, extra: {
+      'kintore:menu': { kind: 'custom', exerciseIds: ['e2'] }
+    } });
+    await page.clock.install();
+    await press(page, '始める').click();
+    assert.equal(await press(page, '赤').getAttribute('aria-pressed'), 'true');
+    assert.equal(await page.locator('.counter .num').textContent(), '20');
+    assert.equal(await page.locator('.prev').textContent(), '前回20回以上。黒を検討');
+    assert.equal(await page.locator('.lineon, .counter .over, .sets .cur .over, .verdict').count(), 0);
+    if (diff) await press(page, 'バンドロウ 1回' + (diff > 0 ? '増やす' : '減らす')).click();
+    const before = clearCount(data, 'e2');
+    await complete(page);
+    assert.equal((await stored(page)).sessions.at(-1).sets[0].bandId, 'r');
+    assert.equal(await page.locator('.verdict .num').textContent(), String(20 + diff));
+    assert.equal(await page.locator('.verdict b').textContent(),
+      diff > 0 ? '前回より +1' : diff < 0 ? '前回より −1' : '前回と同じ');
+    assert.equal(await page.locator('.verdict small').textContent(), '黒を検討');
+    const saved = await stored(page);
+    assert.equal(clearCount(saved, 'e2'), before);
+    assert.equal(feed(saved, localDate(new Date())).some(item => item.kind === 'clear'), false);
+    await press(page, '休憩を終える').click();
+    assert.equal(await page.locator('.prev').textContent(), '前回20回以上 ・ 黒を検討');
+    await leaveTraining(page);
+    assert.match(await page.textContent('.see'), /バンドロウ/);
+    assert.deepEqual(errors, []);
+    await close();
+  }
+});
+
+test('changing the first-set load gives a new-load result and is excluded from breakthroughs', async () => {
+  for (const up of [false, true]) {
+    const data = fixture();
+    data.sessions.at(-1).sets.filter(set => set.exerciseId === 'e2').forEach(set => {
+      set.bandId = 'r';
+      set.reps = up ? 20 : 15;
+    });
+    const previousCount = clearCount(data, 'e2');
+    const { page, errors, close } = await open({ data, extra: {
+      'kintore:menu': { kind: 'custom', exerciseIds: ['e2'] }
+    } });
+    await page.clock.install();
+    await press(page, '始める').click();
+    await press(page, '黒').click();
+    await press(page, 'バンドロウ 1回増やす').evaluate(button => {
+      for (let i = 0; i < 10; i++) button.click();
+    });
+    assert.equal(await page.locator('.verdict, .counter .over, .sets .cur .over').count(), 0);
+    assert.ok(!(await page.textContent('.see')).includes('突破'));
+    await complete(page);
+    assert.equal(await page.locator('.verdict b').textContent(), '新しい負荷');
+    assert.equal(await page.locator('.verdict small').textContent(), '黒の1本目');
+    assert.equal(await page.locator('.sets .done .over').count(), 0);
+    const saved = await stored(page);
+    assert.equal(clearCount(saved, 'e2'), previousCount);
+    assert.equal(feed(saved, localDate(new Date())).some(item => item.kind === 'clear'), false);
+    await press(page, '休憩を終える').click();
+    assert.equal(await page.locator('.prev').textContent(), '新しい負荷');
+    await press(page, '終了').click();
+    assert.match(await page.textContent('.see'), /ライン突破 0 \/ 0/);
+    await press(page, 'ホームへ').click();
+    await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'today');
+    await tab(page, '記録').click();
+    await page.locator('.rec[data-exercise-id=e2]').click();
+    const today = localDate(new Date());
+    assert.equal(await page.locator('.hist .r[data-date="' + today + '"] .v b').count(), 0);
+    assert.deepEqual(errors, []);
+    await close();
+  }
+});
+
+test('a short first-set verdict shows the next-day line instead of a carry-forward message', async () => {
+  const data = fixture();
+  const { page, errors, close } = await open({ data });
+  await page.clock.install();
+  await press(page, '始める').click();
+  await press(page, '腕立て伏せ 1回減らす').click();
+  await complete(page);
+  const saved = await stored(page);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const next = line(saved, 'e1', localDate(tomorrow));
+  assert.match(await page.locator('.verdict b').textContent(), /^あと\d+$/);
+  assert.equal(await page.locator('.verdict small').textContent(), '次回のライン ' + next.value);
+  assert.ok(!(await page.textContent('.see')).includes('ラインは次回へ'));
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('reload restores exercise, unfinished input, completed sets, notes and the remaining rest', async () => {
+  const { page, errors, close } = await open({ data: fixture() });
+  await page.clock.install({ time: new Date(localDate(new Date()) + 'T12:00:00') });
+  await press(page, '始める').click();
+  await press(page, '次 ▶').click();
+  await press(page, '赤').click();
+  await press(page, 'バンドロウ 1回増やす').click();
+  await press(page, 'メモ').click();
+  await sheet(page).getByLabel('メモ', { exact: true }).fill('再開するメモ');
+  await sheet(page).getByRole('button', { name: 'コーチに送る：オフ', exact: true }).click();
+  await closeSheet(page);
+  const firstValue = await page.locator('.counter .num').textContent();
+  const pending = await page.evaluate(() => JSON.parse(localStorage.getItem('kintore:training')));
+  assert.equal(pending.training.index, 1);
+  assert.equal(pending.training.entries[1].sets[0].bandId, 'r');
+  assert.equal(pending.training.note, '再開するメモ');
+  assert.equal(pending.training.toCoach, true);
+  await page.reload();
+  assert.equal(await page.getAttribute('.app', 'data-mode'), 'today');
+  await press(page, '続きから').click();
+  assert.equal(await page.textContent('.exname'), 'バンドロウ');
+  assert.equal(await page.locator('.sets .cur .no').textContent(), '1');
+  assert.equal(await page.locator('.counter .num').textContent(), firstValue);
+  assert.equal(await press(page, '赤').getAttribute('aria-pressed'), 'true');
+  await complete(page);
+  await press(page, 'バンドロウ 1回増やす').click();
+  const secondValue = await page.locator('.counter .num').textContent();
+  await page.clock.runFor(10000);
+  const remaining = await page.locator('.restbar .num').textContent();
+  const checkpoint = await page.evaluate(() => JSON.parse(localStorage.getItem('kintore:training')));
+  const before = await stored(page);
+  await page.reload();
+  await press(page, '続きから').click();
+  assert.equal(await page.textContent('.exname'), 'バンドロウ');
+  assert.equal(await page.locator('.sets .cur .no').textContent(), '2');
+  assert.equal(await page.locator('.sets .done').count(), 1);
+  assert.equal(await page.locator('.counter .num').textContent(), secondValue);
+  assert.equal(await page.locator('.restbar .num').textContent(), remaining);
+  const restored = await page.evaluate(() => JSON.parse(localStorage.getItem('kintore:training')));
+  assert.equal(restored.rest.end, checkpoint.rest.end);
+  assert.equal(restored.rest.duration, checkpoint.rest.duration);
+  assert.deepEqual((await stored(page)).sessions, before.sessions);
+  await page.clock.runFor(80000);
+  assert.equal(await page.locator('.restbar').count(), 0);
+  await page.reload();
+  await press(page, '続きから').click();
+  assert.equal(await page.locator('.restbar').count(), 0);
+  assert.equal(await page.locator('.sets .cur .no').textContent(), '2');
+  await leaveTraining(page);
+  assert.equal(await page.evaluate(() => localStorage.getItem('kintore:training')), null);
+  await page.reload();
+  assert.equal(await press(page, '続きから').count(), 0);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('a training checkpoint from another day is discarded on startup', async () => {
+  const { page, errors, close } = await open({ data: fixture() });
+  await press(page, '始める').click();
+  await page.evaluate(() => {
+    const checkpoint = JSON.parse(localStorage.getItem('kintore:training'));
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    checkpoint.training.date = [
+      yesterday.getFullYear(), String(yesterday.getMonth() + 1).padStart(2, '0'),
+      String(yesterday.getDate()).padStart(2, '0')
+    ].join('-');
+    localStorage.setItem('kintore:training', JSON.stringify(checkpoint));
+  });
+  await page.reload();
+  assert.equal(await press(page, '続きから').count(), 0);
+  assert.equal(await press(page, '始める').count(), 1);
+  assert.equal(await page.evaluate(() => localStorage.getItem('kintore:training')), null);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('a failed complete keeps the set count, counter and rest unchanged and can be retried', async () => {
+  for (const duringRest of [false, true]) {
+    const { page, errors, close } = await open({ data: fixture() });
+    await page.clock.install();
+    await press(page, '始める').click();
+    if (duringRest) await complete(page);
+    const before = await stored(page);
+    const checkpoint = await page.evaluate(() => localStorage.getItem('kintore:training'));
+    const amount = await page.locator('.counter .num').textContent();
+    const setNumber = await page.locator('.sets .cur .no').textContent();
+    const restText = duringRest ? await page.locator('.restbar .num').textContent() : null;
+    await page.evaluate(() => {
+      window.originalSetItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = function(key, value) {
+        if (key === 'kintore:data') throw new DOMException('full', 'QuotaExceededError');
+        return window.originalSetItem.call(this, key, value);
+      };
+    });
+    await complete(page);
+    assert.equal(await page.textContent('#toast'), '保存できませんでした。もう一度押してください');
+    assert.deepEqual(await stored(page), before);
+    assert.equal(await page.evaluate(() => localStorage.getItem('kintore:training')), checkpoint);
+    assert.equal(await page.locator('.counter .num').textContent(), amount);
+    assert.equal(await page.locator('.sets .cur .no').textContent(), setNumber);
+    assert.equal(await page.locator('.sets .done').count(), duringRest ? 1 : 0);
+    if (duringRest) assert.equal(await page.locator('.restbar .num').textContent(), restText);
+    else assert.equal(await page.locator('.restbar, .verdict').count(), 0);
+    await page.evaluate(() => { Storage.prototype.setItem = window.originalSetItem; });
+    await complete(page);
+    const saved = await stored(page);
+    const session = saved.sessions.find(session => session.date === localDate(new Date()));
+    assert.equal(session.sets.length, duringRest ? 2 : 1);
+    assert.equal(session.sets.at(-1).reps, Number(amount));
+    assert.deepEqual(errors, []);
+    await close();
+  }
+});
+
+test('failed set edits and deletions keep the current sheet and saved record until retry', async () => {
+  for (const context of ['training', 'records']) {
+    const data = fixture();
+    const { page, errors, close } = await open({ data });
+    await page.clock.install();
+    if (context === 'training') {
+      await press(page, '始める').click();
+      await complete(page);
+      await page.locator('.sets .done').click();
+    } else {
+      await tab(page, '記録').click();
+      await page.locator('.rec[data-exercise-id=e1]').click();
+      await page.locator('.hist .r').first().click();
+      await sheet(page).locator('.row').first().click();
+    }
+    const before = await stored(page);
+    await sheet(page).getByRole('button', { name: '腕立て伏せ 1回増やす', exact: true }).click();
+    const amount = await sheet(page).locator('.counter .num').textContent();
+    await page.evaluate(() => {
+      window.originalSetItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = function(key, value) {
+        if (key === 'kintore:data') throw new Error('full');
+        return window.originalSetItem.call(this, key, value);
+      };
+    });
+    await sheet(page).getByRole('button', { name: '保存', exact: true }).click();
+    assert.equal(await sheet(page).getAttribute('aria-label'), '1セット目を直す');
+    assert.equal(await sheet(page).locator('.counter .num').textContent(), amount);
+    assert.deepEqual(await stored(page), before);
+    assert.equal(await page.textContent('#toast'), '保存できませんでした。もう一度押してください');
+    await sheet(page).getByRole('button', { name: 'このセットを消す', exact: true }).click();
+    assert.equal(await sheet(page).getAttribute('aria-label'), '1セット目を直す');
+    assert.deepEqual(await stored(page), before);
+    assert.equal(await page.textContent('#toast'), '保存できませんでした。もう一度押してください');
+    await page.evaluate(() => { Storage.prototype.setItem = window.originalSetItem; });
+    await sheet(page).getByRole('button', { name: '保存', exact: true }).click();
+    if (context === 'training') {
+      await page.waitForFunction(() => !window.history.state?.sheet);
+      assert.equal(await page.locator('.sets .done .td').textContent(), amount);
+    } else {
+      assert.equal(await sheet(page).locator('.row').count(), 3);
+      assert.match(await sheet(page).locator('.row').first().textContent(), new RegExp(amount));
+    }
+    assert.deepEqual(errors, []);
+    await close();
+  }
 });
