@@ -254,6 +254,25 @@ function loadMenu() {
   return state.sessions.length ? { kind: 'same' } : { kind: 'custom', exerciseIds: [] };
 }
 
+function saveMenu(next) {
+  try {
+    localStorage.setItem('kintore:menu', JSON.stringify(next));
+  } catch {
+    toast('保存できませんでした。容量を確認してください');
+    return false;
+  }
+  menu = next;
+  return true;
+}
+
+function lightToday() {
+  try {
+    return JSON.parse(localStorage.getItem('kintore:light')) === localDate(new Date());
+  } catch {
+    return false;
+  }
+}
+
 function showScreen(next) {
   if (currentMode === 'train' && next.mode !== 'train') {
     wakeLock?.release().catch(() => {});
@@ -495,13 +514,23 @@ function renderToday() {
   date.append(total);
   view.append(date);
 
-  if (!state.exercises.length) {
+  const head = element('div', '', 'head');
+  const hello = element('p', '', 'hello');
+  hello.append(element('small', '今日のメニュー'), document.createTextNode(menuName()));
+  const picker = action('種目を変える', () => changeMenu(), 'pill');
+  const pencil = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  pencil.setAttribute('viewBox', '0 0 16 16');
+  pencil.setAttribute('aria-hidden', 'true');
+  pencil.innerHTML = '<path d="M3 13h3l7-7-3-3-7 7z"/>';
+  picker.prepend(pencil);
+  head.append(hello, picker);
+  view.append(head);
+
+  if (!state.exercises.some(ex => !ex.archived)) {
     view.append(element('p', 'まず種目を登録しましょう', 'lines'));
-    dock.append(action('種目を追加', () => editExercise(), 'go'));
+    dock.append(action('＋ 新しい種目',
+      () => go('exercise-editor', { addToMenu: true }), 'go'));
   } else {
-    const hello = element('p', '', 'hello');
-    hello.append(element('small', '今日のメニュー'), document.createTextNode(menuName()));
-    view.append(hello);
     const lines = element('div', '', 'lines');
     for (const id of menuExercises(state, menu, today)) {
       const ex = state.exercises.find(item => item.id === id);
@@ -517,7 +546,7 @@ function renderToday() {
           [...state.bands].sort((a, b) => a.order - b.order)[0];
         if (band) detail = band.name + ' ・ ' + detail;
       }
-      const row = element('div', '', 'ln');
+      const row = action('', () => go('detail', { id, from: 'today' }), 'ln tap');
       row.dataset.exerciseId = id;
       const name = element('span', ex.name, 'name');
       name.append(element('small', detail));
@@ -529,13 +558,13 @@ function renderToday() {
         number.append(document.createTextNode(String(target.value)));
         if (ex.type === 'time') number.append(element('small', '秒'));
       }
-      row.append(name, miniChart(id), number);
+      row.append(name, miniChart(id), number, element('span', '›', 'chev'));
       lines.append(row);
     }
     view.append(lines);
     const resume = training?.date === today;
     dock.append(action(resume ? '続きから' : '始める',
-      () => resume ? go('train') : startWorkout(false), 'go'));
+      () => resume ? go('train') : startWorkout(), 'go'));
   }
 
   const news = element('div', '', 'feed');
@@ -554,17 +583,9 @@ function renderToday() {
   });
   news.append(week);
   const quick = element('div', '', 'quick');
-  quick.append(action('今日の調整', adjustToday, 'pill'));
+  quick.append(action('今日は休む', recordRest, 'pill'),
+    action('体重を記録', recordBody, 'pill'));
   news.append(quick);
-  const { items, seen } = homeFeed();
-  if (items.length) {
-    const heading = element('p', '新着 ' + items.filter(item => !seen.includes(item.id)).length, 'k');
-    heading.style.marginTop = '14px';
-    news.append(heading);
-    const displayed = items.slice(0, 1);
-    appendFeed(news, displayed);
-    markSeen(displayed);
-  }
   view.append(news);
   fetchFeedback();
 }
@@ -597,24 +618,6 @@ function miniChart(id) {
   return svg;
 }
 
-function adjustToday() {
-  const { sheet, content } = homeSheet('今日の調整');
-  sheet.classList.add('adjust');
-  for (const [name, detail, open] of [
-    ['メニュー', menuName() + ' ›', changeMenu],
-    ['軽めの日', '各1セットで始める', () => startWorkout(true)],
-    ['休む', '今日は休みにする', recordRest],
-    ['体重', '記録する', recordBody]
-  ]) {
-    const button = action('', () => {
-      sheet.close();
-      open();
-    }, 'row');
-    button.append(element('span', name), element('small', detail));
-    content.append(button);
-  }
-}
-
 function homeSheet(title) {
   const sheet = element('dialog', '', 'sheet');
   sheet.setAttribute('aria-label', title);
@@ -631,44 +634,89 @@ function homeSheet(title) {
 }
 
 function changeMenu(onSelect) {
-  const { sheet, content } = homeSheet('メニュー変更');
-  function choose(next) {
-    try {
-      localStorage.setItem('kintore:menu', JSON.stringify(next));
-    } catch {
-      toast('保存できませんでした。容量を確認してください');
-      return;
-    }
-    menu = next;
-    sheet.close();
-    render();
-    if (typeof onSelect === 'function') onSelect();
-  }
-  for (const template of state.templates) {
-    content.append(action(template.name, () => choose({ kind: 'template', templateId: template.id })));
-  }
-  content.append(action('前回と同じ', () => choose({ kind: 'same' })));
-  content.append(action('種目を選ぶ', () => {
+  const today = localDate(new Date());
+  let draft = { ...menu };
+  let selected = menuExercises(state, menu, today)
+    .filter(id => state.exercises.some(ex => ex.id === id && !ex.archived));
+  let light = lightToday();
+  const { sheet, content } = homeSheet('今日の種目');
+  sheet.classList.add('picker');
+
+  function draw() {
     content.replaceChildren();
-    const selected = menu.kind === 'custom'
-      ? [...menu.exerciseIds] : menuExercises(state, menu, localDate(new Date()));
-    const chips = element('div', '', 'chips wrap');
-    for (const ex of state.exercises.filter(item => !item.archived)) {
-      const button = action(ex.name, () => {
-        const index = selected.indexOf(ex.id);
-        if (index < 0) selected.push(ex.id);
-        else selected.splice(index, 1);
-        button.classList.toggle('on', selected.includes(ex.id));
-        button.setAttribute('aria-pressed', String(selected.includes(ex.id)));
-        done.disabled = !selected.length;
-      }, 'chip' + (selected.includes(ex.id) ? ' on' : ''));
-      button.setAttribute('aria-pressed', String(selected.includes(ex.id)));
+    const chips = element('div', '', 'chips2');
+    for (const [name, next] of [
+      ['前回と同じ', { kind: 'same' }],
+      ...state.templates.map(template =>
+        [template.name, { kind: 'template', templateId: template.id }])
+    ]) {
+      const active = draft.kind === next.kind && draft.templateId === next.templateId;
+      const button = action(name, () => {
+        draft = next;
+        selected = menuExercises(state, next, today)
+          .filter(id => state.exercises.some(ex => ex.id === id && !ex.archived));
+        draw();
+      }, 'menu-chip' + (active ? ' on' : ''));
+      button.setAttribute('aria-pressed', String(active));
       chips.append(button);
     }
-    const done = action('決定', () => choose({ kind: 'custom', exerciseIds: selected }), 'go');
+    content.append(chips);
+    for (const ex of state.exercises.filter(ex => !ex.archived)) {
+      const checked = selected.includes(ex.id);
+      const button = action('', () => {
+        if (checked) selected = selected.filter(id => id !== ex.id);
+        else selected.push(ex.id);
+        draft = { kind: 'custom', exerciseIds: [...selected] };
+        draw();
+      }, 'check' + (checked ? ' on' : ''));
+      button.dataset.exerciseId = ex.id;
+      button.setAttribute('aria-pressed', String(checked));
+      const mark = element('i');
+      mark.setAttribute('aria-hidden', 'true');
+      const name = element('span', ex.name + ' ');
+      name.append(element('small', ex.part));
+      const target = line(state, ex.id, today);
+      const detail = target.kind === 'base' ? '初回' :
+        target.kind === 'up' ? target.next + 'へ' :
+          'ライン ' + target.value + (ex.type === 'time' ? '秒' : '');
+      button.append(mark, name, element('small', detail));
+      content.append(button);
+    }
+    content.append(action('＋ 新しい種目を作る', () => {
+      // シートの履歴を戻してから編集画面を積む。
+      window.addEventListener('popstate',
+        () => go('exercise-editor', { addToMenu: true }), { once: true });
+      sheet.close();
+    }, 'addrow'));
+    const toggle = action('軽めの日（各1セット）', () => {
+      light = !light;
+      draw();
+    }, 'toggle' + (light ? ' on' : ''));
+    toggle.setAttribute('aria-pressed', String(light));
+    const knob = element('i');
+    knob.setAttribute('aria-hidden', 'true');
+    toggle.append(knob);
+    const done = action('決定', () => {
+      if (!selected.length) return;
+      try {
+        if (light) localStorage.setItem('kintore:light', JSON.stringify(localDate(new Date())));
+        else localStorage.removeItem('kintore:light');
+      } catch {
+        toast('保存できませんでした。容量を確認してください');
+        return;
+      }
+      if (!saveMenu(draft)) return;
+      if (typeof onSelect === 'function') {
+        window.addEventListener('popstate', onSelect, { once: true });
+      }
+      sheet.close();
+      render();
+    }, 'go sm');
     done.disabled = !selected.length;
-    content.append(chips, done);
-  }));
+    content.append(toggle, done);
+  }
+
+  draw();
 }
 
 let training = null;
@@ -689,11 +737,11 @@ function trainingEntry(id, count) {
   return { id, sets: planned, cursor: 0, goal: planned.length };
 }
 
-function startWorkout(light) {
+function startWorkout(light = lightToday()) {
   const date = localDate(new Date());
   const ids = menuExercises(state, menu, date);
   if (!ids.length) {
-    changeMenu(() => startWorkout(light));
+    changeMenu(() => startWorkout());
     return;
   }
   const session = state.sessions.find(item => item.date === date);
@@ -821,7 +869,7 @@ function renderTrainPaper() {
 
 function setText(ex, set) {
   const prefix = ex.type === 'band'
-    ? state.bands.find(band => band.id === set.bandId)?.name ?? 'なし'
+    ? state.bands.find(item => item.id === set.bandId)?.name ?? 'なし'
     : ex.type === 'weight' ? set.kg + 'kg' : '';
   return (prefix ? prefix + ' ' : '') + value(ex, set) + (ex.type === 'time' ? '秒' : '');
 }
@@ -1775,6 +1823,10 @@ function editExercise(existing, navigate = true) {
     const saveButton = action('保存', () => {
       draft.name = draft.name.trim();
       if (!draft.name) return;
+      if (!existing && screen.addToMenu) {
+        const exerciseIds = [...menuExercises(state, menu, localDate(new Date())), draft.id];
+        if (!saveMenu({ kind: 'custom', exerciseIds })) return;
+      }
       if (existing) Object.assign(existing, draft);
       else state.exercises.push(draft);
       save();
