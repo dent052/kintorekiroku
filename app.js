@@ -306,10 +306,11 @@ function back() {
 }
 
 window.addEventListener('popstate', event => {
-  const open = [...document.querySelectorAll('dialog[open]')].at(-1);
-  if (open) open.close();
-  if (!open && currentMode === 'summary') training = null;
   const next = event.state ?? { mode: 'today', depth: 0 };
+  const open = [...document.querySelectorAll('dialog[open]')].at(-1);
+  if (open && open.dataset.historySheet !== next.sheet) open.close();
+  if (next.sheet) return;
+  if (!open && currentMode === 'summary') training = null;
   const { sheet, ...destination } = next;
   showScreen(destination);
   if (pendingTab) {
@@ -321,6 +322,7 @@ window.addEventListener('popstate', event => {
 
 function trackSheet(sheet) {
   const token = uid('sheet');
+  sheet.dataset.historySheet = token;
   const next = { ...screen, sheet: token };
   // シートを続けて開く操作では、閉じかけのシートの履歴を引き継ぐ。
   if (window.history.state?.sheet && !document.querySelector('dialog[open]')) {
@@ -1071,8 +1073,9 @@ function trainingMore() {
     }));
   }
   content.append(action('トレーニングをやめる', () => {
+    // シートの履歴を戻してから、トレーニングをまとめに置き換える。
+    window.addEventListener('popstate', finishWorkout, { once: true });
     sheet.close();
-    finishWorkout();
   }));
 }
 

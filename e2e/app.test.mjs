@@ -47,7 +47,7 @@ async function open({ data, extra = {}, github } = {}) {
     const body = JSON.parse(req.postData());
     api.puts.push(JSON.parse(Buffer.from(body.content, 'base64').toString('utf8')));
     api.remote = body.content;
-    return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    return route.fulfill({ status: 200, body: '{}' });
   });
   const page = await context.newPage();
   const errors = [];
@@ -86,7 +86,7 @@ async function home(page) {
 async function leaveTraining(page) {
   await press(page, 'メモ').click();
   await sheet(page).getByRole('button', { name: 'トレーニングをやめる', exact: true }).click();
-  assert.equal(await page.getAttribute('.app', 'data-mode'), 'summary');
+  await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'summary');
   await principles(page);
   await press(page, 'ホームへ').click();
   await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'today');
@@ -349,6 +349,7 @@ test('tabs use one history level and mark the current destination', async () => 
   await press(page, '続きから').click();
   await press(page, 'メモ').click();
   await sheet(page).getByRole('button', { name: 'トレーニングをやめる', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'summary');
   await backTo(page, 'today');
   assert.equal(await press(page, '続きから').count(), 0);
   assert.equal(await press(page, '始める').count(), 1);
@@ -756,7 +757,7 @@ test('exercise rows open editors; saving and cancelling return to exercises', as
   assert.ok(!(await stored(page)).exercises.some(ex => ex.name === '保存しない'));
   await page.getByRole('button', { name: '＋ テンプレート', exact: true }).click();
   await page.getByLabel('名前', { exact: true }).fill('新しいメニュー');
-  await page.getByLabel('種目を追加', { exact: true }).selectOption('e1');
+  await page.getByLabel('種目を追加').selectOption('e1');
   await press(page, '保存').click();
   await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'exercises');
   await page.locator('.ex').filter({ hasText: '新しいメニュー' }).click();
