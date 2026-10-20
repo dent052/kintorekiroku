@@ -1,0 +1,21 @@
+// Screens of v7: direct input, summary, records by day, past day, day sheet, body list. Usage: node docs/handoff/shots-v7.mjs <dir> [port]
+import { chromium } from '/home/user/kintorekiroku/node_modules/playwright/index.mjs';
+import { fixture } from '/home/user/kintorekiroku/e2e/fixture.mjs';
+const out = process.argv[2]; const port = process.argv[3] || '8080';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const p = await (await b.newContext({ viewport: { width: 360, height: 760 }, hasTouch: true })).newPage();
+const errs = []; p.on('pageerror', e => errs.push(e.message));
+await p.goto(`http://localhost:${port}/`);
+await p.evaluate(d => { localStorage.clear(); localStorage.setItem('kintore:data', JSON.stringify(d)); }, fixture());
+await p.reload(); await p.waitForTimeout(1200);
+let n = 0; const shot = async name => { await p.waitForTimeout(300); await p.screenshot({ path: `${out}/${String(++n).padStart(2, '0')}-${name}.png` }); };
+const click = async sel => { try { await p.click(sel, { timeout: 1500 }); } catch { console.log('MISSING', sel); } };
+await click('.press >> text=始める'); await click('.press .big .num'); await p.keyboard.type('21'); await shot('direct-input');
+await p.keyboard.press('Enter'); await click('.press .go'); await shot('verdict');
+await click('.press >> text=ホーム'); await click('.press >> text=続きから');
+await click('.press >> text=メモ'); await click('dialog[open] >> text=トレーニングをやめる'); await shot('summary');
+await click('.press >> text=ホームへ'); await click('.tabs >> text=記録'); await click('.seg >> text=日ごと'); await shot('by-day');
+await click('.day >> nth=0'); await shot('day-sheet'); await click('dialog[open] >> text=閉じる');
+await click('text=＋ 過去の日を記録'); await shot('past-day'); await click('dialog[open] >> text=閉じる');
+await click('.seg >> text=種目ごと'); await click('.rec >> text=体重'); await shot('body');
+console.log('errors', errs); await b.close();
