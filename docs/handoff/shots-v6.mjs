@@ -1,0 +1,23 @@
+// Screens of v6: training table, rest, finished sets, fix sheet, records detail, day sheet, exercises. Usage: node docs/handoff/shots-v6.mjs <dir>
+import { chromium } from '/home/user/kintorekiroku/node_modules/playwright/index.mjs';
+import { fixture } from '/home/user/kintorekiroku/e2e/fixture.mjs';
+const out = process.argv[2];
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const p = await (await b.newContext({ viewport: { width: 360, height: 760 }, hasTouch: true })).newPage();
+const errs = []; p.on('pageerror', e => errs.push(e.message));
+await p.goto('http://localhost:8080/');
+await p.evaluate(d => { localStorage.clear(); localStorage.setItem('kintore:data', JSON.stringify(d)); }, fixture());
+await p.reload(); await p.waitForTimeout(1200);
+let n = 0; const shot = async name => { await p.waitForTimeout(300); await p.screenshot({ path: `${out}/${String(++n).padStart(2, '0')}-${name}.png` }); };
+const click = async sel => { try { await p.click(sel, { timeout: 1500 }); } catch { console.log('MISSING', sel); } };
+await click('.press >> text=始める'); await shot('train-1');
+await click('.press .go'); await shot('rest');
+await click('.press >> text=休憩を終える'); await shot('train-2');
+await click('.press .go'); await click('.press >> text=休憩を終える');
+await click('.press .go'); await click('.press >> text=休憩を終える'); await shot('finished');
+await click('.sets .r.done >> nth=2'); await shot('fix'); await click('dialog[open] >> text=閉じる');
+await click('.press >> text=ホーム'); await click('.tabs >> text=記録'); await shot('records');
+await click('.rec >> nth=0'); await shot('detail');
+await click('.hist .r >> nth=1'); await shot('day'); await click('dialog[open] >> text=閉じる');
+await click('.tabs >> text=種目'); await shot('exercises');
+console.log('errors', errs); await b.close();
