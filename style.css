@@ -90,6 +90,7 @@ button, a, input, select, textarea { touch-action:manipulation; }
 .rec b { font:700 16px var(--ja); }
 .rec b small { display:block; font-size:12px; color:var(--mute); font-weight:500; }
 .rec .num { font-size:36px; text-align:right; }
+.rec .num small { font:700 11px var(--ja); color:var(--mute); display:block; text-align:right; }
 .chev { color:var(--mute); font-weight:700; align-self:center; font-size:18px; }
 .sec { margin-top:18px; }
 .empty { margin:auto 0; text-align:center; padding:0 10px; }
@@ -102,7 +103,10 @@ button, a, input, select, textarea { touch-action:manipulation; }
 .exname { font:900 34px/1.15 var(--ja); margin-top:22px; }
 .app[data-mode="detail"] .exname { margin-top:4px; }
 .app[data-mode="summary"] .exname { margin-top:0; }
-.tr-top { display:flex; justify-content:space-between; align-items:center; }
+.tr-top { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.tr-top .prog { display:flex; align-items:center; gap:10px; min-height:44px; flex:1; }
+.tr-top .end { min-height:36px; display:flex; align-items:center; padding:0 14px; border-radius:18px; border:1.5px solid var(--ai); font-weight:700; font-size:13px; color:var(--ai); }
+.tr-top .prog .k::after { content:" ▾"; }
 .dots { display:flex; gap:6px; }
 .dots i { width:22px; height:4px; border-radius:2px; background:var(--hair); }
 .dots i.on { background:var(--ai); }
@@ -140,6 +144,8 @@ button, a, input, select, textarea { touch-action:manipulation; }
 .nav .home { color:#fff; display:flex; align-items:center; gap:6px; }
 .nav .home svg { width:16px; height:16px; }
 .verdict { display:flex; align-items:center; gap:14px; background:var(--shu); color:#fff; border-radius:20px; padding:14px 18px; margin-top:16px; }
+.verdict.pr { background:var(--ai); }
+.verdict.pr b { color:#fff; }
 .verdict .num { font-size:72px; }
 .verdict b { font:900 30px/1 var(--ja); display:block; }
 .verdict small { font-size:13px; opacity:.9; }
@@ -175,7 +181,7 @@ button, a, input, select, textarea { touch-action:manipulation; }
 .head { justify-content:space-between; flex-wrap:wrap; }
 .row3 > * { flex:1; white-space:nowrap; }
 .actions { flex-wrap:wrap; }
-.slab button:not(.go):not(.chip), .sheet button:not(.go):not(.chip):not(.menu-chip):not(.check):not(.addrow):not(.toggle):not(.pm):not(.row):not(.pill):not(.val) { min-height:44px; padding:0 10px; border-bottom:1.5px solid var(--mute-ai); font-weight:700; }
+.slab button:not(.go):not(.chip), .sheet button:not(.go):not(.chip):not(.menu-chip):not(.check):not(.addrow):not(.toggle):not(.pm):not(.row):not(.pill):not(.val):not(.jl) { min-height:44px; padding:0 10px; border-bottom:1.5px solid var(--mute-ai); font-weight:700; }
 .sheet button.row { min-height:56px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--ai2); font-weight:700; text-align:left; }
 .sheet .row small { color:var(--mute-ai); font-weight:500; font-size:13px; }
 .sheet .pill { color:#fff; border-color:var(--mute-ai); }
@@ -191,6 +197,13 @@ button, a, input, select, textarea { touch-action:manipulation; }
 .chips2 { display:flex; gap:8px; flex-wrap:wrap; margin:4px 0 8px; }
 .chips2 button { min-height:40px; display:flex; align-items:center; padding:0 14px; border-radius:20px; border:1.5px solid var(--mute-ai); font-weight:700; font-size:13px; }
 .chips2 button.on { background:#fff; color:var(--ai); border-color:#fff; }
+.jl { display:grid; grid-template-columns:1fr auto; align-items:center; min-height:56px; border-bottom:1px solid var(--ai2); font-weight:700; text-align:left; }
+.jl small { display:block; font-weight:500; font-size:12px; color:var(--mute-ai); }
+.jl .c { font:600 18px var(--num); color:var(--mute-ai); }
+.jl.now { color:#fff; }
+.jl.now .c { color:#fff; }
+.jl.done .c { color:var(--shu-on-ai); }
+.msg { color:var(--mute-ai); font-size:14px; margin-bottom:8px; }
 .addrow { min-height:54px; display:flex; align-items:center; gap:10px; font-weight:700; color:var(--shu-on-ai); }
 .toggle { display:flex; justify-content:space-between; align-items:center; min-height:54px; font-weight:700; }
 .toggle i { width:44px; height:26px; border-radius:13px; background:var(--ai2); position:relative; }

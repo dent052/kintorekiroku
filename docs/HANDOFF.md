@@ -10,7 +10,7 @@
 - 記録はスマホの `localStorage`（`kintore:data`）。アプリが5秒後に GitHub へ PUT（利用者のトークンはスマホの中だけにある。fine-grained、Contents R/W、`kintorekiroku-data` のみ、期限1年＝2027年10月ごろ作り直し）
 
 ## 2. 現在の状態
-- **v7（記録は実際のとおり・直接入力・日ごと）を作業ブランチで実装済み（計算61・画面57通過、撮影 `node docs/handoff/shots-v7.mjs <dir>`）。main 公開は利用者確認待ち**。v6 まで main 公開済み。次の候補は `docs/research/2026-10-20-reference-apps.md` §2 と `docs/handoff/review-analysis-2026-10-20.md` の C3。Codex は大きいファイルを1回で出し切れないので、`codex exec resume <id>` で分けて出させる（`CONTINUE:` 方式）。
+- **v8（どこからでも終了・種目の一覧・その場で自己ベスト）を作業ブランチで実装済み（計算65・画面62通過、撮影 `node docs/handoff/shots-v8.mjs <dir>`）。main 公開は利用者確認待ち**。v7 まで main 公開済み。コーチ便は専用セッション session_01BWaZYHp5yPRnP3oCWd7n9C ＋定期タスク trig_01YbRqAZudPnPvxpSPJ2dKGP に作り直し（旧タスクは毎回まっさらなセッションで 403 失敗していた）。手動の fire はまっさらなセッションで動くので試験に使わない。Codex は大きいファイルを分けて出させる（`CONTINUE:` と `codex exec resume`）。既存テストを勝手に書き換える癖が続いているので `git diff logic.test.js` の `-` 行を必ず見る。
 - 以下は v3 時点の記述。
 - **v3 を `main` に公開済み**（コミット `5d15552`）。計算テスト 55 件、画面テスト 23 件（`npm test` / `npm run e2e`）すべて通過。
 - **実機（Android）では未確認**：目盛りの指ざわり・振動、画面が下にずれないか（直前に「少し下にスクロールして下が隠れる」と報告があり、画面を `position:fixed` に固定して対処済みだが実機で未確認）、ホーム画面に追加、バイブ、画面を消さない機能。

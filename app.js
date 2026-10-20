@@ -1,6 +1,6 @@
 import {
   localDate, parseImport, value, load, recent, totalDays, feed, mergeFeed,
-  firstSet, line, firstSetResult, lineText, prefill, rows, prKind,
+  firstSet, line, firstSetResult, lineText, prefill, rows, prKind, personalBest,
   menuExercises, setHistory, clearCount, weekHeat, history, bodyAvg7,
   weekStart, toBase64Utf8, consultText, parsePosts
 } from './logic.js';
@@ -852,6 +852,7 @@ function moveExercise(offset) {
 
 function trainingTop(resting) {
   const top = element('div', '', 'tr-top');
+  const progress = action('', trainingExercises, 'prog');
   const dots = element('div', '', 'dots');
   training.entries.forEach((entry, index) => {
     const count = trainingSession()?.sets.filter(set => set.exerciseId === entry.id).length ?? 0;
@@ -860,9 +861,10 @@ function trainingTop(resting) {
   });
   const ex = state.exercises.find(item => item.id === currentEntry().id);
   const count = trainingSession()?.sets.filter(set => set.exerciseId === ex.id).length ?? 0;
-  top.append(dots, element('span',
+  progress.append(dots, element('span',
     (training.index + 1) + ' / ' + training.entries.length +
     (resting && count < currentEntry().goal ? ' ・ ' + (count + 1) + 'セット目へ' : ''), 'k'));
+  top.append(progress, action('終了', requestFinishWorkout, 'end'));
   return top;
 }
 
@@ -879,7 +881,7 @@ function renderTrainPaper() {
   view.replaceChildren(trainingTop(Boolean(rest)), element('h1', ex.name, 'exname'));
   if (rest) {
     if (rest.verdict && Date.now() < rest.verdictUntil) {
-      const verdict = element('div', '', 'verdict');
+      const verdict = element('div', '', 'verdict' + (rest.verdict.pr ? ' pr' : ''));
       const detail = element('div');
       detail.append(element('b', rest.verdict.title));
       if (rest.verdict.small) detail.append(element('small', rest.verdict.small));
@@ -1008,9 +1010,8 @@ function renderTrain() {
   const previous = action('◀ 前', () => moveExercise(-1));
   previous.disabled = training.index === 0;
   nav.append(homeButton(), previous, action('メモ', trainingMore));
-  if (!finished) {
-    nav.append(training.index === training.entries.length - 1
-      ? action('終了', finishWorkout) : action('次 ▶', () => moveExercise(1)));
+  if (!finished && training.index < training.entries.length - 1) {
+    nav.append(action('次 ▶', () => moveExercise(1)));
   }
   dock.append(nav);
 }
@@ -1191,6 +1192,7 @@ function completeSet() {
   const created = !session;
   const first = !session?.sets.some(item => item.exerciseId === ex.id);
   const result = first ? firstSetResult(state, ex.id, training.date, set) : null;
+  const maximum = personalBest(state, set, training.date);
   if (!session) {
     session = { id: uid('s'), date: training.date, light: training.light,
       note: training.note, toCoach: training.toCoach, sets: [] };
@@ -1215,7 +1217,7 @@ function completeSet() {
       if (result.kind === 'clear') {
         small = next.value === undefined ? lineText(next, ex) :
           '次のライン ' + next.value + (ex.type === 'time' ? '秒' : '');
-        navigator.vibrate?.(60);
+        if (maximum === null) navigator.vibrate?.(60);
       } else if (next.value !== undefined) {
         small = '次回のライン ' + next.value + (ex.type === 'time' ? '秒' : '');
       }
@@ -1228,6 +1230,12 @@ function completeSet() {
       small = (loadText(ex, set) || ex.name) + 'の1本目';
     }
     verdict = { value: value(ex, set), title, small };
+  }
+  if (maximum !== null) {
+    const detail = verdict ? ' ・ ' + (result.kind === 'clear' ? 'ライン突破' : verdict.title) : '';
+    verdict = { value: value(ex, set), title: '自己ベスト',
+      small: 'これまで ' + maximum + (ex.type === 'time' ? '秒' : '回') + detail, pr: true };
+    navigator.vibrate?.([80, 60, 160]);
   }
   clearInterval(restInterval);
   const duration = state.settings.restSec * 1000;
@@ -1263,7 +1271,7 @@ function endRest(vibrate) {
 
 function trainingMore() {
   dismissVerdict();
-  const { sheet, content } = homeSheet('メモ・その他');
+  const { sheet, content } = homeSheet('メモ');
   const label = element('label', '', 'stack');
   const note = element('textarea');
   note.value = training.note;
@@ -1285,13 +1293,39 @@ function trainingMore() {
     training.toCoach = !training.toCoach;
     saveNote();
     drawCoach();
-  }, 'chip');
+  }, 'toggle');
   function drawCoach() {
-    coach.textContent = 'コーチに送る：' + (training.toCoach ? 'オン' : 'オフ');
+    coach.textContent = 'コーチに送る';
+    coach.classList.toggle('on', training.toCoach);
     coach.setAttribute('aria-pressed', String(training.toCoach));
+    const knob = element('i');
+    knob.setAttribute('aria-hidden', 'true');
+    coach.append(knob);
   }
   drawCoach();
-  content.append(label, coach, action('種目を追加', () => {
+  content.append(label, coach);
+}
+
+function trainingExercises() {
+  dismissVerdict();
+  const { sheet, content } = homeSheet('今日の種目');
+  training.entries.forEach((entry, index) => {
+    const ex = state.exercises.find(ex => ex.id === entry.id);
+    const count = trainingSession()?.sets.filter(set => set.exerciseId === entry.id).length ?? 0;
+    const done = count >= entry.goal;
+    const now = index === training.index;
+    const row = action('', () => {
+      training.index = index;
+      sheet.close();
+      render();
+    }, 'jl' + (done ? ' done' : now ? ' now' : ''));
+    row.dataset.exerciseId = entry.id;
+    const name = element('span', ex.name);
+    if (done || now) name.append(element('small', done ? '済み' : 'いまここ'));
+    row.append(name, element('span', count + ' / ' + entry.goal, 'c'));
+    content.append(row);
+  });
+  content.append(action('＋ 種目を足す', () => {
     content.replaceChildren();
     for (const ex of state.exercises.filter(item => !item.archived &&
         !training.entries.some(entry => entry.id === item.id))) {
@@ -1302,22 +1336,38 @@ function trainingMore() {
         render();
       }));
     }
-  }));
+  }, 'addrow'));
   const ex = state.exercises.find(item => item.id === currentEntry().id);
   if (ex.nextId && state.exercises.some(item => item.id === ex.nextId)) {
-    content.append(action('次の段階へ切り替え', () => {
+    content.append(action('この種目を次の段階へ', () => {
       const index = training.entries.findIndex(entry => entry.id === ex.nextId);
       if (index >= 0) training.index = index;
       else training.entries[training.index] = trainingEntry(ex.nextId);
       sheet.close();
       render();
-    }));
+    }, 'addrow'));
   }
-  content.append(action('トレーニングをやめる', () => {
+}
+
+function requestFinishWorkout() {
+  dismissVerdict();
+  const remaining = training.entries.map(entry => Math.max(0, entry.goal -
+    (trainingSession()?.sets.filter(set => set.exerciseId === entry.id).length ?? 0)));
+  const exercises = remaining.filter(count => count > 0).length;
+  if (!exercises) {
+    finishWorkout();
+    return;
+  }
+  const { sheet, content } = homeSheet('トレーニングを終えますか？');
+  content.append(element('p', 'まだ ' + exercises + '種目・' +
+    remaining.reduce((sum, count) => sum + count, 0) +
+    'セット 残っています。記録したところまで保存されます。', 'msg'),
+  action('ここまでで終える', () => {
     // シートの履歴を戻してから、トレーニングをまとめに置き換える。
     window.addEventListener('popstate', finishWorkout, { once: true });
     sheet.close();
-  }));
+  }, 'go sm'));
+  sheet.querySelector('.dialog-actions button').textContent = '続ける';
 }
 
 function finishWorkout() {
@@ -1449,9 +1499,10 @@ function renderRecords() {
       '突破 ' + clearCount(state, ex.id) + '回 ・ 前回 ');
     appendSetHistory(detail, ex, latest.sets.filter(set => set.exerciseId === ex.id));
     name.append(detail);
-    row.append(name, miniChart(ex.id),
-      element('span', String(line(state, ex.id, today).value ?? '—'), 'num'),
-      element('span', '›', 'chev'));
+    const number = element('span', String(value(ex, firstSet(state, ex, latest))), 'num');
+    const target = line(state, ex.id, today);
+    if (target.value !== undefined) number.append(element('small', 'ライン ' + target.value));
+    row.append(name, miniChart(ex.id), number, element('span', '›', 'chev'));
     view.append(row);
   }
   if (state.body.length) {

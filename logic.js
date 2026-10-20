@@ -175,6 +175,19 @@ export function rows(prefilled, count) {
 }
 
 /** @param {Data} data @param {Set} set */
+export function personalBest(data, set, date) {
+  const ex = data.exercises.find(ex => ex.id === set.exerciseId);
+  const sameLoad = data.sessions
+    .filter(session => session.date <= date)
+    .flatMap(session => session.sets)
+    .filter(entry => entry.exerciseId === set.exerciseId &&
+      load(data, ex, entry) === load(data, ex, set));
+  if (!sameLoad.length) return null;
+  const maximum = Math.max(...sameLoad.map(entry => value(ex, entry)));
+  return value(ex, set) > maximum ? maximum : null;
+}
+
+/** @param {Data} data @param {Set} set */
 export function prKind(data, set, sessionId) {
   const ex = data.exercises.find(ex => ex.id === set.exerciseId);
   const previous = data.sessions

@@ -5,7 +5,7 @@ import {
   prKind, isStageUp, sessionEvents, totals,
   weekStart, weekStats, calendar, totalDays, feed, mergeFeed, bodyAvg7, consultText,
   parseImport, toBase64Utf8, parsePosts, lineHistory, clearCount, weekHeat, menuExercises,
-  firstSetResult, setHistory
+  firstSetResult, setHistory, personalBest
 } from './logic.js';
 
 const ex = (o) => ({ id: 'e1', name: '腕立て', type: 'reps', part: '胸', min: 8, max: 15, nextId: null, archived: false, ...o });
@@ -1034,4 +1034,53 @@ test('setHistory uses seconds and preserves weight loads and zero values', () =>
         others: [type === 'time' ? 25 : 8] }
     ]);
   }
+});
+
+test('personalBest requires a strictly higher actual value at the same load', () => {
+  const d = data({
+    exercises: [ex({ type: 'band' })], bands,
+    sessions: [ses('2026-10-19', [
+      set({ reps: 12, bandId: 'r' }), set({ reps: 18, bandId: 'r' }),
+      set({ reps: 40, bandId: 'y' }), set({ exerciseId: 'e2', reps: 100, bandId: 'r' })
+    ])]
+  });
+  const before = structuredClone(d);
+  assert.equal(personalBest(d, set({ reps: 19, bandId: 'r' }), today), 18);
+  assert.equal(personalBest(d, set({ reps: 18, bandId: 'r' }), today), null);
+  assert.equal(personalBest(d, set({ reps: 17, bandId: 'r' }), today), null);
+  assert.equal(personalBest(d, set({ reps: 50, bandId: 'k' }), today), null);
+  assert.deepEqual(d, before);
+});
+
+test('personalBest includes light history and earlier sets today but excludes future records', () => {
+  const d = data({ sessions: [
+    ses('2026-10-19', [set({ reps: 18 })], { light: true }),
+    ses(today, [set({ reps: 19 }), set({ reps: 17 })]),
+    ses('2026-10-21', [set({ reps: 100 })])
+  ] });
+  const before = structuredClone(d);
+  assert.equal(personalBest(d, set({ reps: 19 }), today), null);
+  assert.equal(personalBest(d, set({ reps: 20 }), today), 19);
+  assert.deepEqual(d, before);
+});
+
+test('personalBest uses seconds and compares weights independently', () => {
+  const timed = data({ exercises: [ex({ type: 'time' })],
+    sessions: [ses('2026-10-19', [set({ sec: 30 }), set({ sec: 45 })])] });
+  assert.equal(personalBest(timed, set({ sec: 45 }), today), null);
+  assert.equal(personalBest(timed, set({ sec: 46 }), today), 45);
+  const weighted = data({ exercises: [ex({ type: 'weight' })],
+    sessions: [ses('2026-10-19', [
+      set({ reps: 12, kg: 5 }), set({ reps: 30, kg: 6 })
+    ])] });
+  assert.equal(personalBest(weighted, set({ reps: 13, kg: 5 }), today), 12);
+  assert.equal(personalBest(weighted, set({ reps: 31, kg: 7 }), today), null);
+  assert.equal(personalBest(weighted, set({ reps: 12, kg: 5 }), today), null);
+});
+
+test('personalBest has no first-ever result and preserves a previous maximum of zero', () => {
+  assert.equal(personalBest(data(), set({ reps: 10 }), today), null);
+  const d = data({ sessions: [ses(today, [set({ reps: 0 })])] });
+  assert.equal(personalBest(d, set({ reps: 0 }), today), null);
+  assert.equal(personalBest(d, set({ reps: 1 }), today), 0);
 });
