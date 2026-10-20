@@ -10,11 +10,12 @@
  * @typedef {{id: string, name: string, order: number, note: string}} Band
  * @typedef {{id: string, name: string, exerciseIds: string[], sets: number}} Template
  * @typedef {{exerciseId: string, reps: number|null, sec: number|null, kg: number|null, bandId: string|null}} Set
- * @typedef {{id: string, date: string, light: boolean, note: string, sets: Set[]}} Session
+ * @typedef {{id: string, date: string, light: boolean, note: string, toCoach?: boolean, sets: Set[]}} Session
+ * @typedef {{id: string, at: string, text: string}} Message
  * @typedef {{date: string, reason: '風邪'|'疲れ'|'予定'|'その他'}} Skip
  * @typedef {{date: string, kg: number, waist: number|null}} Body
  * @typedef {{restSec: number}} Settings
- * @typedef {{version: 1, updatedAt: string, exercises: Exercise[], bands: Band[], templates: Template[], sessions: Session[], skips: Skip[], body: Body[], settings: Settings}} Data
+ * @typedef {{version: 1, updatedAt: string, exercises: Exercise[], bands: Band[], templates: Template[], sessions: Session[], messages?: Message[], skips: Skip[], body: Body[], settings: Settings}} Data
  */
 
 /** @param {Date} d */
@@ -391,6 +392,51 @@ export function mergeFeed(own, posts, seen) {
       b.at.localeCompare(a.at));
 }
 
+const coachKinds = ['reply', 'weekly', 'finding', 'reading'];
+
+function coachTimestamp(at) {
+  return Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(at) ? at + 'T00:00:00' : at);
+}
+
+export function unreadPosts(posts, seen) {
+  return posts.filter(post => coachKinds.includes(post.kind) && !seen.includes(post.id));
+}
+
+/** @param {Data} data */
+export function coachTimeline(data, posts) {
+  const messages = Array.isArray(data.messages) ? data.messages : [];
+  return [
+    ...posts.filter(post => coachKinds.includes(post.kind)),
+    ...messages.map(message => ({ ...message, kind: 'message' })),
+    ...data.sessions.filter(session => session.toCoach === true && session.note.trim())
+      .map(session => ({ id: session.id, at: session.date, kind: 'memo', text: session.note }))
+  ].sort((a, b) => coachTimestamp(b.at) - coachTimestamp(a.at));
+}
+
+/** @param {string} at @param {Date} now */
+export function coachTimeLabel(at, now) {
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(at);
+  const date = new Date(coachTimestamp(at));
+  const elapsed = now.getTime() - date.getTime();
+  if (!dateOnly && elapsed >= 0 && elapsed < 60000) return 'いま';
+  const day = localDate(date);
+  const yesterday = localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+  const label = day === localDate(now) ? '今日' : day === yesterday ? '昨日' :
+    Number(day.slice(5, 7)) + '月' + Number(day.slice(8, 10)) + '日';
+  if (dateOnly || (label !== '今日' && label !== '昨日')) return label;
+  return label + ' ' + date.getHours() + ':' + String(date.getMinutes()).padStart(2, '0');
+}
+
+/** @param {Date} now */
+export function coachWaitingNote(timeline, now) {
+  const own = timeline.find(item => item.kind === 'message' || item.kind === 'memo');
+  if (!own || timeline.some(item => coachKinds.includes(item.kind) &&
+      coachTimestamp(item.at) > coachTimestamp(own.at))) return null;
+  const morning = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7, 22);
+  const when = now < morning ? '今日' : '明日';
+  return { id: own.id, text: '返事は' + when + 'の朝 7:22 ごろ届きます' };
+}
+
 /** @param {Data} data @param {string} today */
 export function consultText(data, today) {
   const start = dateOffset(today, -27);
@@ -462,6 +508,7 @@ export function parseImport(text) {
     ) {
       throw new Error();
     }
+    if ('messages' in result && !Array.isArray(result.messages)) result.messages = [];
     return result;
   } catch {
     throw new Error('読み込めないファイルです');

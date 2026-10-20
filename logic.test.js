@@ -5,7 +5,7 @@ import {
   prKind, isStageUp, sessionEvents, totals,
   weekStart, weekStats, calendar, totalDays, feed, mergeFeed, bodyAvg7, consultText,
   parseImport, toBase64Utf8, parsePosts, lineHistory, clearCount, weekHeat, menuExercises,
-  firstSetResult, setHistory, personalBest
+  firstSetResult, setHistory, personalBest, unreadPosts, coachTimeline, coachTimeLabel, coachWaitingNote
 } from './logic.js';
 
 const ex = (o) => ({ id: 'e1', name: '腕立て', type: 'reps', part: '胸', min: 8, max: 15, nextId: null, archived: false, ...o });
@@ -1083,4 +1083,175 @@ test('personalBest has no first-ever result and preserves a previous maximum of 
   const d = data({ sessions: [ses(today, [set({ reps: 0 })])] });
   assert.equal(personalBest(d, set({ reps: 0 }), today), null);
   assert.equal(personalBest(d, set({ reps: 1 }), today), 0);
+});
+
+test('unreadPosts counts only unseen coach posts without changing inputs', () => {
+  const posts = ['reply', 'weekly', 'finding', 'reading', 'clear', 'pr', 'message', 'memo']
+    .map(kind => ({ id: kind, at: today, kind, text: kind }));
+  const seen = ['reply', 'clear', 'unrelated'];
+  const before = structuredClone([posts, seen]);
+  assert.deepEqual(unreadPosts(posts, seen).map(post => post.id),
+    ['weekly', 'finding', 'reading']);
+  assert.deepEqual(unreadPosts(posts, []).map(post => post.id),
+    ['reply', 'weekly', 'finding', 'reading']);
+  assert.deepEqual(unreadPosts(posts, posts.map(post => post.id)), []);
+  assert.deepEqual(unreadPosts([], []), []);
+  assert.deepEqual([posts, seen], before);
+});
+
+test('coachTimeline orders actual instants and date-only memos without pinning replies', () => {
+  const reply = { id: 'reply', at: new Date(2026, 9, 20, 23).toISOString(), kind: 'reply',
+    text: '返信', quote: 'メモ', ref: ['s2026-10-20'] };
+  const reading = { id: 'reading', at: new Date(2026, 9, 20, 22, 23).toISOString(), kind: 'reading',
+    text: '読み物', source: { title: '資料', url: 'https://example.com/form' } };
+  const message = { id: 'message', at: new Date(2026, 9, 21, 0, 1).toISOString(), text: '相談' };
+  const d = data({
+    messages: [message],
+    sessions: [
+      ses('2026-10-21', [], { toCoach: true, note: '送ったメモ' }),
+      ses('2026-10-22', [], { toCoach: false, note: '自分だけのメモ' }),
+      ses('2026-10-23', [], { note: '送っていない' }),
+      ses('2026-10-24', [], { toCoach: true, note: ' \n ' })
+    ]
+  });
+  const posts = [reading, reply,
+    { id: 'clear', at: '2026-10-25', kind: 'clear', text: '突破' }];
+  const before = structuredClone([d, posts]);
+  const timeline = coachTimeline(d, posts);
+  assert.deepEqual(timeline.map(item => item.id),
+    ['message', 's2026-10-21', 'reply', 'reading']);
+  assert.deepEqual(timeline[0], { ...message, kind: 'message' });
+  assert.deepEqual(timeline[1],
+    { id: 's2026-10-21', at: '2026-10-21', text: '送ったメモ', kind: 'memo' });
+  assert.deepEqual(timeline.slice(2), [reply, reading]);
+  assert.deepEqual([d, posts], before);
+});
+
+test('coachTimeline compares timezone offsets as instants rather than strings', () => {
+  const posts = [
+    { id: 'reading', at: '2026-10-21T07:23:00+09:00', kind: 'reading', text: '読み物' },
+    { id: 'reply', at: '2026-10-20T23:00:00Z', kind: 'reply', text: '返信' }
+  ];
+  assert.deepEqual(coachTimeline(data(), posts).map(item => item.id), ['reply', 'reading']);
+});
+
+test('date-only timeline entries and waiting comparisons use local midnight', () => {
+  const d = data({
+    messages: [{ id: 'm', at: new Date(2026, 9, 21, 6).toISOString(), text: '相談' }],
+    sessions: [ses('2026-10-21', [], { toCoach: true, note: 'メモ' })]
+  });
+  const post = { id: 'p', at: new Date(2026, 9, 21, 7, 23).toISOString(),
+    kind: 'reply', text: '返信' };
+  const timeline = coachTimeline(d, [post]);
+  assert.deepEqual(timeline.map(item => item.id), ['p', 'm', 's2026-10-21']);
+  assert.equal(coachWaitingNote(timeline, new Date(2026, 9, 21, 12)), null);
+  const midnightPost = coachTimeline(d, [{ ...post, at: '2026-10-21' }]);
+  assert.equal(midnightPost[0].id, 'm');
+  assert.deepEqual(coachWaitingNote(midnightPost, new Date(2026, 9, 21, 12)), {
+    id: 'm', text: '返事は明日の朝 7:22 ごろ届きます'
+  });
+});
+
+test('coachTimeline treats missing and non-array messages as empty', () => {
+  assert.deepEqual(coachTimeline(data(), []), []);
+  for (const messages of [undefined, null, {}, '', 1]) {
+    const d = data({ messages, sessions: [
+      ses(today, [], { toCoach: true, note: 'メモ' })
+    ] });
+    assert.deepEqual(coachTimeline(d, []), [
+      { id: 's' + today, at: today, text: 'メモ', kind: 'memo' }
+    ]);
+  }
+});
+
+test('coachTimeLabel distinguishes just now, clock times and date-only values', () => {
+  const now = new Date(2026, 9, 21, 7, 23, 30);
+  assert.equal(coachTimeLabel(new Date(now.getTime() - 59999).toISOString(), now), 'いま');
+  assert.equal(coachTimeLabel(new Date(now.getTime() - 60000).toISOString(), now), '今日 7:22');
+  assert.equal(coachTimeLabel(now.toISOString(), now), 'いま');
+  assert.equal(coachTimeLabel(new Date(2026, 9, 21, 7, 24).toISOString(), now), '今日 7:24');
+  assert.equal(coachTimeLabel(new Date(2026, 9, 20, 21, 30).toISOString(), now), '昨日 21:30');
+  assert.equal(coachTimeLabel(new Date(2026, 9, 19, 21, 30).toISOString(), now), '10月19日');
+  assert.equal(coachTimeLabel('2026-10-21', now), '今日');
+  assert.equal(coachTimeLabel('2026-10-20', now), '昨日');
+  assert.equal(coachTimeLabel('2026-10-19', now), '10月19日');
+  assert.equal(coachTimeLabel('2026-10-21', new Date(2026, 9, 21, 0, 0, 30)), '今日');
+});
+
+test('coachTimeLabel uses local calendar days across midnight and year boundaries', () => {
+  const now = new Date(2027, 0, 1, 0, 0, 30);
+  assert.equal(coachTimeLabel(new Date(2026, 11, 31, 23, 59, 45).toISOString(), now), 'いま');
+  assert.equal(coachTimeLabel(new Date(2026, 11, 31, 21, 30).toISOString(), now), '昨日 21:30');
+  assert.equal(coachTimeLabel('2026-12-31', now), '昨日');
+  assert.equal(coachTimeLabel('2026-12-30', now), '12月30日');
+});
+
+test('coachWaitingNote attaches to the latest own entry and requires a strictly newer coach post', () => {
+  const now = new Date(2026, 9, 21, 12);
+  const d = data({
+    messages: [
+      { id: 'old', at: '2026-10-19T12:00:00Z', text: '前の相談' },
+      { id: 'latest', at: '2026-10-21T09:00:00Z', text: '新しい相談' }
+    ],
+    sessions: [ses('2026-10-20', [], { toCoach: true, note: 'メモ' })]
+  });
+  const sameTime = { id: 'post', at: '2026-10-21T09:00:00Z', kind: 'reply', text: '返信' };
+  const timeline = coachTimeline(d, [sameTime]);
+  const before = structuredClone(timeline);
+  assert.deepEqual(coachWaitingNote(timeline, now), {
+    id: 'latest', text: '返事は明日の朝 7:22 ごろ届きます'
+  });
+  assert.deepEqual(timeline, before);
+  for (const kind of ['reply', 'weekly', 'finding', 'reading']) {
+    assert.equal(coachWaitingNote(coachTimeline(d, [
+      { ...sameTime, kind, at: '2026-10-21T18:00:01+09:00' }
+    ]), now), null);
+  }
+  assert.equal(coachWaitingNote([], now), null);
+  assert.equal(coachWaitingNote(coachTimeline(data(), [sameTime]), now), null);
+});
+
+test('coachWaitingNote uses the next 7:22 run regardless of when the own item was written', () => {
+  for (const at of [
+    new Date(2026, 9, 21, 6).toISOString(),
+    new Date(2026, 9, 20, 23).toISOString(),
+    new Date(2026, 9, 19, 12).toISOString()
+  ]) {
+    const timeline = coachTimeline(data({ messages: [{ id: 'm', at, text: '相談' }] }), []);
+    for (const now of [new Date(2026, 9, 21, 6), new Date(2026, 9, 21, 7, 21, 59)]) {
+      assert.deepEqual(coachWaitingNote(timeline, now), {
+        id: 'm', text: '返事は今日の朝 7:22 ごろ届きます'
+      });
+    }
+    for (const now of [new Date(2026, 9, 21, 7, 22), new Date(2026, 9, 21, 12)]) {
+      assert.deepEqual(coachWaitingNote(timeline, now), {
+        id: 'm', text: '返事は明日の朝 7:22 ごろ届きます'
+      });
+    }
+    assert.deepEqual(coachWaitingNote(timeline, new Date(2026, 9, 22, 6)), {
+      id: 'm', text: '返事は今日の朝 7:22 ごろ届きます'
+    });
+  }
+  const memo = coachTimeline(data({ sessions: [
+    ses('2026-10-20', [], { toCoach: true, note: '昨日のメモ' })
+  ] }), []);
+  assert.deepEqual(coachWaitingNote(memo, new Date(2026, 9, 21, 6)), {
+    id: 's2026-10-20', text: '返事は今日の朝 7:22 ごろ届きます'
+  });
+  assert.deepEqual(coachWaitingNote(memo, new Date(2026, 9, 21, 7, 22)), {
+    id: 's2026-10-20', text: '返事は明日の朝 7:22 ごろ届きます'
+  });
+});
+
+test('parseImport accepts old data and normalizes only present non-array messages', () => {
+  const old = data();
+  const imported = parseImport(JSON.stringify(old));
+  assert.deepEqual(imported, old);
+  assert.deepEqual(coachTimeline(imported, []), []);
+  for (const messages of [null, {}, '', 1, false]) {
+    assert.deepEqual(parseImport(JSON.stringify(data({ messages }))).messages, []);
+  }
+  const messages = [{ id: 'm', at: '2026-10-21T12:00:00Z', text: '相談' }];
+  assert.deepEqual(parseImport(JSON.stringify(data({ messages }))).messages, messages);
+  assert.deepEqual(parseImport(JSON.stringify(data({ messages: [] }))).messages, []);
 });
