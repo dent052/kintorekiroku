@@ -8,7 +8,7 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 import { fixture } from './fixture.mjs';
 import { localDate, line, firstSetResult, menuExercises, prefill, weekHeat, clearCount,
-  bodyAvg7, feed, mergeFeed, setHistory, weekStart, value, load } from '../logic.js';
+  bodyAvg7, feed, setHistory, weekStart, value, load } from '../logic.js';
 
 const root = path.resolve(import.meta.dirname, '..');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
@@ -68,7 +68,7 @@ async function open({ data, extra = {}, github } = {}) {
 const stored = page => page.evaluate(() => JSON.parse(localStorage.getItem('kintore:data')));
 const press = (page, text) => page.locator('.press').getByRole('button', { name: text, exact: true });
 const complete = page => page.locator('.press .go').filter({ hasText: /^\d+セット目を完了$/ }).click();
-const tab = (page, text) => page.locator('.tabs').getByRole('button', { name: text, exact: true });
+const tab = (page, text) => page.locator('.tabs').getByRole('button', { name: text === 'コーチ' ? /^コーチ(?:\s*\d+)?$/ : text, exact: true });
 const sheet = page => page.locator('dialog.sheet[open]').last();
 const settings = page => tab(page, '設定').click();
 const pill = (page, text) => page.locator('.see .pill').getByText(text, { exact: true });
@@ -106,7 +106,7 @@ async function leaveTraining(page) {
 async function principles(page) {
   assert.deepEqual(await page.$$eval('button, a[href], select, input, textarea, [role=slider]', elements =>
     elements.filter(element => !element.closest('.press, dialog.sheet, .slab, .tabs, #toast button') &&
-      !element.closest('.see .ln, .see .rec, .see .ex, .see .pill, .see .back, .see .sets .r.done, .see .hist .r, .see .seg, .see .day, .see .bl, .see .big input, .see .tr-top .prog, .see .tr-top .end'))
+      !element.closest('.see .ln, .see .rec, .see .ex, .see .pill, .see .back, .see .sets .r.done, .see .hist .r, .see .seg, .see .day, .see .bl, .see .big input, .see .tr-top .prog, .see .tr-top .end, .see .card, .see .tw .src'))
       .map(element => element.outerHTML)), []);
   const size = await page.evaluate(() => {
     const tabs = document.querySelector('.tabs');
@@ -181,10 +181,9 @@ test('paper/slab principles hold on both phone sizes, modes, editors and open sh
     await principles(page);
     await page.getByRole('button', { name: '‹ 記録', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'records');
-    await page.locator('.quick .pill').filter({ hasText: /^新着 / }).click();
+    await tab(page, 'コーチ').click();
     await principles(page);
-    assert.ok(await sheet(page).getByRole('link', { name: '出典' }).isVisible());
-    await closeSheet(page);
+    assert.ok(await page.locator('.tl').getByRole('link', { name: '出典 example.com' }).isVisible());
     await tab(page, '種目').click();
     await principles(page);
     for (const text of ['＋ 新しい種目', '＋ テンプレート']) {
@@ -478,9 +477,9 @@ test('training home preserves exercise, set, input and rest for resume', async (
 test('tabs use one history level and mark the current destination', async () => {
   const { page, errors, close } = await open({ data: fixture() });
   const initial = await page.evaluate(() => window.history.length);
-  assert.deepEqual(await page.locator('.tabs button').allTextContents(), ['ホーム', '記録', '種目', '設定']);
-  assert.equal(await page.locator('.tabs svg[aria-hidden=true]').count(), 4);
-  for (const [name, mode] of [['記録', 'records'], ['種目', 'exercises'], ['設定', 'settings'], ['設定', 'settings'], ['記録', 'records']]) {
+  assert.deepEqual(await page.locator('.tabs button').allTextContents(), ['ホーム', '記録', 'コーチ', '種目', '設定']);
+  assert.equal(await page.locator('.tabs svg[aria-hidden=true]').count(), 5);
+  for (const [name, mode] of [['記録', 'records'], ['コーチ', 'coach'], ['種目', 'exercises'], ['設定', 'settings'], ['設定', 'settings'], ['記録', 'records']]) {
     await tab(page, name).click();
     assert.equal(await page.getAttribute('.app', 'data-mode'), mode);
     assert.equal(await page.locator('.tabs [aria-current=page]').textContent(), name);
@@ -687,10 +686,9 @@ test('GitHub: changes are pushed, failures retried, coach posts shown', async ()
     quote: '肩が重い', text: '1セット目だけ狙えば十分。' }, { broken: true }];
   await page.reload();
   await page.waitForFunction(() => localStorage.getItem('kintore:posts')?.includes('1セット目だけ狙えば十分'));
-  await tab(page, '記録').click();
-  await page.locator('.quick .pill').filter({ hasText: /^新着 / }).click();
-  assert.match(await sheet(page).textContent(), /1セット目だけ狙えば十分/);
-  await closeSheet(page);
+  await tab(page, 'コーチ').click();
+  assert.equal(await page.locator('.tw .t').textContent(), '1セット目だけ狙えば十分。');
+  assert.equal(await page.locator('.tw .q').textContent(), '肩が重い');
   await home(page);
   await pill(page, '今日は休む').click();
   await sheet(page).getByRole('button', { name: '予定', exact: true }).click();
@@ -728,7 +726,7 @@ test('GitHub restore requires confirmation and preserves the remote data', async
   await close();
 });
 
-test('home leaves news unread; records news puts its label in the text block', async () => {
+test('home leaves coach posts unread; the coach timeline labels the same post', async () => {
   const data = fixture();
   const last = data.sessions.at(-1);
   last.sets[0].reps = 19;
@@ -738,16 +736,13 @@ test('home leaves news unread; records news puts its label in the text block', a
   assert.equal(await page.locator('.feed .post').count(), 0);
   assert.equal(await page.evaluate(() => localStorage.getItem('kintore:seen')), null);
   await tab(page, '記録').click();
-  await page.locator('.quick .pill').filter({ hasText: /^新着 / }).click();
-  assert.deepEqual(await sheet(page).locator('.post').first().evaluateAll(posts =>
-    posts.map(post => ({
-      labels: [...post.querySelectorAll('b')].map(b => b.textContent),
-      separate: post.querySelectorAll('.k').length,
-      blocks: post.children.length
-    }))), [
-    { labels: ['コーチ'], separate: 0, blocks: 1 }
-  ]);
-  assert.equal(await sheet(page).locator('.post').first().textContent(), 'コーチ肩を休める。');
+  assert.equal(await page.evaluate(() => localStorage.getItem('kintore:seen')), null);
+  await tab(page, 'コーチ').click();
+  assert.equal(await page.locator('.tw .who').evaluate(node => node.firstChild.textContent), 'コーチ');
+  assert.equal(await page.locator('.tw .tag').textContent(), '返信');
+  assert.equal(await page.locator('.tw .t').textContent(), '肩を休める。');
+  assert.equal(await page.locator('.tw.unread').count(), 1);
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('kintore:seen'))), ['reply']);
   await close();
 });
 
@@ -1276,7 +1271,7 @@ test('one actual first set is drawn as a point and has no miniature line', async
   await close();
 });
 
-test('records empty state contains only its explanation and optional unread news', async () => {
+test('records empty state keeps its explanation while unread posts belong to the coach tab', async () => {
   const data = fixture();
   data.sessions = [];
   data.body = [];
@@ -1291,12 +1286,13 @@ test('records empty state contains only its explanation and optional unread news
   ])));
   await tab(page, '種目').click();
   await tab(page, '記録').click();
-  assert.equal(await page.locator('.see .pill').count(), 1);
-  assert.equal(await page.locator('.empty .pill').textContent(), '新着 1');
-  await pill(page, '新着 1').click();
-  assert.match(await sheet(page).textContent(), /新しい発見/);
-  await closeSheet(page);
   assert.equal(await page.locator('.see .pill').count(), 0);
+  assert.equal(await tab(page, 'コーチ').locator('.badge').textContent(), '1');
+  await tab(page, 'コーチ').click();
+  assert.equal(await page.locator('.tw .t').textContent(), '新しい発見');
+  await tab(page, '記録').click();
+  assert.equal(await page.locator('.see .pill').count(), 0);
+  assert.equal(await tab(page, 'コーチ').locator('.badge').count(), 0);
   await principles(page);
   assert.deepEqual(errors, []);
   await close();
@@ -1347,7 +1343,7 @@ test('day sheets edit sets and notes, delete and undo sets, and confirm session 
   await close();
 });
 
-test('records news shows all items in time order and marks them read', async () => {
+test('coach timeline shows the same posts in time order and marks them read', async () => {
   const posts = [
     { id: 'older-reply', at: '2098-01-01', kind: 'reply', text: '返事', quote: 'メモ' },
     { id: 'newer', at: '2099-01-01', kind: 'reading', text: '読み物',
@@ -1356,20 +1352,28 @@ test('records news shows all items in time order and marks them read', async () 
   ];
   const data = fixture();
   const { page, errors, close } = await open({ data, extra: { 'kintore:posts': posts } });
-  await tab(page, '記録').click();
-  await page.locator('.quick .pill').filter({ hasText: /^新着 / }).click();
-  const items = mergeFeed(feed(data, localDate(new Date())), posts, [])
-    .sort((a, b) => b.at.localeCompare(a.at));
-  assert.equal(await sheet(page).locator('.post').count(), items.length);
-  assert.match(await sheet(page).locator('.post').first().textContent(), /読み物/);
+  assert.equal(await tab(page, 'コーチ').locator('.badge').textContent(), '3');
+  await tab(page, 'コーチ').click();
+  assert.deepEqual(await page.locator('.tw .t').allTextContents(), ['読み物', '返事', '発見']);
+  assert.equal(await page.locator('.tw .q').textContent(), 'メモ');
+  const source = page.locator('.tw .src');
+  assert.equal(await source.locator('b').textContent(), '資料');
+  assert.equal(await source.textContent(), '資料example.com');
+  assert.equal(await source.getAttribute('href'), 'https://example.com/');
+  assert.equal(await source.getAttribute('target'), '_blank');
+  assert.equal(await source.getAttribute('rel'), 'noopener noreferrer');
   const seen = await page.evaluate(() => JSON.parse(localStorage.getItem('kintore:seen')));
-  assert.ok(items.every(item => seen.includes(item.id)));
+  assert.ok(posts.every(post => seen.includes(post.id)));
+  assert.equal(seen.length, posts.length);
+  assert.equal(await page.locator('.tw.unread').count(), 3);
+  assert.equal(await tab(page, 'コーチ').locator('.badge').count(), 0);
   await principles(page);
-  await closeSheet(page);
-  assert.equal(await pill(page, '新着 0').count(), 1);
+  await home(page);
+  await tab(page, 'コーチ').click();
+  assert.equal(await page.locator('.tw.unread').count(), 0);
   await home(page);
   assert.equal(await page.locator('.feed > .k').textContent(), '今週');
-  assert.equal(await page.locator('.feed .post').count(), 0);
+  assert.equal(await page.locator('.feed .post, .feed .card').count(), 0);
   assert.deepEqual(errors, []);
   await close();
 });
@@ -2285,6 +2289,177 @@ test('later sets can set a PR and must also beat completed sets from today', asy
   assert.equal(await page.locator('.verdict.pr .num').textContent(), '20');
   assert.equal(await page.locator('.verdict small').textContent(), 'これまで 19回');
   assert.deepEqual((await stored(page)).sessions.at(-1).sets.map(set => set.reps), [12, 19, 19, 20]);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('coach timeline merges posts, own writing and sent training memos as actual instants', async () => {
+  const data = fixture(new Date('2026-10-21T12:00:00'));
+  data.messages = [{ id: 'm1', at: '2026-10-21T08:00:00Z', text: '自分の相談' }];
+  data.sessions.at(-1).date = '2026-10-21';
+  data.sessions.at(-1).note = '送ったメモ';
+  data.sessions.at(-1).toCoach = true;
+  data.sessions.at(-2).note = '送らないメモ';
+  data.sessions.at(-2).toCoach = false;
+  data.sessions.at(-3).note = '   ';
+  data.sessions.at(-3).toCoach = true;
+  const posts = [
+    { id: 'reading', at: '2026-10-21T07:23:00+09:00', kind: 'reading', text: '読む記事' },
+    { id: 'reply', at: '2026-10-20T23:00:00Z', kind: 'reply', text: '相談への返信', quote: '引用した相談' },
+    { id: 'weekly', at: '2026-10-19', kind: 'weekly', text: '今週のまとめ' },
+    { id: 'finding', at: '2026-10-18', kind: 'finding', text: '気付いたこと' }
+  ];
+  const { page, errors, close } = await open({ data, extra: { 'kintore:posts': posts } });
+  await page.clock.install({ time: new Date('2026-10-21T12:00:00Z') });
+  await tab(page, 'コーチ').click();
+  assert.equal(await page.locator('.see.list .h1').textContent(), 'コーチ');
+  assert.deepEqual(await page.locator('.tw .t').allTextContents(),
+    ['自分の相談', '送ったメモ', '相談への返信', '読む記事', '今週のまとめ', '気付いたこと']);
+  assert.deepEqual(await page.locator('.tw .av').allTextContents(), ['私', '私', 'コ', 'コ', 'コ', 'コ']);
+  assert.equal(await page.locator('.tw .av.me').count(), 2);
+  assert.deepEqual(await page.locator('.tw .who').evaluateAll(nodes =>
+    nodes.map(node => node.firstChild.textContent)), ['自分', '自分', 'コーチ', 'コーチ', 'コーチ', 'コーチ']);
+  assert.deepEqual(await page.locator('.tw .tag').allTextContents(), ['返信', '読み物', '週のまとめ', '発見']);
+  assert.equal(await page.locator('.tw .q').textContent(), '引用した相談');
+  assert.equal(await page.locator('.tw').nth(1).locator('.who small').textContent(), '今日 ・ トレーニングのメモ');
+  assert.equal(await page.locator('.tl .note').count(), 1);
+  assert.equal(await page.locator('.tl > .tw + .note').textContent(), '返事は明日の朝 7:22 ごろ届きます');
+  assert.equal(await page.locator('.tl > :nth-child(2)').getAttribute('class'), 'note');
+  assert.deepEqual((await stored(page)).sessions, data.sessions);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('coach writing trims, prepends and persists messages without sending whitespace or vibrating', async () => {
+  const data = fixture();
+  data.messages = [{ id: 'old', at: '2026-10-19T12:00:00Z', text: '前の相談' }];
+  const { page, errors, close } = await open({ data });
+  const now = new Date('2026-10-21T12:00:00Z');
+  await page.clock.install({ time: now });
+  await page.clock.setFixedTime(now);
+  await page.evaluate(() => {
+    window.vibrations = [];
+    navigator.vibrate = value => { window.vibrations.push(value); return true; };
+  });
+  await tab(page, 'コーチ').click();
+  const input = page.locator('.press.compose input');
+  const send = press(page, '送る');
+  assert.equal(await input.getAttribute('placeholder'), 'コーチに書く…');
+  assert.equal(await input.getAttribute('maxlength'), '1000');
+  assert.ok(await send.isDisabled());
+  await input.fill('   　  ');
+  assert.ok(await send.isDisabled());
+  assert.deepEqual((await stored(page)).messages, data.messages);
+  await input.fill('  次の種目を相談したい  ');
+  assert.equal(await input.evaluate(node => getComputedStyle(node).color), 'rgb(255, 255, 255)');
+  assert.equal(await input.evaluate(node => getComputedStyle(node, '::placeholder').color), 'rgb(143, 160, 191)');
+  assert.equal(await send.isDisabled(), false);
+  await send.click();
+  const messages = (await stored(page)).messages;
+  assert.equal(messages.length, 2);
+  assert.match(messages[0].id, /^m_[a-z0-9]{8}$/);
+  assert.equal(messages[0].at, now.toISOString());
+  assert.equal(messages[0].text, '次の種目を相談したい');
+  assert.deepEqual(messages[1], data.messages[0]);
+  assert.equal(await page.locator('.tw .t').first().textContent(), messages[0].text);
+  assert.equal(await page.locator('.tw .who small').first().textContent(), 'いま');
+  assert.equal(await input.inputValue(), '');
+  assert.ok(await send.isDisabled());
+  assert.deepEqual(await page.evaluate(() => window.vibrations), []);
+  await page.reload();
+  await tab(page, 'コーチ').click();
+  assert.deepEqual((await stored(page)).messages, messages);
+  assert.equal(await page.locator('.tw .t').first().textContent(), messages[0].text);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('home card previews the newest unread coach post and opens the coach tab', async () => {
+  const posts = [
+    { id: 'old', at: '2026-10-19', kind: 'reply', text: '前の返信' },
+    { id: 'newest', at: '2026-10-21T07:23:00Z', kind: 'reading', text: '新しい読み物' },
+    { id: 'seen', at: '2026-10-21T09:00:00Z', kind: 'finding', text: '読んだ発見' }
+  ];
+  const { page, errors, close } = await open({ data: fixture(), extra: {
+    'kintore:posts': posts, 'kintore:seen': ['seen']
+  } });
+  await page.clock.install({ time: new Date('2026-10-21T12:00:00Z') });
+  await home(page);
+  assert.equal(await tab(page, 'コーチ').locator('.badge').textContent(), '2');
+  assert.equal(await page.locator('.feed .card').count(), 1);
+  assert.equal(await page.locator('.week + .card + .quick').count(), 1);
+  assert.equal(await page.locator('.card .av').textContent(), 'コ');
+  assert.equal(await page.locator('.card .who').evaluate(node => node.firstChild.textContent), 'コーチ');
+  assert.equal(await page.locator('.card .who small').textContent(), '今日 7:23 ・ 読み物');
+  assert.equal(await page.locator('.card .preview').textContent(), '新しい読み物');
+  assert.equal(await page.locator('.card .preview').evaluate(node =>
+    getComputedStyle(node).webkitLineClamp), '2');
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('kintore:seen'))), ['seen']);
+  await page.locator('.card').click();
+  assert.equal(await page.getAttribute('.app', 'data-mode'), 'coach');
+  assert.equal(await tab(page, 'コーチ').getAttribute('aria-current'), 'page');
+  assert.equal(await page.locator('.tw.unread').count(), 2);
+  assert.equal(await tab(page, 'コーチ').locator('.badge').count(), 0);
+  await home(page);
+  assert.equal(await page.locator('.card').count(), 0);
+  await tab(page, 'コーチ').click();
+  assert.equal(await page.locator('.tw.unread').count(), 0);
+  await page.reload();
+  assert.equal(await page.locator('.card, .tabs .badge').count(), 0);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('coach waiting note uses the next morning and disappears when fetched coach posts are newer', async () => {
+  const data = fixture();
+  const now = new Date();
+  now.setHours(6, 0, 0, 0);
+  data.messages = [{ id: 'm1', at: new Date(now.getTime() - 3600000).toISOString(), text: '朝の相談' }];
+  const { page, api, errors, close } = await open({ data,
+    github: { owner: 'me', repo: 'data', token: 't' } });
+  await page.clock.install({ time: now });
+  await page.reload();
+  await tab(page, 'コーチ').click();
+  assert.equal(await page.locator('.note').textContent(), '返事は今日の朝 7:22 ごろ届きます');
+  now.setHours(12);
+  await page.clock.setFixedTime(now);
+  await tab(page, '記録').click();
+  await Promise.all([
+    page.waitForResponse(response => response.url().endsWith('posts.json')),
+    tab(page, 'コーチ').click()
+  ]);
+  assert.equal(await page.locator('.note').textContent(), '返事は明日の朝 7:22 ごろ届きます');
+  api.posts = [{ id: 'answer', at: new Date(now.getTime() - 60000).toISOString(),
+    kind: 'reply', text: '届いた返信', quote: '朝の相談' }];
+  await page.clock.setFixedTime(new Date(now.getTime() + 600001));
+  await tab(page, '記録').click();
+  await tab(page, 'コーチ').click();
+  await page.waitForFunction(() => document.querySelector('.tw .t')?.textContent === '届いた返信');
+  assert.equal(await page.getAttribute('.app', 'data-mode'), 'coach');
+  assert.equal(await page.locator('.note').count(), 0);
+  assert.equal(await page.locator('.tw .q').textContent(), '朝の相談');
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('old data without messages renders every tab and the empty coach compose bar', async () => {
+  const data = fixture();
+  assert.equal(Object.hasOwn(data, 'messages'), false);
+  const { page, errors, close } = await open({ data });
+  for (const [name, mode] of [['ホーム', 'today'], ['記録', 'records'], ['コーチ', 'coach'],
+    ['種目', 'exercises'], ['設定', 'settings']]) {
+    await tab(page, name).click();
+    assert.equal(await page.getAttribute('.app', 'data-mode'), mode);
+    if (mode === 'coach') {
+      assert.equal(await page.locator('.empty b').textContent(), 'まだやり取りはありません');
+      assert.equal(await page.locator('.empty p').textContent(), '下の欄からコーチに書けます。返事は翌朝 7:22 ごろ届きます。');
+      assert.equal(await page.locator('.press.compose input').count(), 1);
+      assert.ok(await press(page, '送る').isDisabled());
+      assert.equal(await page.locator('.tl, .note, .tabs .badge').count(), 0);
+    }
+    await principles(page);
+  }
+  assert.deepEqual(await stored(page), data);
   assert.deepEqual(errors, []);
   await close();
 });
