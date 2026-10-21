@@ -1,8 +1,9 @@
 import {
-  localDate, parseImport, value, load, recent, totalDays, feed, mergeFeed,
+  localDate, parseImport, value, load, recent, totalDays,
   firstSet, line, firstSetResult, lineText, prefill, rows, prKind, personalBest,
   menuExercises, setHistory, clearCount, weekHeat, history, bodyAvg7,
-  weekStart, toBase64Utf8, consultText, parsePosts
+  weekStart, toBase64Utf8, consultText, parsePosts,
+  coachTimeline, unreadPosts, coachTimeLabel, coachWaitingNote
 } from './logic.js';
 
 /** @typedef {import('./logic.js').Data} Data */
@@ -34,6 +35,7 @@ function loadData() {
     bands: [],
     templates: [],
     sessions: [],
+    messages: [],
     skips: [],
     body: [],
     settings: { restSec: 90 }
@@ -231,7 +233,7 @@ async function fetchFeedback() {
     const raw = JSON.stringify(parsePosts(decodeGithub(file.content)));
     if (github !== settings || localStorage.getItem('kintore:posts') === raw) return;
     localStorage.setItem('kintore:posts', raw);
-    if (currentMode === 'today' || currentMode === 'records') render();
+    if (['today', 'records', 'coach'].includes(currentMode)) render();
   } catch {}
 }
 
@@ -384,11 +386,12 @@ function homeButton() {
 }
 
 function renderTabs() {
-  tabs.hidden = !['today', 'records', 'detail', 'exercises', 'settings'].includes(currentMode);
+  tabs.hidden = !['today', 'records', 'detail', 'coach', 'exercises', 'settings'].includes(currentMode);
   tabs.replaceChildren();
   const icons = [
     ['today', 'ホーム', '<path d="M3 11 12 3.5 21 11M5.5 9.5V20h13V9.5"/>'],
     ['records', '記録', '<path d="M4 20V14h5V9h5V4h6v16z"/>'],
+    ['coach', 'コーチ', '<path d="M4 5h16v11H9l-5 4z"/>'],
     ['exercises', '種目', '<path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/>'],
     ['settings', '設定', '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>']
   ];
@@ -401,6 +404,11 @@ function renderTabs() {
     button.prepend(svg);
     if (mode === (currentMode === 'detail' ? 'records' : currentMode)) {
       button.setAttribute('aria-current', 'page');
+    }
+    if (mode === 'coach') {
+      const { posts, seen } = coachFeed();
+      const unread = unreadPosts(posts, seen).length;
+      if (unread) button.append(element('i', String(unread), 'badge'));
     }
     tabs.append(button);
   }
@@ -433,14 +441,14 @@ function render() {
   stopCounter();
   app.dataset.mode = currentMode;
   view.className = currentMode === 'settings' || currentMode.endsWith('-editor')
-    ? 'see slab' : ['records', 'exercises'].includes(currentMode) ? 'see list' : 'see';
+    ? 'see slab' : ['records', 'coach', 'exercises'].includes(currentMode) ? 'see list' : 'see';
   view.replaceChildren();
   view.scrollTop = 0;
   dock.className = ['today', 'exercises'].includes(currentMode) ? 'press slim' : 'press';
   dock.replaceChildren();
-  renderTabs();
   if (currentMode === 'today') renderToday();
   else if (currentMode === 'records') renderRecords();
+  else if (currentMode === 'coach') renderCoach();
   else if (currentMode === 'detail') renderDetail();
   else if (currentMode === 'exercises') renderExercises();
   else if (currentMode === 'settings') renderSettings();
@@ -452,10 +460,11 @@ function render() {
     editTemplate(state.templates.find(template => template.id === screen.id), false);
   } else if (currentMode === 'summary') renderSummary();
   else renderTrain();
+  renderTabs();
   saveTraining();
 }
 
-function homeFeed() {
+function coachFeed() {
   let posts = [];
   let seen = [];
   try {
@@ -465,11 +474,11 @@ function homeFeed() {
     const stored = JSON.parse(localStorage.getItem('kintore:seen'));
     if (Array.isArray(stored)) seen = stored.filter(id => typeof id === 'string');
   } catch {}
-  return { items: mergeFeed(feed(state, localDate(new Date())), posts, seen), seen };
+  return { posts, seen };
 }
 
 function markSeen(items) {
-  const { seen } = homeFeed();
+  const { seen } = coachFeed();
   const displayed = items.map(item => item.id);
   try {
     localStorage.setItem('kintore:seen', JSON.stringify([
@@ -480,30 +489,76 @@ function markSeen(items) {
   }
 }
 
-function appendFeed(parent, items, full = false) {
-  for (const item of items) {
-    const post = element('article', '', 'post');
-    const coach = ['reply', 'weekly', 'finding', 'reading'].includes(item.kind);
-    const body = element('p', '', full ? '' : 'preview');
-    body.append(element('b', coach ? 'コーチ' : '記録'), document.createTextNode(item.text));
-    post.append(body);
-    if (full && item.kind === 'reply' && typeof item.quote === 'string') {
-      post.prepend(element('blockquote', item.quote, 'dim'));
+const coachLabels = { reply: '返信', weekly: '週のまとめ', finding: '発見', reading: '読み物' };
+
+function renderCoach() {
+  const now = new Date();
+  const { posts, seen } = coachFeed();
+  const unread = new Set(unreadPosts(posts, seen).map(post => post.id));
+  const timeline = coachTimeline(state, posts);
+  const waiting = coachWaitingNote(timeline, now);
+  view.append(element('h1', 'コーチ', 'h1'));
+  if (!timeline.length) {
+    const empty = element('div', '', 'empty');
+    empty.append(element('b', 'まだやり取りはありません'),
+      element('p', '下の欄からコーチに書けます。返事は翌朝 7:22 ごろ届きます。'));
+    view.append(empty);
+  } else {
+    const list = element('div', '', 'tl');
+    for (const item of timeline) {
+      const coach = Object.hasOwn(coachLabels, item.kind);
+      const row = element('article', '', 'tw' + (coach && unread.has(item.id) ? ' unread' : ''));
+      const body = element('div');
+      const who = element('p', coach ? 'コーチ' : '自分', 'who');
+      who.append(element('small', coachTimeLabel(item.at, now) +
+        (item.kind === 'memo' ? ' ・ トレーニングのメモ' : '')));
+      if (coach) who.append(element('span', coachLabels[item.kind], 'tag'));
+      body.append(who);
+      if (item.kind === 'reply' && item.quote) body.append(element('p', item.quote, 'q'));
+      body.append(element('p', item.text, 't'));
+      if (coach && item.source) {
+        try {
+          const url = new URL(item.source.url);
+          if (['http:', 'https:'].includes(url.protocol)) {
+            const source = element('a', '', 'src');
+            source.href = url.href;
+            source.target = '_blank';
+            source.rel = 'noopener noreferrer';
+            source.append(element('b', item.source.title ?? ''), document.createTextNode(url.hostname));
+            body.append(source);
+          }
+        } catch {}
+      }
+      row.append(element('span', coach ? 'コ' : '私', coach ? 'av' : 'av me'), body);
+      list.append(row);
+      if (!coach && waiting?.id === item.id) list.append(element('p', waiting.text, 'note'));
     }
-    if (full && typeof item.source?.title === 'string') {
-      try {
-        const url = new URL(item.source.url);
-        if (['http:', 'https:'].includes(url.protocol)) {
-          const link = element('a', item.source.title);
-          link.href = url.href;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          post.append(link);
-        }
-      } catch {}
-    }
-    parent.append(post);
+    view.append(list);
   }
+  dock.className = 'press compose';
+  const input = element('input');
+  input.type = 'text';
+  input.placeholder = 'コーチに書く…';
+  input.maxLength = 1000;
+  input.setAttribute('aria-label', 'コーチに書く');
+  const send = action('送る', () => {
+    const text = input.value.trim();
+    if (!text) return;
+    const previous = state.messages;
+    state.messages = [{ id: uid('m'), at: new Date().toISOString(), text },
+      ...(Array.isArray(previous) ? previous : [])];
+    if (!save()) {
+      state.messages = previous;
+      return;
+    }
+    input.value = '';
+    render();
+  }, 'send');
+  send.disabled = true;
+  input.addEventListener('input', () => { send.disabled = !input.value.trim(); });
+  dock.append(input, send);
+  markSeen(timeline.filter(item => Object.hasOwn(coachLabels, item.kind)));
+  fetchFeedback();
 }
 
 function menuName() {
@@ -596,6 +651,18 @@ function renderToday() {
     week.append(cell);
   });
   news.append(week);
+  const { posts, seen } = coachFeed();
+  const [newest] = coachTimeline(state, unreadPosts(posts, seen))
+    .filter(item => Object.hasOwn(coachLabels, item.kind));
+  if (newest) {
+    const card = action('', () => selectTab('coach'), 'card');
+    const body = element('div');
+    const who = element('p', 'コーチ', 'who');
+    who.append(element('small', coachTimeLabel(newest.at, now) + ' ・ ' + coachLabels[newest.kind]));
+    body.append(who, element('p', newest.text, 'preview'));
+    card.append(element('span', 'コ', 'av'), body);
+    news.append(card);
+  }
   const quick = element('div', '', 'quick');
   quick.append(action('今日は休む', recordRest, 'pill'),
     action('体重を記録', recordBody, 'pill'));
@@ -1402,18 +1469,8 @@ function renderSummary() {
   dock.append(action('ホームへ', returnHome, 'go'));
 }
 
-function openNews() {
-  const { items } = homeFeed();
-  const { content } = homeSheet('新着');
-  appendFeed(content, [...items].sort((a, b) => b.at.localeCompare(a.at)), true);
-  markSeen(items);
-  if (currentMode === 'records') render();
-}
-
 function renderRecords() {
   const today = localDate(new Date());
-  const { items, seen } = homeFeed();
-  const unread = items.filter(item => !seen.includes(item.id)).length;
   view.append(element('h1', '記録', 'h1'));
   const segments = element('div', '', 'seg');
   for (const [kind, label] of [['exercise', '種目ごと'], ['day', '日ごと']]) {
@@ -1476,11 +1533,6 @@ function renderRecords() {
     const empty = element('div', '', 'empty');
     empty.append(element('b', 'まだ記録がありません'),
       element('p', '1回トレーニングすると、ここに種目ごとの伸びが階段で出ます。'));
-    if (unread) {
-      const quick = element('div', '', 'quick');
-      quick.append(action('新着 ' + unread, openNews, 'pill'));
-      empty.append(quick);
-    }
     view.append(empty);
     return;
   }
@@ -1527,10 +1579,7 @@ function renderRecords() {
     heat.append(cell);
   });
   section.append(heat);
-  const quick = element('div', '', 'quick');
-  quick.style.marginTop = '14px';
-  quick.append(action('新着 ' + unread, openNews, 'pill'));
-  view.append(section, quick);
+  view.append(section);
 }
 
 function renderDetail() {
