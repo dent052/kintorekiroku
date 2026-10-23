@@ -2315,8 +2315,9 @@ test('coach timeline merges posts, own writing and sent training memos as actual
   assert.equal(await page.locator('.see.list .h1').textContent(), 'コーチ');
   assert.deepEqual(await page.locator('.tw .t').allTextContents(),
     ['自分の相談', '送ったメモ', '相談への返信', '読む記事', '今週のまとめ', '気付いたこと']);
-  assert.deepEqual(await page.locator('.tw .av').allTextContents(), ['私', '私', 'コ', 'コ', 'コ', 'コ']);
+  assert.deepEqual(await page.locator('.tw .av').allTextContents(), ['私', '私', '', '', '', '']);
   assert.equal(await page.locator('.tw .av.me').count(), 2);
+  assert.equal(await page.locator('.tw .av.mark svg').count(), 4);
   assert.deepEqual(await page.locator('.tw .who').evaluateAll(nodes =>
     nodes.map(node => node.firstChild.textContent)), ['自分', '自分', 'コーチ', 'コーチ', 'コーチ', 'コーチ']);
   assert.deepEqual(await page.locator('.tw .tag').allTextContents(), ['返信', '読み物', '週のまとめ', '発見']);
@@ -2329,7 +2330,6 @@ test('coach timeline merges posts, own writing and sent training memos as actual
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('coach writing trims, prepends and persists messages without sending whitespace or vibrating', async () => {
   const data = fixture();
   data.messages = [{ id: 'old', at: '2026-10-19T12:00:00Z', text: '前の相談' }];
@@ -2389,7 +2389,7 @@ test('home card previews the newest unread coach post and opens the coach tab', 
   assert.equal(await tab(page, 'コーチ').locator('.badge').textContent(), '2');
   assert.equal(await page.locator('.feed .card').count(), 1);
   assert.equal(await page.locator('.week + .card + .quick').count(), 1);
-  assert.equal(await page.locator('.card .av').textContent(), 'コ');
+  assert.equal(await page.locator('.card .av.mark svg').count(), 1);
   assert.equal(await page.locator('.card .who').evaluate(node => node.firstChild.textContent), 'コーチ');
   assert.equal(await page.locator('.card .who small').textContent(), '今日 7:23 ・ 読み物');
   assert.equal(await page.locator('.card .preview').textContent(), '新しい読み物');
@@ -2410,7 +2410,6 @@ test('home card previews the newest unread coach post and opens the coach tab', 
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('coach waiting note uses the next morning and disappears when fetched coach posts are newer', async () => {
   const data = fixture();
   const now = new Date();
@@ -2553,6 +2552,231 @@ test('coach post newlines stay visible in the timeline and the home card stays c
   assert.ok(await body.evaluate(node =>
     Math.abs(node.getBoundingClientRect().height -
       3 * parseFloat(getComputedStyle(node).lineHeight)) < 1));
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('part badges and training figures highlight each part with the matching front or back view', async () => {
+  const data = fixture();
+  const parts = ['胸', '背中', '脚', '肩', '腕', '体幹', '全身'];
+  data.exercises = parts.map((part, index) => ({
+    id: 'part' + index, name: part + 'の種目', type: 'reps', part, archived: false
+  }));
+  data.sessions = [{ ...data.sessions.at(-1), sets: data.exercises.map(ex => ({
+    exerciseId: ex.id, reps: 10
+  })) }];
+  data.body = [];
+  const { page, errors, close } = await open({ data, extra: {
+    'kintore:menu': { kind: 'custom', exerciseIds: data.exercises.map(ex => ex.id) }
+  } });
+  async function checkFigure(figure, part) {
+    assert.equal(await figure.getAttribute('aria-hidden'), 'true');
+    assert.equal(await figure.getAttribute('data-view'), part === '背中' ? 'back' : 'front');
+    assert.equal(await figure.locator('circle').getAttribute('fill'), '#DDE2EA');
+    const regions = await figure.locator('[data-part]').evaluateAll(nodes =>
+      nodes.map(node => ({ part: node.dataset.part, fill: node.getAttribute('fill') })));
+    assert.ok(regions.length > 0);
+    assert.ok(regions.some(region => region.fill === '#D03C22'));
+    for (const region of regions) {
+      assert.equal(region.fill, part === '全身' || region.part === part ? '#D03C22' : '#B4BDCC');
+    }
+    assert.equal(await figure.locator('[data-part="背中"]').count(), part === '背中' ? 1 : 0);
+  }
+  for (const ex of data.exercises) {
+    const badge = page.locator('.ln[data-exercise-id="' + ex.id + '"] > .pi');
+    assert.equal(await badge.getAttribute('aria-hidden'), 'true');
+    assert.deepEqual(await badge.evaluate(node => [node.offsetWidth, node.offsetHeight]), [34, 34]);
+    await checkFigure(badge.locator('svg'), ex.part);
+  }
+  await tab(page, '記録').click();
+  for (const ex of data.exercises) {
+    await checkFigure(page.locator('.rec[data-exercise-id="' + ex.id + '"] > .pi svg'), ex.part);
+  }
+  await principles(page);
+  await home(page);
+  await press(page, '始める').click();
+  for (const [index, ex] of data.exercises.entries()) {
+    assert.equal(await page.locator('.tag2').textContent(), ex.part);
+    await checkFigure(page.locator('.tag2 .pi svg'), ex.part);
+    const figure = page.locator('.exhead > svg');
+    await checkFigure(figure, ex.part);
+    assert.deepEqual(await figure.evaluate(node => {
+      const rect = node.getBoundingClientRect();
+      return [rect.width, rect.height];
+    }), [64, 100]);
+    await principles(page);
+    if (index < data.exercises.length - 1) await press(page, '次 ▶').click();
+  }
+  assert.deepEqual((await stored(page)).sessions, data.sessions);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('weekly part legend counts recorded sets, sorts ties and keeps whole body last only when positive', async () => {
+  const now = new Date('2026-10-23T12:00:00Z');
+  const parts = ['胸', '背中', '脚', '肩', '腕', '体幹', '全身'];
+  for (const whole of [12, 0]) {
+    const data = fixture(now);
+    data.exercises = parts.map((part, index) => ({
+      id: 'part' + index, name: part + 'の種目', type: 'reps', part, archived: index === 2
+    }));
+    data.exercises.push({ id: 'chest2', name: '別の胸', type: 'reps', part: '胸', archived: false });
+    const counts = [5, 10, 6, 1, 0, 0, whole];
+    data.sessions = [
+      { id: 'monday', date: '2026-10-19', light: true, sets: counts.flatMap((count, index) =>
+        Array.from({ length: count }, () => ({ exerciseId: 'part' + index, reps: 10 }))) },
+      { id: 'friday', date: '2026-10-23', light: false, sets: [{ exerciseId: 'chest2', reps: 0 }] },
+      { id: 'outside', date: '2026-10-18', light: false,
+        sets: Array.from({ length: 20 }, () => ({ exerciseId: 'part4', reps: 10 })) }
+    ];
+    data.body = [];
+    const { page, errors, close } = await open({ data });
+    await page.clock.install({ time: now });
+    await page.clock.setFixedTime(now);
+    await page.reload();
+    await tab(page, '記録').click();
+    assert.equal(await page.locator('.seg + .bm-card > .k').textContent(), '今週の部位（セット数）');
+    const expected = Object.fromEntries(parts.map(part => [part, 0]));
+    for (const session of data.sessions.filter(session =>
+      session.date >= '2026-10-19' && session.date <= '2026-10-25')) {
+      for (const set of session.sets) expected[data.exercises.find(ex => ex.id === set.exerciseId).part]++;
+    }
+    const legend = await page.locator('.legend > span').evaluateAll(nodes => nodes.map(node => ({
+      part: node.firstChild.textContent, count: Number(node.querySelector('b').textContent),
+      low: node.classList.contains('low'), color: getComputedStyle(node).color
+    })));
+    assert.deepEqual(legend.map(row => [row.part, row.count]),
+      [['背中', 10], ['胸', 6], ['脚', 6], ['肩', 1], ['腕', 0], ['体幹', 0],
+        ...(whole ? [['全身', whole]] : [])]);
+    for (const row of legend) {
+      assert.equal(row.low, expected[row.part] === 0);
+      if (row.low) assert.equal(row.color, 'rgb(208, 60, 34)');
+    }
+    for (const region of await page.locator('.bodymap [data-part]').evaluateAll(nodes =>
+      nodes.map(node => ({ part: node.dataset.part, fill: node.getAttribute('fill') })))) {
+      const count = expected[region.part];
+      assert.equal(region.fill, count >= 10 ? '#1C2B4B' : count >= 6 ? '#4A5C82' :
+        count >= 1 ? '#8FA0BF' : '#DDE2EA');
+    }
+    assert.deepEqual(await page.locator('.bodymap svg').evaluateAll(nodes =>
+      nodes.map(node => [node.dataset.view, node.getAttribute('aria-hidden')])),
+      [['front', 'true'], ['back', 'true']]);
+    await principles(page);
+    await page.locator('.seg').getByRole('button', { name: '日ごと', exact: true }).click();
+    assert.equal(await page.locator('.bm-card').count(), 0);
+    assert.deepEqual((await stored(page)).sessions, data.sessions);
+    assert.deepEqual(errors, []);
+    await close();
+  }
+});
+
+test('summary stamps only cleared first sets and maps only parts recorded today', async () => {
+  const data = fixture();
+  data.exercises.push({ id: 'legs', name: '脚の種目', type: 'reps', part: '脚', archived: false });
+  const { page, errors, close } = await open({ data, extra: {
+    'kintore:menu': { kind: 'custom', exerciseIds: ['e1', 'e2', 'e3', 'e4', 'legs'] }
+  } });
+  await startLight(page);
+  const inputs = [['e1', 200], ['e2', 19], ['e3', 0], ['e4', 10]];
+  for (const [index, [id, amount]] of inputs.entries()) {
+    if (index) {
+      await page.locator('.tr-top .prog').click();
+      await sheet(page).locator('.jl[data-exercise-id="' + id + '"]').click();
+      await page.waitForFunction(() => !window.history.state?.sheet);
+    }
+    if (id === 'e2') await press(page, '赤').click();
+    await page.locator('.counter .num').click();
+    await page.locator('.counter input').fill(String(amount));
+    await page.locator('.counter input').press('Enter');
+    await complete(page);
+    await press(page, '休憩を終える').click();
+    if (id === 'e3') {
+      await press(page, '＋ もう1セット').click();
+      await page.locator('.counter .num').click();
+      await page.locator('.counter input').fill('600');
+      await page.locator('.counter input').press('Enter');
+      await complete(page);
+      await press(page, '休憩を終える').click();
+    }
+  }
+  const before = await stored(page);
+  await finishTraining(page);
+  assert.equal(await page.locator('.exname').textContent(), '今日の記録');
+  assert.equal(await page.locator('.sumrow.st').count(), 4);
+  assert.equal(await page.locator('.sumrow[data-exercise-id=e1] .stamp').textContent(), '突破');
+  assert.equal(await page.locator('.sumrow[data-exercise-id=e1] .stamp br').count(), 1);
+  assert.equal(await page.locator('.sumrow .stamp').count(), 1);
+  const today = before.sessions.at(-1);
+  for (const id of ['e2', 'e3', 'e4']) {
+    const first = today.sets.find(set => set.exerciseId === id);
+    assert.notEqual(firstSetResult(before, id, today.date, first).kind, 'clear');
+    assert.equal(await page.locator('.sumrow[data-exercise-id="' + id + '"] .stamp').count(), 0);
+  }
+  assert.equal(await page.locator('.sumrow[data-exercise-id=legs]').count(), 0);
+  assert.equal(await page.locator('.bm-card .k').textContent(), '今日きたえた部位');
+  for (const region of await page.locator('.bodymap [data-part]').evaluateAll(nodes =>
+    nodes.map(node => ({ part: node.dataset.part, fill: node.getAttribute('fill') })))) {
+    assert.equal(region.fill, ['胸', '背中', '体幹'].includes(region.part) ? '#1C2B4B' : '#DDE2EA');
+  }
+  assert.deepEqual(await page.locator('.bodymap svg').evaluateAll(nodes =>
+    nodes.map(node => [node.dataset.view, node.getAttribute('aria-hidden')])),
+    [['front', 'true'], ['back', 'true']]);
+  for (const size of [{ width: 390, height: 844 }, { width: 360, height: 640 }]) {
+    await page.setViewportSize(size);
+    await principles(page);
+  }
+  assert.deepEqual((await stored(page)).sessions, before.sessions);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('coach avatars use the app icon while own messages keep the original avatar', async () => {
+  const data = fixture();
+  data.messages = [{ id: 'mine', at: '2026-10-23', text: '自分の相談' }];
+  const { page, errors, close } = await open({ data, extra: {
+    'kintore:posts': [{ id: 'coach', at: '2026-10-23', kind: 'reply', text: 'コーチの返事' }]
+  } });
+  const avatar = page.locator('.card .av.mark');
+  assert.equal(await avatar.textContent(), '');
+  assert.equal(await avatar.getAttribute('aria-hidden'), 'true');
+  assert.equal(await avatar.locator('svg').getAttribute('viewBox'), '0 0 192 192');
+  assert.equal(await avatar.locator('rect').first().getAttribute('fill'), '#2F4C8F');
+  assert.equal(await avatar.locator('path').getAttribute('stroke'), '#fff');
+  assert.equal(await avatar.locator('rect[fill="#FF6A4D"]').count(), 4);
+  const icon = await avatar.innerHTML();
+  await tab(page, 'コーチ').click();
+  assert.equal(await page.locator('.tw .av.mark').innerHTML(), icon);
+  assert.equal(await page.locator('.tw .av.me').textContent(), '私');
+  for (const size of [{ width: 390, height: 844 }, { width: 360, height: 640 }]) {
+    await page.setViewportSize(size);
+    await principles(page);
+  }
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('empty coach and records show decorative line art without a weekly map', async () => {
+  const data = fixture();
+  data.sessions = [];
+  data.body = [];
+  data.skips = [];
+  const { page, errors, close } = await open({ data });
+  for (const name of ['記録', 'コーチ']) {
+    await tab(page, name).click();
+    const illustration = page.locator('.empty > .illo');
+    assert.equal(await illustration.getAttribute('aria-hidden'), 'true');
+    assert.equal(await illustration.locator('svg').getAttribute('viewBox'), '0 0 150 110');
+    assert.equal(await illustration.locator('path').count(), name === 'コーチ' ? 5 : 4);
+    assert.equal(await illustration.locator('path[stroke="#D03C22"]').count(), 2);
+    assert.equal(await illustration.locator('svg').evaluate(node => getComputedStyle(node).stroke),
+      'rgb(28, 43, 75)');
+    assert.equal(await page.locator('.bm-card').count(), 0);
+    for (const size of [{ width: 390, height: 844 }, { width: 360, height: 640 }]) {
+      await page.setViewportSize(size);
+      await principles(page);
+    }
+  }
+  assert.deepEqual(await stored(page), data);
   assert.deepEqual(errors, []);
   await close();
 });

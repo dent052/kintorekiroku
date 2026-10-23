@@ -2,7 +2,7 @@ import {
   localDate, parseImport, value, load, recent, totalDays,
   firstSet, line, firstSetResult, lineText, prefill, rows, prKind, personalBest,
   menuExercises, setHistory, clearCount, weekHeat, history, bodyAvg7,
-  weekStart, toBase64Utf8, consultText, parsePosts,
+  weekStart, weekStats, toBase64Utf8, consultText, parsePosts,
   coachTimeline, unreadPosts, coachTimeLabel, coachWaitingNote
 } from './logic.js';
 
@@ -500,7 +500,7 @@ function renderCoach() {
   view.append(element('h1', 'コーチ', 'h1'));
   if (!timeline.length) {
     const empty = element('div', '', 'empty');
-    empty.append(element('b', 'まだやり取りはありません'),
+    empty.append(emptyIllustration(true), element('b', 'まだやり取りはありません'),
       element('p', '下の欄からコーチに書けます。返事は翌朝 7:22 ごろ届きます。'));
     view.append(empty);
   } else {
@@ -529,7 +529,7 @@ function renderCoach() {
           }
         } catch {}
       }
-      row.append(element('span', coach ? 'コ' : '私', coach ? 'av' : 'av me'), body);
+      row.append(coach ? coachAvatar() : element('span', '私', 'av me'), body);
       list.append(row);
       if (!coach && waiting?.id === item.id) list.append(element('p', waiting.text, 'note'));
     }
@@ -619,7 +619,7 @@ function renderToday() {
           [...state.bands].sort((a, b) => a.order - b.order)[0];
         if (band) detail = band.name + ' ・ ' + detail;
       }
-      const row = action('', () => go('detail', { id, from: 'today' }), 'ln tap');
+      const row = action('', () => go('detail', { id, from: 'today' }), 'ln tap icon');
       row.dataset.exerciseId = id;
       const name = element('span', ex.name, 'name');
       name.append(element('small', detail));
@@ -631,7 +631,7 @@ function renderToday() {
         number.append(document.createTextNode(String(target.value)));
         if (ex.type === 'time') number.append(element('small', '秒'));
       }
-      row.append(name, miniChart(id), number, element('span', '›', 'chev'));
+      row.append(partBadge(ex.part), name, miniChart(id), number, element('span', '›', 'chev'));
       lines.append(row);
     }
     view.append(lines);
@@ -664,7 +664,7 @@ function renderToday() {
     const who = element('p', 'コーチ', 'who');
     who.append(element('small', coachTimeLabel(newest.at, now) + ' ・ ' + coachLabels[newest.kind]));
     body.append(who, element('p', newest.text, 'preview'));
-    card.append(element('span', 'コ', 'av'), body);
+    card.append(coachAvatar(), body);
     news.append(card);
   }
   const quick = element('div', '', 'quick');
@@ -949,7 +949,13 @@ function renderTrainPaper() {
   const previousSets = previous?.sets.filter(set => set.exerciseId === ex.id) ?? [];
   const target = line(state, ex.id, training.date);
   const result = done.length ? firstSetResult(state, ex.id, training.date, done[0]) : null;
-  view.replaceChildren(trainingTop(Boolean(rest)), element('h1', ex.name, 'exname'));
+  const head = element('div', '', 'exhead');
+  const name = element('div');
+  const tag = element('span', '', 'tag2');
+  tag.append(partBadge(ex.part), document.createTextNode(ex.part));
+  name.append(element('h1', ex.name, 'exname'), tag);
+  head.append(name, bodyFigure(ex.part, ex.part === '背中' ? 'back' : 'front'));
+  view.replaceChildren(trainingTop(Boolean(rest)), head);
   if (rest) {
     if (rest.verdict && Date.now() < rest.verdictUntil) {
       const verdict = element('div', '', 'verdict' + (rest.verdict.pr ? ' pr' : ''));
@@ -1454,9 +1460,11 @@ function renderSummary() {
   const ids = [...new Set(session?.sets.map(set => set.exerciseId) ?? [])];
   const bests = session ? session.sets.filter(set => prKind(state, set, session.id) === 'pr')
     .map(set => set.exerciseId) : [];
+  const parts = {};
   for (const id of ids) {
     const ex = state.exercises.find(item => item.id === id);
-    const row = element('div', '', 'sumrow');
+    parts[ex.part] = 1;
+    const row = element('div', '', 'sumrow st');
     row.dataset.exerciseId = id;
     const name = element('p', ex.name, 'n');
     if (bests.includes(id)) name.append(element('em', '自己ベスト'));
@@ -1467,9 +1475,20 @@ function renderSummary() {
       .sort((a, b) => b.date.localeCompare(a.date))[0];
     const last = element('p', previous ? '前回 ' : '初回', 'p');
     if (previous) appendSetHistory(last, ex, previous.sets.filter(set => set.exerciseId === id));
-    row.append(name, numbers, last);
+    const body = element('div');
+    body.append(name, numbers, last);
+    const first = session.sets.find(set => set.exerciseId === id);
+    const cleared = firstSetResult(state, id, training.date, first).kind === 'clear';
+    const stamp = element('span', '', cleared ? 'stamp' : '');
+    if (cleared) {
+      const text = element('span');
+      text.append(document.createTextNode('突'), element('br'), document.createTextNode('破'));
+      stamp.append(text);
+    }
+    row.append(body, stamp);
     view.append(row);
   }
+  view.append(bodyMapCard('today', parts));
   dock.append(action('ホームへ', returnHome, 'go'));
 }
 
@@ -1535,15 +1554,16 @@ function renderRecords() {
   }
   if (!state.sessions.some(session => session.sets.length) && !state.body.length) {
     const empty = element('div', '', 'empty');
-    empty.append(element('b', 'まだ記録がありません'),
+    empty.append(emptyIllustration(), element('b', 'まだ記録がありません'),
       element('p', '1回トレーニングすると、ここに種目ごとの伸びが階段で出ます。'));
     view.append(empty);
     return;
   }
 
+  view.append(bodyMapCard('map', weekStats(state, today).partSets));
   const recorded = new Set(state.sessions.flatMap(session => session.sets.map(set => set.exerciseId)));
   for (const ex of state.exercises.filter(ex => recorded.has(ex.id))) {
-    const row = action('', () => go('detail', { id: ex.id, from: 'records' }), 'rec');
+    const row = action('', () => go('detail', { id: ex.id, from: 'records' }), 'rec icon');
     row.dataset.exerciseId = ex.id;
     const name = element('b', ex.name);
     const load = history(state, ex.id, today).load;
@@ -1558,7 +1578,7 @@ function renderRecords() {
     const number = element('span', String(value(ex, firstSet(state, ex, latest))), 'num');
     const target = line(state, ex.id, today);
     if (target.value !== undefined) number.append(element('small', 'ライン ' + target.value));
-    row.append(name, miniChart(ex.id), number, element('span', '›', 'chev'));
+    row.append(partBadge(ex.part), name, miniChart(ex.id), number, element('span', '›', 'chev'));
     view.append(row);
   }
   if (state.body.length) {
@@ -2615,3 +2635,82 @@ loadTraining();
 render();
 if (github.dirty) pushData();
 fetchFeedback();
+
+function bodyFigure(kind, view = 'front', parts = {}) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 96 150');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.dataset.view = view;
+  const fill = part => {
+    const count = parts[part] ?? 0;
+    if (kind === 'map') return count >= 10 ? '#1C2B4B' :
+      count >= 6 ? '#4A5C82' : count >= 1 ? '#8FA0BF' : '#DDE2EA';
+    if (kind === 'today') return count || parts['全身'] ? '#1C2B4B' : '#DDE2EA';
+    return kind === '全身' || kind === part ? '#D03C22' : '#B4BDCC';
+  };
+  svg.innerHTML = `<circle cx="48" cy="14" r="10" fill="#DDE2EA"/>
+    <rect data-part="肩" x="24" y="28" width="16" height="12" rx="6" fill="${fill('肩')}"/>
+    <rect data-part="肩" x="56" y="28" width="16" height="12" rx="6" fill="${fill('肩')}"/>
+    ${view === 'back' ? `<path data-part="背中" d="M34 30h28l-4 30H38z" fill="${fill('背中')}"/>
+    <rect data-part="体幹" x="40" y="62" width="16" height="18" rx="5" fill="${fill('体幹')}"/>` :
+    `<rect data-part="胸" x="34" y="30" width="13" height="20" rx="5" fill="${fill('胸')}"/>
+    <rect data-part="胸" x="49" y="30" width="13" height="20" rx="5" fill="${fill('胸')}"/>
+    <rect data-part="体幹" x="38" y="52" width="20" height="30" rx="5" fill="${fill('体幹')}"/>`}
+    <rect data-part="腕" x="18" y="42" width="11" height="34" rx="5" fill="${fill('腕')}"/>
+    <rect data-part="腕" x="67" y="42" width="11" height="34" rx="5" fill="${fill('腕')}"/>
+    <rect data-part="脚" x="35" y="${view === 'back' ? 84 : 86}" width="12" height="${view === 'back' ? 58 : 56}" rx="6" fill="${fill('脚')}"/>
+    <rect data-part="脚" x="49" y="${view === 'back' ? 84 : 86}" width="12" height="${view === 'back' ? 58 : 56}" rx="6" fill="${fill('脚')}"/>`.replace(/>\s+</g, '><');
+  return svg;
+}
+
+function partBadge(part) {
+  const badge = element('span', '', 'pi');
+  badge.setAttribute('aria-hidden', 'true');
+  badge.append(bodyFigure(part, part === '背中' ? 'back' : 'front'));
+  return badge;
+}
+
+function bodyMapCard(kind, parts) {
+  const card = element('div', '', 'bm-card');
+  card.append(element('p', kind === 'map' ? '今週の部位（セット数）' : '今日きたえた部位', 'k'));
+  const map = element('div', '', 'bodymap');
+  map.append(bodyFigure(kind, 'front', parts), bodyFigure(kind, 'back', parts));
+  if (kind === 'map') {
+    const row = element('div', '', 'row2');
+    const legend = element('div', '', 'legend');
+    const order = ['胸', '背中', '脚', '肩', '腕', '体幹'];
+    const sorted = [...order].sort((a, b) =>
+      (parts[b] ?? 0) - (parts[a] ?? 0) || order.indexOf(a) - order.indexOf(b));
+    if (parts['全身'] > 0) sorted.push('全身');
+    for (const part of sorted) {
+      const count = parts[part] ?? 0;
+      const item = element('span', part, count ? '' : 'low');
+      item.append(element('b', String(count)));
+      legend.append(item);
+    }
+    row.append(map, legend);
+    card.append(row);
+  } else {
+    card.append(map);
+  }
+  return card;
+}
+
+function coachAvatar() {
+  const avatar = element('span', '', 'av mark');
+  avatar.setAttribute('aria-hidden', 'true');
+  avatar.innerHTML = `<svg viewBox="0 0 192 192"><rect width="192" height="192" fill="#2F4C8F"/><path d="M62 96h68" stroke="#fff" stroke-width="14" stroke-linecap="round"/><rect x="44" y="62" width="20" height="68" rx="8" fill="#FF6A4D"/><rect x="128" y="62" width="20" height="68" rx="8" fill="#FF6A4D"/><rect x="30" y="76" width="12" height="40" rx="6" fill="#FF6A4D"/><rect x="150" y="76" width="12" height="40" rx="6" fill="#FF6A4D"/></svg>`;
+  return avatar;
+}
+
+function emptyIllustration(coach = false) {
+  const illustration = element('div', '', 'illo');
+  illustration.setAttribute('aria-hidden', 'true');
+  illustration.innerHTML = `<svg viewBox="0 0 150 110"><path d="M20 92h110"/>
+    <circle cx="58" cy="30" r="9"/>
+    <path d="M58 39v26l-14 27M58 65l14 27M58 46l26 8M58 46l-20 14"/>
+    <path d="M84 54c14 2 24 10 28 22" stroke="#D03C22"/>
+    <path d="M38 60c-6 10-6 22 0 32" stroke="#D03C22"/>
+    ${coach ? '<path d="M98 22h30a6 6 0 0 1 6 6v14a6 6 0 0 1-6 6h-16l-8 7v-7h-6a6 6 0 0 1-6-6V28a6 6 0 0 1 6-6z"/>' : ''}</svg>`;
+  return illustration;
+}

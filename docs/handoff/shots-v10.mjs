@@ -1,0 +1,21 @@
+// Screens of v10: home part badges + coach card, training figure, records week map, summary stamps, empty coach/records. Usage: node docs/handoff/shots-v10.mjs <dir>
+import { chromium } from '/home/user/kintorekiroku/node_modules/playwright/index.mjs';
+import { fixture } from '/home/user/kintorekiroku/e2e/fixture.mjs';
+const out = process.argv[2];
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const p = await (await b.newContext({ viewport: { width: 360, height: 760 }, hasTouch: true })).newPage();
+const errs = []; p.on('pageerror', e => errs.push(e.message));
+await p.goto('http://localhost:8080/');
+const posts = [{ id: 'p1', at: new Date().toISOString(), kind: 'reply', quote: '時間が無い', text: '寝かしつけの後に5分だけ。腕立て1セット目をラインまで。' }];
+await p.evaluate(([d, posts]) => { localStorage.clear(); localStorage.setItem('kintore:data', JSON.stringify(d)); localStorage.setItem('kintore:posts', JSON.stringify(posts)); }, [fixture(), posts]);
+await p.reload(); await p.waitForTimeout(1200);
+let n = 0; const shot = async name => { await p.waitForTimeout(300); await p.screenshot({ path: `${out}/${String(++n).padStart(2, '0')}-${name}.png` }); };
+await shot('home');
+await p.click('.press >> text=始める'); await shot('train');
+await p.click('.press .go'); await p.waitForTimeout(300); await p.click('.tr-top .end'); await p.click('dialog[open] >> text=ここまでで終える').catch(() => {}); await shot('summary');
+await p.click('.press >> text=ホームへ'); await p.click('.tabs >> text=記録'); await shot('records');
+await p.click('.tabs >> text=コーチ'); await shot('coach');
+await p.evaluate(() => { localStorage.clear(); }); await p.reload(); await p.waitForTimeout(800);
+await p.click('.tabs >> text=記録'); await shot('records-empty');
+await p.click('.tabs >> text=コーチ'); await shot('coach-empty');
+console.log('errors', errs); await b.close();
