@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kintore-v1';
+const CACHE_NAME = 'kintore-v2';
 const APP_FILES = [
   './',
   './index.html',
@@ -7,7 +7,11 @@ const APP_FILES = [
   './logic.js',
   './sw.js',
   './manifest.webmanifest',
-  './icon.svg'
+  './icon.svg',
+  './icon-maskable.svg',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-maskable-512.png'
 ];
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 

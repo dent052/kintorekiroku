@@ -12,6 +12,9 @@ for name, body in re.findall(r'=== FUNCTION: (\w+) ===\n(.*?)\n=== END FUNCTION 
 for body in re.findall(r'=== NEWFUNCTION ===\n(.*?)\n=== END NEWFUNCTION ===', out, re.S):
     app = app.rstrip('\n') + '\n\n' + body.strip() + '\n'
     print('new function', body.split('(')[0][:60])
+for body in re.findall(r'=== IMPORT ===\n(.*?)\n=== END IMPORT ===', out, re.S):
+    app = re.sub(r"^import \{.*?\} from './logic.js';", lambda m: body.strip(), app, count=1, flags=re.S | re.M)
+    print('import')
 open('app.js', 'w').write(app)
 e2e = open('e2e/app.test.mjs').read()
 for name, body in re.findall(r'=== TEST: (.+?) ===\n(.*?)\n=== END TEST ===', out, re.S):
