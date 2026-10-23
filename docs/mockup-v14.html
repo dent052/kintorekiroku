@@ -213,10 +213,10 @@ figure{width:360px}figcaption{font-size:13px;color:#111;margin:0 4px 8px;line-he
 
 /* v14 */
 .pi{width:34px;height:34px;border-radius:50%;background:#E9ECF1;display:flex;align-items:center;justify-content:center;flex:none}
-.pi svg{width:20px;height:20px;stroke:var(--ai);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.pi svg{width:20px;height:31px}
 .ln.tap.icon{grid-template-columns:34px 1fr 64px 64px 14px}
 .rec.icon{grid-template-columns:34px 1fr 64px 54px 14px}
-.mark{width:40px;height:40px;border-radius:50%;background:var(--ai);display:flex;align-items:center;justify-content:center}
+.mark{width:40px;height:40px;border-radius:50%;overflow:hidden;display:block}.mark svg{width:100%;height:100%;display:block}
 .mark i{width:22px;height:22px;border-radius:4px;background:var(--shu);color:#fff;font:900 14px/22px var(--ja);font-style:normal;text-align:center;box-shadow:inset 0 0 0 1.5px var(--shu),inset 0 0 0 2.5px #fff}
 .card .mark{width:32px;height:32px}.card .mark i{width:18px;height:18px;font-size:11px;line-height:18px}
 .bodymap{display:flex;gap:8px;align-items:flex-end;justify-content:center;margin-top:8px}
@@ -235,16 +235,16 @@ figure{width:360px}figcaption{font-size:13px;color:#111;margin:0 4px 8px;line-he
 .illo{display:flex;justify-content:center;margin-bottom:14px}
 .illo svg{width:150px;height:110px;stroke:var(--ai);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .tag2{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--mute);margin-top:6px}
-.tag2 .pi{width:24px;height:24px}.tag2 .pi svg{width:15px;height:15px}
+.tag2 .pi{width:24px;height:24px}.tag2 .pi svg{width:15px;height:23px}
 .notes{max-width:1240px;margin:22px auto 0;background:#fff;border-radius:16px;padding:16px 18px;font-size:14px}
 .notes li{margin:4px 0 4px 1.2em}
 .notes b{color:var(--shu)}
 </style></head><body>
 <div class="intro"><h1>画面イメージ v14 ─ 図・挿絵・アイコンを足す</h1>
-<p>足すのは<b>意味のある絵だけ</b>：①部位のアイコン（種目の行の頭）②体の図（どこを鍛えたか・鍛える種目がどこに効くか）③コーチの印（アイコン案Aの印を小さく）④突破の判子（まとめ）⑤空の画面の線画。飾りの写真・キャラクター・色を増やすことはしない。色は藍・朱・白と灰色のまま。</p></div>
+<p>足すのは<b>意味のある絵だけ</b>：①部位の印（種目の行の頭。小さな体の図で、その部位だけ朱）②体の図（どこを鍛えたか・鍛える種目がどこに効くか）③コーチの丸をアプリのアイコン（ダンベル）に④突破の判子（まとめ）⑤空の画面の線画。飾りの写真・キャラクター・色を増やすことはしない。色は藍・朱・白と灰色のまま。</p></div>
 <div class="wall">
 
-<figure><figcaption><b>ホーム</b>。種目の行の頭に部位のアイコン。コーチのカードの丸は「コ」ではなくアプリの印。</figcaption><div class="phone">
+<figure><figcaption><b>ホーム</b>。種目の行の頭に部位のアイコン。コーチのカードの丸は「コ」ではなくアプリのアイコン。</figcaption><div class="phone">
   <div class="see">
     <div class="date"><span class="k">10月23日 金曜</span><span><span class="k">通算 </span><span class="num">21</span><span class="k"> 日</span></span></div>
     <div class="head"><p class="hello"><small>今日のメニュー</small>前回と同じ</p><span class="pill">種目を変える</span></div>
@@ -256,7 +256,7 @@ figure{width:360px}figcaption{font-size:13px;color:#111;margin:0 4px 8px;line-he
     <div class="feed">
       <p class="k">今週</p>
       <div class="week"><span>月<i class="d"></i></span><span>火<i></i></span><span>水<i class="d"></i></span><span>木<i></i></span><span>金<i class="t"></i></span><span>土<i></i></span><span>日<i></i></span></div>
-      <div class="card"><span class="mark"><i>筋</i></span><div><p class="who">コーチ<small>7:25 ・ 返信</small></p><p>バンドローイングは手の向きと立ち位置を毎回同じにすれば、負荷を数字で追える…</p></div></div>
+      <div class="card"><span class="mark"><svg viewBox="0 0 192 192"><rect width="192" height="192" fill="#2F4C8F"/><path d="M62 96h68" stroke="#fff" stroke-width="14" stroke-linecap="round"/><rect x="44" y="62" width="20" height="68" rx="8" fill="#FF6A4D"/><rect x="128" y="62" width="20" height="68" rx="8" fill="#FF6A4D"/><rect x="30" y="76" width="12" height="40" rx="6" fill="#FF6A4D"/><rect x="150" y="76" width="12" height="40" rx="6" fill="#FF6A4D"/></svg></span><div><p class="who">コーチ<small>7:25 ・ 返信</small></p><p>バンドローイングは手の向きと立ち位置を毎回同じにすれば、負荷を数字で追える…</p></div></div>
     </div>
   </div>
   <div class="press slim"><div class="go">始める</div></div>
@@ -316,19 +316,19 @@ figure{width:360px}figcaption{font-size:13px;color:#111;margin:0 4px 8px;line-he
 <script>
 // Part icons (24-grid strokes) and a schematic body (front/back) shaded by sets.
 const P={
-'胸':'<path d="M4 8c2-2 5-2 8 0 3-2 6-2 8 0v5c-2 3-5 3-8 1-3 2-6 2-8-1z"/><path d="M12 8v6"/>',
-'背中':'<path d="M6 5l6 3 6-3"/><path d="M5 7c0 6 3 11 7 13 4-2 7-7 7-13"/><path d="M12 8v12"/>',
-'脚':'<path d="M9 3v8l-2 10M15 3v8l2 10"/><path d="M9 11c1 1 5 1 6 0"/>',
+'胸':'<path d="M8 3 4 6v14h16V6l-4-3"/><path d="M7 9c1.5 2.5 4 2.5 5 .5 1 2 3.5 2 5-.5"/><path d="M12 9.5V15"/>',
+'背中':'<path d="M8 3 4 6v14h16V6l-4-3"/><path d="M7 8l5 9 5-9"/><path d="M12 4v16"/>',
+'脚':'<path d="M8 3l-.5 8 2.5 5-1.5 5"/><path d="M16 3l.5 8-2.5 5 1.5 5"/><path d="M8 3h8"/>',
 '肩':'<circle cx="12" cy="7" r="3"/><path d="M4 18c0-5 3-8 8-8s8 3 8 8"/><path d="M4 18h2M18 18h2"/>',
 '腕':'<path d="M5 19c3-1 5-3 6-6l2-6c1-2 4-2 4 1l-1 5c3 0 5 2 5 5"/>',
 '体幹':'<rect x="7" y="3" width="10" height="18" rx="3"/><path d="M7 9h10M7 15h10M12 3v18"/>'};
-document.querySelectorAll('.pi[data-part]').forEach(e=>e.innerHTML='<svg viewBox="0 0 24 24">'+P[e.dataset.part]+'</svg>');
+
 const sets={'脚':12,'胸':9,'背中':6,'肩':3,'腕':0,'体幹':0};
 const today={'胸':1,'背中':1,'脚':1};
 function fill(kind,part){
   if(kind==='map'){const n=sets[part]||0;return n>=10?'#1C2B4B':n>=6?'#4A5C82':n>=1?'#8FA0BF':'#DDE2EA'}
   if(kind==='today')return today[part]?'#1C2B4B':'#DDE2EA';
-  return part===kind?'#D03C22':'#DDE2EA'}
+  return part===kind?'#D03C22':'#B4BDCC'}
 function body(kind,view){
   const f=p=>fill(kind,p);
   const base='<circle cx="48" cy="14" r="10" fill="#DDE2EA"/>';
@@ -343,5 +343,6 @@ function body(kind,view){
    <rect x="35" y="84" width="12" height="58" rx="6" fill="${f('脚')}"/><rect x="49" y="84" width="12" height="58" rx="6" fill="${f('脚')}"/>`;
   return `<svg viewBox="0 0 96 150">${base}${view==='back'?back:front}</svg>`}
 document.querySelectorAll('[data-body]').forEach(e=>e.outerHTML=body(e.dataset.body,e.dataset.view));
+document.querySelectorAll('.pi[data-part]').forEach(e=>e.innerHTML=body(e.dataset.part,e.dataset.part==='背中'?'back':'front'));
 </script>
 </body></html>
