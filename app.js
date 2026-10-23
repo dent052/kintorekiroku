@@ -536,8 +536,8 @@ function renderCoach() {
     view.append(list);
   }
   dock.className = 'press compose';
-  const input = element('input');
-  input.type = 'text';
+  const input = element('textarea');
+  input.rows = 1;
   input.placeholder = 'コーチに書く…';
   input.maxLength = 1000;
   input.setAttribute('aria-label', 'コーチに書く');
@@ -555,7 +555,11 @@ function renderCoach() {
     render();
   }, 'send');
   send.disabled = true;
-  input.addEventListener('input', () => { send.disabled = !input.value.trim(); });
+  input.addEventListener('input', () => {
+    send.disabled = !input.value.trim();
+    input.style.height = 'auto';
+    input.style.height = `${input.scrollHeight}px`;
+  });
   dock.append(input, send);
   markSeen(timeline.filter(item => Object.hasOwn(coachLabels, item.kind)));
   fetchFeedback();

@@ -2342,7 +2342,7 @@ test('coach writing trims, prepends and persists messages without sending whites
     navigator.vibrate = value => { window.vibrations.push(value); return true; };
   });
   await tab(page, 'コーチ').click();
-  const input = page.locator('.press.compose input');
+  const input = page.locator('.press.compose textarea');
   const send = press(page, '送る');
   assert.equal(await input.getAttribute('placeholder'), 'コーチに書く…');
   assert.equal(await input.getAttribute('maxlength'), '1000');
@@ -2384,6 +2384,7 @@ test('home card previews the newest unread coach post and opens the coach tab', 
     'kintore:posts': posts, 'kintore:seen': ['seen']
   } });
   await page.clock.install({ time: new Date('2026-10-21T12:00:00Z') });
+  await page.reload();
   await home(page);
   assert.equal(await tab(page, 'コーチ').locator('.badge').textContent(), '2');
   assert.equal(await page.locator('.feed .card').count(), 1);
@@ -2453,13 +2454,105 @@ test('old data without messages renders every tab and the empty coach compose ba
     if (mode === 'coach') {
       assert.equal(await page.locator('.empty b').textContent(), 'まだやり取りはありません');
       assert.equal(await page.locator('.empty p').textContent(), '下の欄からコーチに書けます。返事は翌朝 7:22 ごろ届きます。');
-      assert.equal(await page.locator('.press.compose input').count(), 1);
+      assert.equal(await page.locator('.press.compose textarea').count(), 1);
       assert.ok(await press(page, '送る').isDisabled());
       assert.equal(await page.locator('.tl, .note, .tabs .badge').count(), 0);
     }
     await principles(page);
   }
   assert.deepEqual(await stored(page), data);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('coach compose keeps Enter as a newline, sends multiline text and grows only to five lines', async () => {
+  const data = fixture();
+  data.messages = [];
+  const { page, errors, close } = await open({ data });
+  await tab(page, 'コーチ').click();
+  const input = page.locator('.press.compose textarea');
+  const send = press(page, '送る');
+  const height = () => input.evaluate(node => node.getBoundingClientRect().height);
+  assert.equal(await input.getAttribute('rows'), '1');
+  assert.equal(await input.getAttribute('maxlength'), '1000');
+  assert.equal(await input.getAttribute('placeholder'), 'コーチに書く…');
+  const oneLine = await height();
+  assert.equal(oneLine, 44);
+  assert.ok(await send.isDisabled());
+
+  await input.fill('  一行目');
+  await page.keyboard.press('Enter');
+  assert.equal(await input.inputValue(), '  一行目\n');
+  assert.deepEqual((await stored(page)).messages, []);
+  assert.equal(await page.locator('.tw').count(), 0);
+  await page.keyboard.insertText('二行目  ');
+  assert.ok(await height() > oneLine);
+  assert.equal(await send.isDisabled(), false);
+  await send.click();
+
+  const messages = (await stored(page)).messages;
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].text, '一行目\n二行目');
+  const text = page.locator('.tw .t').first();
+  assert.equal(await text.textContent(), messages[0].text);
+  assert.equal(await text.evaluate(node => getComputedStyle(node).whiteSpace), 'pre-wrap');
+  assert.ok(await text.evaluate(node =>
+    Math.abs(node.getBoundingClientRect().height -
+      2 * parseFloat(getComputedStyle(node).lineHeight)) < 1));
+  assert.equal(await input.inputValue(), '');
+  assert.equal(await height(), oneLine);
+  assert.ok(await send.isDisabled());
+
+  await input.fill('一\n二\n三');
+  const threeLines = await height();
+  assert.ok(threeLines > oneLine);
+  await input.fill('一\n二\n三\n四\n五');
+  const fiveLines = await height();
+  assert.ok(fiveLines > threeLines);
+  assert.ok(await input.evaluate(node =>
+    Math.abs(node.getBoundingClientRect().height -
+      (44 + 4 * parseFloat(getComputedStyle(node).lineHeight))) <= 1));
+  await input.fill('一\n二\n三\n四\n五\n六\n七');
+  assert.ok(Math.abs(await height() - fiveLines) <= 1);
+  assert.equal(await input.evaluate(node => getComputedStyle(node).overflowY), 'auto');
+  assert.ok(await input.evaluate(node => node.scrollHeight > node.clientHeight));
+  assert.ok(await page.locator('.press.compose').evaluate(node =>
+    Math.abs(node.querySelector('textarea').getBoundingClientRect().bottom -
+      node.querySelector('.send').getBoundingClientRect().bottom) < 1));
+
+  await send.click();
+  assert.equal((await stored(page)).messages[0].text, '一\n二\n三\n四\n五\n六\n七');
+  assert.equal(await input.inputValue(), '');
+  assert.equal(await height(), oneLine);
+  assert.ok(await send.isDisabled());
+  await input.fill(' \n　');
+  assert.ok(await send.isDisabled());
+  assert.equal((await stored(page)).messages.length, 2);
+  await principles(page);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('coach post newlines stay visible in the timeline and the home card stays clamped to two lines', async () => {
+  const text = '一行目\n二行目\n三行目';
+  const posts = [{ id: 'multiline', at: '2026-10-21', kind: 'reply', text }];
+  const { page, errors, close } = await open({
+    data: fixture(), extra: { 'kintore:posts': posts }
+  });
+  const preview = page.locator('.card .preview');
+  assert.equal(await preview.textContent(), text);
+  assert.equal(await preview.evaluate(node => getComputedStyle(node).whiteSpace), 'pre-wrap');
+  assert.equal(await preview.evaluate(node => getComputedStyle(node).webkitLineClamp), '2');
+  assert.ok(await preview.evaluate(node =>
+    Math.abs(node.getBoundingClientRect().height -
+      2 * parseFloat(getComputedStyle(node).lineHeight)) < 1));
+  await page.locator('.card').click();
+  const body = page.locator('.tw .t');
+  assert.equal(await body.textContent(), text);
+  assert.equal(await body.evaluate(node => getComputedStyle(node).whiteSpace), 'pre-wrap');
+  assert.ok(await body.evaluate(node =>
+    Math.abs(node.getBoundingClientRect().height -
+      3 * parseFloat(getComputedStyle(node).lineHeight)) < 1));
   assert.deepEqual(errors, []);
   await close();
 });
