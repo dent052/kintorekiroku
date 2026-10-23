@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow">
+<title>アイコン案 v13</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--ai:#1C2B4B;--ai2:#26375C;--shu:#D03C22;--shu-on-ai:#FF6A4D;--paper:#F6F7F9;--mute:#5E6B82;--hair:#DDE2EA}
+*{box-sizing:border-box;margin:0}
+body{background:#E9ECF1;color:var(--ai);font:15px/1.7 'Zen Kaku Gothic New',system-ui,sans-serif;padding:24px 16px 60px}
+main{max-width:1100px;margin:0 auto}
+h1{font:900 28px/1.3 'Zen Kaku Gothic New'}
+h2{font:900 20px/1.4 'Zen Kaku Gothic New';margin:34px 0 10px}
+p,li{max-width:860px}
+ul{padding-left:1.2em}
+.why{background:#fff;border-radius:16px;padding:16px 18px;margin-top:14px}
+.why b{color:var(--shu)}
+.opt{background:#fff;border-radius:22px;padding:20px;margin-top:18px;display:grid;grid-template-columns:200px 1fr;gap:22px;align-items:start}
+.opt .big svg{width:192px;height:192px;border-radius:44px;display:block}
+.opt h3{font:900 22px/1.3 'Zen Kaku Gothic New'}
+.opt h3 small{font:700 13px 'Zen Kaku Gothic New';color:var(--mute);margin-left:8px}
+.wall{margin-top:12px;border-radius:18px;padding:18px 16px;display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;
+  background:linear-gradient(160deg,#7C88D6,#5B67BE 55%,#6F5FB8)}
+.app{display:flex;flex-direction:column;align-items:center;gap:6px;color:#fff;font-size:12px;width:64px}
+.app svg{width:56px;height:56px;display:block}
+.app.circle svg{border-radius:50%}
+.app.squircle svg{border-radius:36%}
+.app.round svg{border-radius:22%}
+.app.safe{position:relative}
+.app.safe::after{content:"";position:absolute;left:4px;top:0;width:56px;height:56px;border-radius:50%;box-shadow:inset 0 0 0 1.5px #fff;opacity:.0}
+.cap{font-size:12px;color:#fff;opacity:.85}
+.tiny{display:flex;gap:10px;align-items:center;margin-top:10px;font-size:12px;color:var(--mute)}
+.tiny svg{width:24px;height:24px;border-radius:50%}
+.pro{color:var(--mute);font-size:14px;margin-top:6px}
+.pro b{color:var(--ai)}
+.ref{columns:2;column-gap:28px;font-size:14px}
+.ref li{break-inside:avoid;margin-bottom:6px}
+@media (max-width:640px){.opt{grid-template-columns:1fr}.ref{columns:1}}
+</style></head><body><main>
+<h1>アイコン案 v13 ─ 5案</h1>
+<p>いまのアイコン（オレンジに黒のダンベル）は、角を丸めた絵を「端まで描いてある絵（maskable）」として登録していたため、Android が丸く切り抜いたときに角の透明部分が白く出ていた。どの案も<b>四角の端まで色で塗り、印は中央の安全な円（直径80%）の中に収める</b>ので、白い縁は出ない。色はアプリと同じ藍・朱・白にそろえる（いまのオレンジはアプリの中に一度も出てこない色）。</p>
+
+<div class="why"><b>既存アプリから集めた事例（App Store のアイコン、2026-10-23 取得）</b>
+<ul class="ref">
+<li><b>Strong</b>：濃紺の地に、白い棒と青い重りのダンベル。1色の差し色だけ。</li>
+<li><b>Hevy</b>：黒地に白の太い線で H とダンベルを1つの形にまとめた印。</li>
+<li><b>Stronglifts 5x5</b>：赤地に白の、縦に並んだ重りだけを抜き出したバーベル。</li>
+<li><b>Setgraph</b>：ダンベルの重りが頭文字 S・G になっている。</li>
+<li><b>Fitbod・Caliber・JEFIT・Boostcamp</b>：頭文字を幾何学的に崩した印（モノグラム）。</li>
+<li><b>Apple Fitness</b>：器具ではなく「進み具合（リング）」そのものを印にしている。</li>
+<li><b>Nike Training Club・Gymshark</b>：ブランドのロゴ。</li>
+</ul>
+<p style="margin-top:8px">共通する型：<b>①地は1色で端まで塗る ②印は1つ、太い線で、小さくても形が読める ③色は2色まで ④器具・頭文字・進み具合のどれかを印にする</b>。下の5案はこの型に沿って、器具（案D・C）・頭文字（案A）・進み具合（案B・E）からそれぞれ作った。</p>
+</div>
+
+<!-- A -->
+<section class="opt"><div class="big"><svg viewBox="0 0 192 192"><rect width="192" height="192" fill="#1C2B4B"/><rect x="50" y="50" width="92" height="92" rx="12" fill="#D03C22"/><rect x="57" y="57" width="78" height="78" rx="7" fill="none" stroke="#fff" stroke-width="3"/><text x="96" y="122" text-anchor="middle" font-family="Zen Kaku Gothic New" font-weight="900" font-size="66" fill="#fff">筋</text></svg></div>
+<div><h3>案A　朱の印「筋」<small>頭文字（モノグラム）の型</small></h3>
+<p class="pro">藍の地に、朱の角印で「筋」。アプリの見出しと同じ書体・同じ2色なので、開いたときに一続きに見える。<b>日本語の一文字の印は、海外のどの事例とも被らない。</b>弱み：器具の形が無いので、一目で「筋トレ」と分かるのは漢字を読んだとき。</p>
+<div class="wall" data-icon="A"></div></div></section>
+
+<!-- B -->
+<section class="opt"><div class="big"><svg viewBox="0 0 192 192"><rect width="192" height="192" fill="#1C2B4B"/><path d="M50 136h28v-24h28V88h28V64" fill="none" stroke="#fff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/><path d="M44 76h104" stroke="#8FA0BF" stroke-width="4" stroke-dasharray="8 7" stroke-linecap="round"/><circle cx="134" cy="56" r="13" fill="#FF6A4D"/></svg></div>
+<div><h3>案B　階段と朱の点<small>進み具合の型</small></h3>
+<p class="pro">記録の画面の「階段グラフ」と「ライン」をそのまま印にした。点線＝ライン、それを越えた段の先に朱の点＝突破。<b>このアプリだけの仕組みを表す印。</b>Apple Fitness のリングと同じ考え方。弱み：器具の形が無く、初見では記録・家計簿系にも見える。</p>
+<div class="wall" data-icon="B"></div></div></section>
+
+<!-- C -->
+<section class="opt"><div class="big"><svg viewBox="0 0 192 192"><rect width="192" height="192" fill="#1C2B4B"/><path d="M60 70c0-12 10-20 22-20h28c12 0 22 8 22 20v52c0 12-10 20-22 20H82c-12 0-22-8-22-20z" fill="none" stroke="#D03C22" stroke-width="16"/><path d="M96 38v40M96 114v40" stroke="#fff" stroke-width="13" stroke-linecap="round"/></svg></div>
+<div><h3>案C　バンド<small>器具の型（自宅・バンド）</small></h3>
+<p class="pro">朱のループバンドを白い手が上下に引いている形。<b>ダンベルではなく、実際に使っているバンドの印。</b>自宅・自重＋バンドというこのアプリの前提がそのまま出る。弱み：小さいと「朱の角丸の枠」に見えやすい（下の 24px を見てほしい）。</p>
+<div class="wall" data-icon="C"></div></div></section>
+
+<!-- D -->
+<section class="opt"><div class="big"><svg viewBox="0 0 192 192"><rect width="192" height="192" fill="#1C2B4B"/><path d="M62 96h68" stroke="#fff" stroke-width="12" stroke-linecap="round"/><rect x="44" y="62" width="20" height="68" rx="8" fill="#D03C22"/><rect x="128" y="62" width="20" height="68" rx="8" fill="#D03C22"/><rect x="30" y="76" width="12" height="40" rx="6" fill="#D03C22"/><rect x="150" y="76" width="12" height="40" rx="6" fill="#D03C22"/></svg></div>
+<div><h3>案D　藍と朱のダンベル<small>器具の型（定番）</small></h3>
+<p class="pro">いまのアイコンの形を残して、色をアプリに合わせて端まで塗った一番手堅い案。<b>一目で筋トレと分かる。</b>弱み：Strong（濃紺に青いダンベル）とかなり似る。並んでも区別はつくが、個性は5案で一番弱い。</p>
+<div class="wall" data-icon="D"></div></div></section>
+
+<!-- E -->
+<section class="opt"><div class="big"><svg viewBox="0 0 192 192"><rect width="192" height="192" fill="#D03C22"/><path d="M40 112h112" stroke="#fff" stroke-width="10" stroke-linecap="round"/><path d="M66 128l30-56 30 56" fill="none" stroke="#1C2B4B" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+<div><h3>案E　ラインを越える<small>進み具合の型</small></h3>
+<p class="pro">朱の地に、白い一本線（ライン）を藍の山形が下から突き抜ける。<b>「前回＋1を越える」という毎回の目標を一つの動きで表した。</b>ホーム画面で一番目立つ色。弱み：朱が地なので、アプリを開いたときの藍の画面との一続き感は案A・Bより弱い。</p>
+<div class="wall" data-icon="E"></div></div></section>
+
+<div class="why" style="margin-top:28px"><b>おすすめ：案A（朱の印「筋」）</b>
+<p>アプリの中の色・書体と完全に一続きになり、事例のどれとも被らず、24px でも「藍の中の朱い四角」として見分けられる。器具の分かりやすさを優先するなら案D、アプリの仕組みを推すなら案B。</p>
+<p class="pro">技術メモ：採用した案は 512px と 192px の PNG（文字は画像にするのでフォントに頼らない）に書き出し、manifest には <code>purpose: "any"</code> と <code>purpose: "maskable"</code> を別々に登録する（いまの <code>"any maskable"</code> 1枚は Chrome が非推奨としている）。</p></div>
+</main>
+<script>
+// Each option is shown on a home-screen wallpaper in the three shapes Android launchers use, plus tiny size.
+for (const wall of document.querySelectorAll('.wall')) {
+  const svg = wall.closest('.opt').querySelector('.big svg').outerHTML;
+  wall.innerHTML = [['circle', '丸'], ['squircle', 'スクワークル'], ['round', '角丸']].map(([k]) =>
+    `<div class="app ${k}">${svg}<span>筋トレ</span></div>`).join('') +
+    `<div class="app circle" style="width:auto"><span class="cap">ホーム画面での実寸（左から 丸・スクワークル・角丸）</span></div>`;
+  const tiny = document.createElement('div');
+  tiny.className = 'tiny';
+  tiny.innerHTML = svg + '<span>通知や設定の一覧で出る 24px</span>';
+  wall.after(tiny);
+}
+</script>
+</body></html>
