@@ -221,7 +221,7 @@ async function restoreGithub() {
 async function fetchFeedback() {
   if (!configured()) return;
   const now = Date.now();
-  if (feedbackCheckedAt !== null && now - feedbackCheckedAt < 600000) return;
+  if (feedbackCheckedAt !== null && now - feedbackCheckedAt < 60000) return;
   feedbackCheckedAt = now;
   const settings = github;
   try {
@@ -239,6 +239,8 @@ async function fetchFeedback() {
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden' && github.dirty) pushData();
+  // アプリに戻ったときにコーチ便を取り直す（開き直さなくても新着が出る）。
+  if (document.visibilityState === 'visible') fetchFeedback();
 });
 window.addEventListener('online', () => {
   if (github.dirty) pushData();
@@ -414,6 +416,8 @@ function renderTabs() {
   }
 }
 
+const tabModes = ['today', 'records', 'coach', 'exercises', 'settings'];
+let slide = null;
 let swipeStart = null;
 app.addEventListener('touchstart', event => {
   const touch = event.touches[0];
@@ -430,6 +434,13 @@ app.addEventListener('touchend', event => {
   const elapsed = Date.now() - swipeStart.t;
   swipeStart = null;
   if (elapsed > 700 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
+  if (tabModes.includes(currentMode)) {
+    const next = tabModes[tabModes.indexOf(currentMode) + (dx < 0 ? 1 : -1)];
+    if (!next) return;
+    slide = dx < 0 ? 'slide-next' : 'slide-prev';
+    selectTab(next);
+    return;
+  }
   if (currentMode !== 'train') return;
   moveExercise(dx < 0 ? 1 : -1);
   view.classList.remove('slide-next', 'slide-prev');
@@ -462,6 +473,11 @@ function render() {
   else renderTrain();
   renderTabs();
   saveTraining();
+  if (slide) {
+    void view.offsetWidth;
+    view.classList.add(slide);
+    slide = null;
+  }
 }
 
 function coachFeed() {
