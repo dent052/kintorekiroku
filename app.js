@@ -4,7 +4,7 @@ import {
   menuExercises, setHistory, clearCount, weekHeat, history, bodyAvg7,
   weekStart, weekStats, toBase64Utf8, consultText, parsePosts,
   coachTimeline, unreadPosts, coachTimeLabel, coachWaitingNote,
-  recordDelta, loadUpPoints, monthCalendar
+  recordDelta, loadUpPoints, monthCalendar, moveBand, removeBand, carryLoad
 } from './logic.js';
 
 /** @typedef {import('./logic.js').Data} Data */
@@ -55,14 +55,54 @@ function loadData() {
         // 退避できなくても元の記録は上書きしない。
       }
     }
-    window.alert('記録の読み込みに失敗しました。設定のバックアップから読み込んでください');
+    recovering = true;
     return empty;
   }
 }
 
+// 読み込みに失敗した間は復旧画面を出し、現行データ（kintore:data）を上書きしない。
+let recovering = false;
 /** @type {Data} */
 let state = loadData();
 menu = loadMenu();
+if (recovering) {
+  screen = { mode: 'recovery', depth: 0 };
+  currentMode = 'recovery';
+  window.history.replaceState(screen, '');
+}
+
+// 取り込み・復元で置き換える前に、いまの記録を別キーへ退避する。
+function backupBeforeImport() {
+  try {
+    const current = localStorage.getItem('kintore:data') ?? JSON.stringify(state);
+    localStorage.setItem('kintore:data:before-import', current);
+    return true;
+  } catch {
+    toast('いまの記録を退避できませんでした。容量を確認してください');
+    return false;
+  }
+}
+
+// バックアップ読み込み・GitHub 復元・復旧画面が共有する、置き換えの共通処理。
+function applyImport(imported) {
+  if (!backupBeforeImport()) return;
+  const previous = state;
+  state = imported;
+  if (!save()) {
+    state = previous;
+    return;
+  }
+  if (recovering) {
+    recovering = false;
+    menu = loadMenu();
+    loadTraining();
+    screen = { mode: 'today', depth: 0 };
+    window.history.replaceState(screen, '');
+    showScreen(screen);
+    return;
+  }
+  render();
+}
 
 function save() {
   const updatedAt = state.updatedAt;
@@ -211,9 +251,7 @@ async function restoreGithub() {
     const file = await response.json();
     const imported = parseImport(decodeGithub(file.content));
     if (!await confirmDialog('GitHub の記録で置き換えます。よろしいですか？')) return;
-    state = imported;
-    save();
-    render();
+    applyImport(imported);
   } catch {
     toast('読み込めないファイルです');
   }
@@ -449,8 +487,14 @@ app.addEventListener('touchend', event => {
   view.classList.add(dx < 0 ? 'slide-next' : 'slide-prev');
 }, { passive: true });
 
+// 同じ画面の描き直し（コーチ便の新着など）では読んでいた位置を保ち、画面が変わったら先頭から出す。
+// トレーニング中は種目の切り替えも描き直しなので、従来どおり先頭へ戻す。
+let renderedScreen = null;
+
 function render() {
   stopCounter();
+  const scrollTop = screen === renderedScreen && currentMode !== 'train' ? view.scrollTop : 0;
+  renderedScreen = screen;
   app.dataset.mode = currentMode;
   view.className = currentMode === 'settings' || currentMode.endsWith('-editor')
     ? 'see slab' : ['records', 'coach', 'exercises'].includes(currentMode) ? 'see list' : 'see';
@@ -471,9 +515,11 @@ function render() {
   } else if (currentMode === 'template-editor') {
     editTemplate(state.templates.find(template => template.id === screen.id), false);
   } else if (currentMode === 'summary') renderSummary();
+  else if (currentMode === 'recovery') renderRecovery();
   else renderTrain();
   renderTabs();
-  saveTraining();
+  if (scrollTop) view.scrollTop = scrollTop;
+  if (!recovering) saveTraining();
   if (slide) {
     void view.offsetWidth;
     view.classList.add(slide);
@@ -622,7 +668,7 @@ function renderToday() {
       () => go('exercise-editor', { addToMenu: true }), 'go'));
   } else {
     const lines = element('div', '', 'lines');
-    for (const id of menuExercises(state, menu, today)) {
+    for (const id of activeMenuExercises(today)) {
       const ex = state.exercises.find(item => item.id === id);
       const target = line(state, id, today);
       const [previous] = recent(state, id, today, 1);
@@ -875,9 +921,15 @@ function trainingEntry(id, count) {
   return { id, sets: planned, cursor: done.length, goal: planned.length };
 }
 
+/** 「前回と同じ」は archived も再現するが、画面表示と開始では archived 種目を出さない。 */
+function activeMenuExercises(date) {
+  return menuExercises(state, menu, date)
+    .filter(id => state.exercises.some(ex => ex.id === id && !ex.archived));
+}
+
 function startWorkout(light = lightToday()) {
   const date = localDate(new Date());
-  const ids = menuExercises(state, menu, date);
+  const ids = activeMenuExercises(date);
   if (!ids.length) {
     changeMenu(() => startWorkout());
     return;
@@ -1114,10 +1166,18 @@ function renderTrain() {
   dock.append(nav);
 }
 
+// トレーニング中の負荷変更は、その種目の残りの未実施セットにも引き継ぐ。
+function carryToRemaining(ex, set, parent) {
+  if (parent !== dock) return;
+  const entry = currentEntry();
+  if (entry.sets[entry.cursor] === set) carryLoad(ex, entry.sets, entry.cursor);
+}
+
 function setLoadControls(ex, set, parent, refresh) {
   if (ex.type === 'weight') {
     parent.append(stepper('重さ', set.kg ?? 0, 0, 500, 0.5, (kg, direct) => {
       set.kg = kg;
+      carryToRemaining(ex, set, parent);
       if (!direct) refresh();
       else if (parent === dock) {
         dismissVerdict();
@@ -1128,9 +1188,10 @@ function setLoadControls(ex, set, parent, refresh) {
   }
   if (ex.type === 'band') {
     const chips = element('div', '', 'chips');
-    for (const band of [...state.bands].sort((a, b) => a.order - b.order)) {
+    for (const band of state.bands) {
       const button = action(band.name, () => {
         set.bandId = band.id;
+        carryToRemaining(ex, set, parent);
         refresh();
       }, 'chip' + (band.id === set.bandId ? ' on' : ''));
       button.setAttribute('aria-pressed', String(band.id === set.bandId));
@@ -2275,8 +2336,8 @@ function renderSettings() {
 
   const bands = settingsSection('バンド');
   bands.append(action('＋ バンド', () => editBand()));
-  const orderedBands = [...state.bands].sort((a, b) => a.order - b.order);
-  orderedBands.forEach((band, index) => {
+  // 表示順は配列の並び。order は強度の値なので並べ替えでも削除でも変えない。
+  state.bands.forEach((band, index) => {
     const row = element('div', '', 'head');
     const edit = action('', () => editBand(band), 'settings-item');
     edit.append(element('span', band.name, 'name'));
@@ -2284,13 +2345,12 @@ function renderSettings() {
     const controls = element('div', '', 'actions');
     for (const [offset, text] of [[-1, '↑'], [1, '↓']]) {
       const button = action(text, () => {
-        moveItem(orderedBands, index, offset);
-        orderedBands.forEach((item, i) => { item.order = i + 1; });
-        state.bands = orderedBands;
-        save();
+        const previous = state.bands;
+        state.bands = moveBand(previous, index, offset);
+        if (!save()) state.bands = previous;
         render();
       });
-      button.disabled = index + offset < 0 || index + offset >= orderedBands.length;
+      button.disabled = index + offset < 0 || index + offset >= state.bands.length;
       button.setAttribute('aria-label', `${band.name}を${offset < 0 ? '上' : '下'}へ`);
       controls.append(button);
     }
@@ -2313,24 +2373,7 @@ function renderSettings() {
   const file = element('input');
   file.type = 'file';
   file.hidden = true;
-  file.addEventListener('change', async () => {
-    const selected = file.files[0];
-    if (!selected) return;
-    let imported;
-    try {
-      imported = parseImport(await selected.text());
-    } catch (error) {
-      toast(error.message);
-      file.value = '';
-      return;
-    }
-    const confirmed = await confirmDialog('今の記録を読み込んだ内容で置き換えます。よろしいですか？');
-    file.value = '';
-    if (!confirmed) return;
-    state = imported;
-    save();
-    render();
-  });
+  file.addEventListener('change', () => importBackupFile(file));
   backup.append(
     action('書き出し', () => {
       const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
@@ -2358,6 +2401,62 @@ function renderSettings() {
     toast('コピーしました。ChatGPT に貼り付けて送ってください');
     window.open('https://chatgpt.com/', '_blank');
   }));
+}
+
+async function importBackupFile(file) {
+  const selected = file.files[0];
+  if (!selected) return;
+  let imported;
+  try {
+    imported = parseImport(await selected.text());
+  } catch (error) {
+    toast(error.message);
+    file.value = '';
+    return;
+  }
+  const confirmed = await confirmDialog('今の記録を読み込んだ内容で置き換えます。よろしいですか？');
+  file.value = '';
+  if (!confirmed) return;
+  applyImport(imported);
+}
+
+// 読み込みに失敗した起動時の復旧画面。取り込みは通常の復元機能（applyImport）を使う。
+function renderRecovery() {
+  view.append(
+    element('h1', '記録を読み込めませんでした'),
+    element('p', '壊れたデータは端末に退避してあります。復旧方法を選んでください。' +
+      '選ぶまで、今の記録は上書きされません。', 'lines')
+  );
+  const file = element('input');
+  file.type = 'file';
+  file.hidden = true;
+  file.addEventListener('change', () => importBackupFile(file));
+  const retry = action('退避した原文をもう一度読み込む', async () => {
+    const raw = localStorage.getItem('kintore:data:broken') ?? localStorage.getItem('kintore:data');
+    let imported;
+    try {
+      imported = parseImport(raw);
+    } catch (error) {
+      toast(error.message);
+      return;
+    }
+    if (await confirmDialog('退避した原文の内容で記録を置き換えます。よろしいですか？')) {
+      applyImport(imported);
+    }
+  }, 'go');
+  const fromGithub = action('GitHub から復元する', restoreGithub);
+  fromGithub.disabled = !configured();
+  dock.append(
+    retry, fromGithub,
+    action('バックアップファイルから読み込む', () => file.click()),
+    action('空の状態で始める', async () => {
+      if (!await confirmDialog('空の状態で始めます。壊れた原文は端末に退避したままです。よろしいですか？')) return;
+      recovering = false;
+      loadTraining();
+      showScreen({ mode: 'today', depth: 0 });
+    }),
+    file
+  );
 }
 
 function renderGithubSettings() {
@@ -2527,9 +2626,7 @@ function editBand(existing, navigate = true) {
     session.sets.some(set => set.bandId === existing.id));
   if (existing && !used) {
     dock.insertBefore(action('削除', () => {
-      state.bands = state.bands.filter(band => band.id !== existing.id);
-      state.bands.sort((a, b) => a.order - b.order);
-      state.bands.forEach((band, i) => { band.order = i + 1; });
+      state.bands = removeBand(state.bands, existing.id);
       save();
       back();
     }, 'danger'), dock.lastElementChild);
@@ -2650,10 +2747,20 @@ function confirmDialog(text) {
   });
 }
 
-loadTraining();
+if (!recovering) loadTraining();
 render();
 if (github.dirty) pushData();
 fetchFeedback();
+
+// 単体テスト（app.test.js）が保存・同期・復元の中身を確かめるための口。画面からは使わない。
+export const internals = {
+  save, pushData, loadData, loadTraining, applyImport,
+  get state() { return state; },
+  get github() { return github; },
+  get training() { return training; },
+  get recovering() { return recovering; },
+  get screen() { return screen; }
+};
 
 function bodyFigure(kind, view = 'front', parts = {}) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
