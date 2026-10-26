@@ -43,6 +43,8 @@
 
 10. **アイコンや絵に漢字一文字（「筋」の印など）を使う案は出さない**（2026-10-23 利用者「1のような漢字はありえないという感性は持って欲しい」）。アイコンは案D（藍と朱のダンベル）を明るくした D1 に決定。
 
+11. **公開前は変更していない画面も含めて全画面を撮る**（`node docs/handoff/shots-all.mjs <dir>`）。2026-10-27、v11 で Codex が style.css を丸ごと出した際にホームの規則を古いものに置き換え、記録の画面しか撮らずに公開してホームを崩した（利用者「こんなキモイ画面でok出した覚えは無い」）。Codex に style.css を丸ごと出させたら、`git diff` の `-` 行で変更対象外の規則が消えていないかも必ず見る。
+
 ## 5. Codex の使い方（実装担当）
 - `codex` CLI は入っている。**セッションが変わるとログインが切れている可能性**：`codex login status`。未ログインなら `codex login --device-auth` を実行し、出たコードと URL（https://auth.openai.com/codex/device）を利用者に渡して ChatGPT アカウントでログインしてもらう（バックグラウンドで実行し、ログファイルから URL とコードを読む）。環境の OpenAI API キーは枠なしで使えない（使わない）。
 - 設定：`~/.codex/config.toml` に `model = "gpt-6.1-sol"` と `model_reasoning_effort = "medium"`（利用者の指定。2026-10-20）。

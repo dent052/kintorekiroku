@@ -48,17 +48,16 @@ button, a, input, select, textarea { touch-action:manipulation; }
 .mini { width:64px; height:28px; align-self:center; }
 .lines { margin-top:18px; display:flex; flex-direction:column; }
 .ln { display:grid; grid-template-columns:1fr 64px 76px; align-items:end; padding:10px 0; border-bottom:1px solid var(--hair); gap:10px; }
-.ln b { font:700 16px var(--ja); display:block; line-height:1.2; }
-.ln .meta { font-size:12px; color:var(--mute); margin-top:3px; display:block; }
-.ln .prevn { text-align:right; color:var(--mute); }
-.ln .prevn .num { font-size:30px; }
-.ln .line { text-align:right; }
-.ln .line .num { font-size:40px; }
-.ln .line .num small { font:700 12px var(--ja); margin-left:3px; }
-.ln .line .k { display:block; }
-.ln.up .line .num { color:var(--shu); }
-.week { display:flex; gap:4px; align-items:center; }
-.week i { width:9px; height:9px; border-radius:50%; background:var(--hair); }
+.ln .name { font:700 17px var(--ja); min-width:0; }
+.ln .name small { display:block; font-size:12px; color:var(--mute); font-weight:500; }
+.ln .num { font-size:52px; color:var(--ai); text-align:right; }
+.ln .num.carry { color:var(--shu); }
+.ln .num small { font-size:16px; font-family:var(--ja); font-weight:700; }
+.ln .num.word { font:700 28px/1.2 var(--ja); overflow-wrap:anywhere; }
+.feed { margin-top:auto; padding-top:14px; }
+.week { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-top:6px; text-align:center; }
+.week span { font-size:11px; font-weight:700; color:var(--mute); }
+.week i { display:block; height:28px; border-radius:6px; background:var(--hair); margin-top:3px; }
 .week i.d { background:var(--ai); }
 .week i.t { border:2px solid var(--shu); }
 .week i.t:not(.d) { background:transparent; }
