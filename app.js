@@ -487,8 +487,14 @@ app.addEventListener('touchend', event => {
   view.classList.add(dx < 0 ? 'slide-next' : 'slide-prev');
 }, { passive: true });
 
+// 同じ画面の描き直し（コーチ便の新着など）では読んでいた位置を保ち、画面が変わったら先頭から出す。
+// トレーニング中は種目の切り替えも描き直しなので、従来どおり先頭へ戻す。
+let renderedScreen = null;
+
 function render() {
   stopCounter();
+  const scrollTop = screen === renderedScreen && currentMode !== 'train' ? view.scrollTop : 0;
+  renderedScreen = screen;
   app.dataset.mode = currentMode;
   view.className = currentMode === 'settings' || currentMode.endsWith('-editor')
     ? 'see slab' : ['records', 'coach', 'exercises'].includes(currentMode) ? 'see list' : 'see';
@@ -512,6 +518,7 @@ function render() {
   else if (currentMode === 'recovery') renderRecovery();
   else renderTrain();
   renderTabs();
+  if (scrollTop) view.scrollTop = scrollTop;
   if (!recovering) saveTraining();
   if (slide) {
     void view.offsetWidth;
@@ -2744,6 +2751,16 @@ if (!recovering) loadTraining();
 render();
 if (github.dirty) pushData();
 fetchFeedback();
+
+// 単体テスト（app.test.js）が保存・同期・復元の中身を確かめるための口。画面からは使わない。
+export const internals = {
+  save, pushData, loadData, loadTraining, applyImport,
+  get state() { return state; },
+  get github() { return github; },
+  get training() { return training; },
+  get recovering() { return recovering; },
+  get screen() { return screen; }
+};
 
 function bodyFigure(kind, view = 'front', parts = {}) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
