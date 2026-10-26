@@ -414,15 +414,25 @@ test('previous short is vermilion; base and up use the small word treatment', as
   await close();
 });
 
-test('only training responds to horizontal swipes', async () => {
+test('horizontal swipes move between the five tabs and the exercises in training', async () => {
   const { page, errors, close } = await open({ data: fixture() });
-  for (const [name, mode] of [['ホーム', 'today'], ['記録', 'records'], ['種目', 'exercises'], ['設定', 'settings']]) {
-    await tab(page, name).click();
-    for (const dx of [-100, 100]) {
-      await swipe(page, dx);
-      assert.equal(await page.getAttribute('.app', 'data-mode'), mode);
-    }
+  const order = ['today', 'records', 'coach', 'exercises', 'settings'];
+  const mode = () => page.getAttribute('.app', 'data-mode');
+  await swipe(page, 100);
+  assert.equal(await mode(), 'today');
+  for (const next of order.slice(1)) {
+    await swipe(page, -100);
+    await page.waitForFunction(m => document.querySelector('.app').dataset.mode === m, next);
   }
+  await swipe(page, -100);
+  assert.equal(await mode(), 'settings');
+  await swipe(page, -80, 50);
+  assert.equal(await mode(), 'settings');
+  for (const next of order.slice(0, -1).reverse()) {
+    await swipe(page, 100);
+    await page.waitForFunction(m => document.querySelector('.app').dataset.mode === m, next);
+  }
+  assert.equal(await page.evaluate(() => window.history.state?.depth ?? 0), 0);
   await tab(page, '記録').click();
   await page.locator('.xc').first().click();
   const name = await page.textContent('.exname');
@@ -2404,6 +2414,21 @@ test('home card previews the newest unread coach post and opens the coach tab', 
   assert.deepEqual(errors, []);
   await close();
 });
+test('coming back to the app fetches new coach posts without reopening it', async () => {
+  const { page, api, errors, close } = await open({ data: fixture(),
+    github: { owner: 'me', repo: 'data', token: 't' } });
+  const now = new Date();
+  await page.clock.install({ time: now });
+  await page.reload();
+  await tab(page, 'コーチ').click();
+  api.posts = [{ id: 'later', at: now.toISOString(), kind: 'reply', text: 'あとで届いた返信', quote: 'q' }];
+  await page.clock.setFixedTime(new Date(now.getTime() + 120000));
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.waitForFunction(() => document.querySelector('.tw .t')?.textContent === 'あとで届いた返信');
+  assert.deepEqual(errors, []);
+  await close();
+});
+
 test('coach waiting note uses the next morning and disappears when fetched coach posts are newer', async () => {
   const data = fixture();
   const now = new Date();
