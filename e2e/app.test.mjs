@@ -106,7 +106,7 @@ async function leaveTraining(page) {
 async function principles(page) {
   assert.deepEqual(await page.$$eval('button, a[href], select, input, textarea, [role=slider]', elements =>
     elements.filter(element => !element.closest('.press, dialog.sheet, .slab, .tabs, #toast button') &&
-      !element.closest('.see .ln, .see .rec, .see .ex, .see .pill, .see .back, .see .sets .r.done, .see .hist .r, .see .seg, .see .day, .see .bl, .see .big input, .see .tr-top .prog, .see .tr-top .end, .see .card, .see .tw .src'))
+      !element.closest('.see .ln, .see .rec, .see .ex, .see .pill, .see .back, .see .sets .r.done, .see .hist .r, .see .seg, .see .day, .see .bl, .see .big input, .see .tr-top .prog, .see .tr-top .end, .see .card, .see .tw .src, .see .xc, .see .dc, .see .rest'))
       .map(element => element.outerHTML)), []);
   const size = await page.evaluate(() => {
     const tabs = document.querySelector('.tabs');
