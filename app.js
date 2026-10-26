@@ -3,7 +3,8 @@ import {
   firstSet, line, firstSetResult, lineText, prefill, rows, prKind, personalBest,
   menuExercises, setHistory, clearCount, weekHeat, history, bodyAvg7,
   weekStart, weekStats, toBase64Utf8, consultText, parsePosts,
-  coachTimeline, unreadPosts, coachTimeLabel, coachWaitingNote
+  coachTimeline, unreadPosts, coachTimeLabel, coachWaitingNote,
+  recordDelta, loadUpPoints, monthCalendar
 } from './logic.js';
 
 /** @typedef {import('./logic.js').Data} Data */
@@ -1029,12 +1030,16 @@ function setValue(ex, set, className = '') {
   return number;
 }
 
-function appendSetHistory(parent, ex, sets, highlight = false) {
+function appendSetHistory(parent, ex, sets, highlight = false, compact = false) {
   sets.forEach((set, index) => {
     const load = loadText(ex, set);
     const same = index > 0 && load === loadText(ex, sets[index - 1]);
-    if (index) parent.append(document.createTextNode(load && same ? '・' : ' ・ '));
-    if (load && !same) parent.append(document.createTextNode(load + ' '));
+    if (index) parent.append(document.createTextNode(
+      compact && (!load || same) ? '・' : load && same ? '・' : ' ・ '
+    ));
+    if (load && !same) {
+      parent.append(compact ? element('small', load) : document.createTextNode(load + ' '));
+    }
     parent.append(index === 0 && highlight
       ? element('b', String(value(ex, set)))
       : document.createTextNode(String(value(ex, set))));
@@ -1494,7 +1499,11 @@ function renderSummary() {
 
 function renderRecords() {
   const today = localDate(new Date());
-  view.append(element('h1', '記録', 'h1'));
+  const heading = element('div', '', 'rhead');
+  heading.append(element('h1', '記録', 'h1'));
+  if (recordsView === 'day') heading.append(action('＋ 過去の日', pastDay, 'pill add'));
+  view.append(heading);
+
   const segments = element('div', '', 'seg');
   for (const [kind, label] of [['exercise', '種目ごと'], ['day', '日ごと']]) {
     const button = action(label, () => {
@@ -1512,44 +1521,7 @@ function renderRecords() {
   }
   view.append(segments);
   if (recordsView === 'day') {
-    const quick = element('div', '', 'quick');
-    quick.style.marginTop = '10px';
-    quick.append(action('＋ 過去の日を記録', pastDay, 'pill'));
-    view.append(quick);
-    const dates = [...new Set([
-      ...state.sessions.filter(session => session.sets.length).map(session => session.date),
-      ...state.skips.map(skip => skip.date), ...state.body.map(entry => entry.date)
-    ])].sort((a, b) => b.localeCompare(a));
-    for (const date of dates) {
-      const sessions = state.sessions.filter(session => session.date === date);
-      const sets = sessions.flatMap(session => session.sets);
-      const ids = [...new Set(sets.map(set => set.exerciseId))];
-      const skips = state.skips.filter(skip => skip.date === date);
-      const body = state.body.find(entry => entry.date === date);
-      const row = action('', () => recordDay(date), 'day');
-      row.dataset.date = date;
-      const text = element('div');
-      const heading = element('p', dayLabel(date), 'd');
-      heading.append(element('small', ids.length ? ids.length + '種目' +
-        (skips.length ? '・休み' : sessions.some(session => session.light) ? '・軽め' : '') : skips.length ? '休み' : ''));
-      const detail = element('p');
-      for (const id of ids) {
-        const ex = state.exercises.find(ex => ex.id === id);
-        if (detail.childNodes.length) detail.append(element('br'));
-        detail.append(document.createTextNode(ex.name + ' '));
-        const numbers = element('b');
-        appendSetHistory(numbers, ex, sets.filter(set => set.exerciseId === id));
-        detail.append(numbers);
-      }
-      for (const skip of skips) {
-        if (detail.childNodes.length) detail.append(element('br'));
-        detail.append(document.createTextNode((ids.length ? '休み ' : '') + skip.reason));
-      }
-      if (!ids.length && !skips.length && body) detail.textContent = '体重 ' + body.kg.toFixed(1) + 'kg';
-      text.append(heading, detail);
-      row.append(text, element('span', '›', 'chev'));
-      view.append(row);
-    }
+    renderRecordDays(today);
     return;
   }
   if (!state.sessions.some(session => session.sets.length) && !state.body.length) {
@@ -1560,37 +1532,68 @@ function renderRecords() {
     return;
   }
 
+  function stat(parent, title, amount, unit = '', className = 'num', columnClass = '') {
+    const column = element('div', '', columnClass);
+    const number = element('p');
+    number.append(element('span', String(amount), className));
+    if (unit) number.append(element('small', unit));
+    column.append(element('small', title), number);
+    parent.append(column);
+  }
+
   view.append(bodyMapCard('map', weekStats(state, today).partSets));
   const recorded = new Set(state.sessions.flatMap(session => session.sets.map(set => set.exerciseId)));
   for (const ex of state.exercises.filter(ex => recorded.has(ex.id))) {
-    const row = action('', () => go('detail', { id: ex.id, from: 'records' }), 'rec icon');
-    row.dataset.exerciseId = ex.id;
-    const name = element('b', ex.name);
-    const load = history(state, ex.id, today).load;
-    const band = ex.type === 'band' ? state.bands.find(band => band.order === load) : null;
-    const latest = [...state.sessions].filter(session =>
-      session.sets.some(set => set.exerciseId === ex.id))
-      .sort((a, b) => b.date.localeCompare(a.date))[0];
-    const detail = element('small', (band ? band.name + ' ・ ' : '') +
-      '突破 ' + clearCount(state, ex.id) + '回 ・ 前回 ');
-    appendSetHistory(detail, ex, latest.sets.filter(set => set.exerciseId === ex.id));
-    name.append(detail);
-    const number = element('span', String(value(ex, firstSet(state, ex, latest))), 'num');
-    const target = line(state, ex.id, today);
-    if (target.value !== undefined) number.append(element('small', 'ライン ' + target.value));
-    row.append(partBadge(ex.part), name, miniChart(ex.id), number, element('span', '›', 'chev'));
-    view.append(row);
+    const entries = setHistory(state, ex.id);
+    const latest = entries.at(-1);
+    const sets = state.sessions.filter(session => session.date === latest.date)
+      .flatMap(session => session.sets.filter(set => set.exerciseId === ex.id));
+    const card = action('', () => go('detail', { id: ex.id, from: 'records' }), 'xc');
+    card.dataset.exerciseId = ex.id;
+    const header = element('div', '', 'xh');
+    header.append(partBadge(ex.part), element('b', ex.name), element('span', '›', 'chev'));
+    const stats = element('div', '', 'xs');
+    if (ex.type === 'weight') stat(stats, '負荷', latest.load, 'kg');
+    else stat(stats, '負荷', ex.type === 'band' ? loadText(ex, sets[0]) : '自重', '', 'jp');
+    stat(stats, '1セット目', latest.value, ex.type === 'time' ? '秒' : '回');
+    stat(stats, '次のライン', line(state, ex.id, today).value ?? '—', '', 'num', 'ln2');
+
+    const upPoints = loadUpPoints(state, ex.id);
+    const previous = element('p', '前回 ', 'xp');
+    appendSetHistory(previous, ex, sets);
+    const days = (Date.parse(today) - Date.parse(latest.date)) / 86400000;
+    previous.append(document.createTextNode(' ・ ' +
+      (days === 0 ? '今日' : days === 1 ? '昨日' : days + '日前')));
+    const clears = clearCount(state, ex.id);
+    if (clears) previous.append(document.createTextNode(' ・ 突破 ' + clears + '回'));
+    const delta = recordDelta(entries);
+    if (delta !== null && delta !== 0) {
+      previous.append(element('em', (delta > 0 ? '+' : '−') + Math.abs(delta) +
+        (ex.type === 'time' ? '秒' : '回')));
+    }
+    if (upPoints.some(point => point.date === latest.date)) {
+      previous.append(document.createTextNode(' ・ 負荷アップ'));
+    }
+    card.append(header, stats, recordSpark(entries, upPoints), previous);
+    view.append(card);
   }
+
   if (state.body.length) {
-    const latest = [...state.body].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
+    const entries = [...state.body].sort((a, b) => a.date.localeCompare(b.date));
     const average = bodyAvg7(state.body, today, 'kg');
-    const row = action('', () => go('detail', { id: 'body', from: 'records' }), 'rec');
-    row.dataset.exerciseId = 'body';
-    const name = element('b', '体重');
-    name.append(element('small', '7日平均 ' + (average === null ? '—' : average.toFixed(1)) + 'kg'));
-    row.append(name, miniChart('body'), element('span', latest.kg.toFixed(1), 'num'),
-      element('span', '›', 'chev'));
-    view.append(row);
+    const card = action('', () => go('detail', { id: 'body', from: 'records' }), 'xc');
+    card.dataset.exerciseId = 'body';
+    const header = element('div', '', 'xh');
+    header.style.gridTemplateColumns = '1fr 14px';
+    header.append(element('b', '体重'), element('span', '›', 'chev'));
+    const stats = element('div', '', 'xs');
+    stats.style.gridTemplateColumns = '1fr 1fr';
+    stat(stats, '最新', entries.at(-1).kg.toFixed(1), 'kg');
+    stat(stats, '7日平均', average === null ? '—' : average.toFixed(1));
+    card.append(header, stats, recordSpark(entries.map(entry => ({
+      date: entry.date, value: entry.kg
+    }))));
+    view.append(card);
   }
 
   const section = element('div', '', 'sec');
@@ -2671,13 +2674,12 @@ function partBadge(part) {
 }
 
 function bodyMapCard(kind, parts) {
-  const card = element('div', '', 'bm-card');
+  const card = element('div', '', kind === 'map' ? 'bm2' : 'bm-card');
   card.append(element('p', kind === 'map' ? '今週の部位（セット数）' : '今日きたえた部位', 'k'));
-  const map = element('div', '', 'bodymap');
+  const map = element('div', '', kind === 'map' ? 'figs' : 'bodymap');
   map.append(bodyFigure(kind, 'front', parts), bodyFigure(kind, 'back', parts));
   if (kind === 'map') {
-    const row = element('div', '', 'row2');
-    const legend = element('div', '', 'legend');
+    const legend = element('div', '', 'lg');
     const order = ['胸', '背中', '脚', '肩', '腕', '体幹'];
     const sorted = [...order].sort((a, b) =>
       (parts[b] ?? 0) - (parts[a] ?? 0) || order.indexOf(a) - order.indexOf(b));
@@ -2688,8 +2690,7 @@ function bodyMapCard(kind, parts) {
       item.append(element('b', String(count)));
       legend.append(item);
     }
-    row.append(map, legend);
-    card.append(row);
+    card.append(map, legend);
   } else {
     card.append(map);
   }
@@ -2713,4 +2714,109 @@ function emptyIllustration(coach = false) {
     <path d="M38 60c-6 10-6 22 0 32" stroke="#D03C22"/>
     ${coach ? '<path d="M98 22h30a6 6 0 0 1 6 6v14a6 6 0 0 1-6 6h-16l-8 7v-7h-6a6 6 0 0 1-6-6V28a6 6 0 0 1 6-6z"/>' : ''}</svg>`;
   return illustration;
+}
+
+function recordSpark(entries, ups = []) {
+  if (entries.length < 4) {
+    return element('p', '記録 ' + entries.length + '回 ・ 4回から線で伸びを描く', 'few');
+  }
+  const points = entries.slice(-12);
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'spark');
+  svg.setAttribute('viewBox', '0 0 300 44');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  function add(tag, attrs, text) {
+    const node = document.createElementNS(svg.namespaceURI, tag);
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
+    if (text !== undefined) node.textContent = text;
+    svg.append(node);
+  }
+  const min = Math.min(...points.map(point => point.value));
+  const max = Math.max(...points.map(point => point.value));
+  const x = index => 10 + index / (points.length - 1) * 280;
+  const y = point => min === max ? 27 : 36 - (point.value - min) / (max - min) * 18;
+  add('line', { x1: 0, y1: 34, x2: 300, y2: 34, class: 'grid' });
+  add('polyline', {
+    points: points.map((point, index) => x(index) + ',' + y(point)).join(' '),
+    class: 'ln3'
+  });
+  points.forEach((point, index) => {
+    const up = ups.find(up => up.date === point.date);
+    if (!up) return;
+    add('line', { x1: x(index), y1: 4, x2: x(index), y2: 42, class: 'up' });
+    const end = index === points.length - 1;
+    add('text', { x: x(index) + (end ? -4 : 4), y: 12,
+      'text-anchor': end ? 'end' : 'start' }, up.label);
+  });
+  add('circle', { cx: x(points.length - 1), cy: y(points.at(-1)), r: 4, class: 'pt' });
+  return svg;
+}
+
+function renderRecordDays(today) {
+  const month = monthCalendar(state, today);
+  const calendar = element('div', '', 'cal');
+  const heading = element('div', '', 'mh');
+  heading.append(element('b', month.year + '年' + month.month + '月'),
+    element('span', 'やった日 ' + month.done + ' ・ 休み ' + month.rest));
+  const grid = element('div', '', 'g');
+  for (const weekday of '月火水木金土日') grid.append(element('i', weekday, 'w'));
+  for (let i = 0; i < month.offset; i++) grid.append(element('i'));
+  for (const day of month.days) {
+    const cell = element('i', String(Number(day.date.slice(8))),
+      [day.mark, day.date === today ? 't' : ''].filter(Boolean).join(' '));
+    cell.dataset.date = day.date;
+    if (day.date === today) cell.setAttribute('aria-current', 'date');
+    grid.append(cell);
+  }
+  calendar.append(heading, grid);
+  view.append(calendar);
+
+  const dates = [...new Set([
+    ...state.sessions.filter(session => session.sets.length).map(session => session.date),
+    ...state.skips.map(skip => skip.date), ...state.body.map(entry => entry.date)
+  ])].sort((a, b) => b.localeCompare(a));
+  let previousMonth;
+  for (const date of dates) {
+    if (date.slice(0, 7) !== previousMonth) {
+      view.append(element('p', Number(date.slice(5, 7)) + '月', 'mo'));
+      previousMonth = date.slice(0, 7);
+    }
+    const sessions = state.sessions.filter(session => session.date === date);
+    const sets = sessions.flatMap(session => session.sets);
+    const ids = [...new Set(sets.map(set => set.exerciseId))];
+    const skips = state.skips.filter(skip => skip.date === date);
+    const body = state.body.find(entry => entry.date === date);
+    const day = new Date(date + 'T12:00:00');
+    const weekday = '日月火水木金土'[day.getDay()];
+    const row = action('', () => recordDay(date), ids.length ? 'dc' : 'rest');
+    row.dataset.date = date;
+    if (ids.length) {
+      const stamp = element('div', '', 'dd');
+      stamp.append(element('span', String(day.getDate()), 'num'), element('small', weekday));
+      const content = element('div');
+      content.append(element('div', ids.length + '種目 ・ ' + sets.length + 'セット' +
+        (sessions.some(session => session.light) ? ' ・ 軽め' : '') +
+        (skips.length ? ' ・ 休み' : ''), 'top'));
+      const list = element('ul');
+      for (const id of ids) {
+        const ex = state.exercises.find(ex => ex.id === id);
+        const item = element('li');
+        const numbers = element('span', '', 'v');
+        appendSetHistory(numbers, ex, sets.filter(set => set.exerciseId === id), false, true);
+        item.append(element('span', ex.name), numbers);
+        list.append(item);
+      }
+      content.append(list);
+      const note = sessions.find(session => session.note)?.note;
+      if (note) content.append(element('p', note.split(/\r?\n/)[0], 'memo'));
+      row.append(stamp, content);
+    } else {
+      row.append(element('span', String(day.getDate()), 'num'),
+        document.createTextNode(weekday + ' ・ ' + (skips.length
+          ? skips.map(skip => '休み（' + skip.reason + '）').join(' ・ ')
+          : '体重 ' + body.kg.toFixed(1) + 'kg')));
+    }
+    view.append(row);
+  }
 }

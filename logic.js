@@ -610,3 +610,44 @@ export function menuExercises(data, menu, today) {
   }
   return ids.filter(id => data.exercises.some(ex => ex.id === id));
 }
+
+export function recordDelta(entries) {
+  const latest = entries.at(-1);
+  if (!latest) return null;
+  const previous = entries.slice(0, -1).reverse().find(entry => entry.load === latest.load);
+  return previous ? latest.value - previous.value : null;
+}
+
+/** @param {Data} data */
+export function loadUpPoints(data, exerciseId) {
+  const ex = data.exercises.find(ex => ex.id === exerciseId);
+  const entries = setHistory(data, exerciseId);
+  return entries.flatMap((entry, index) => {
+    if (!index || entry.load <= entries[index - 1].load) return [];
+    const label = ex.type === 'weight'
+      ? '+' + Number((entry.load - entries[index - 1].load).toFixed(10)) + 'kg'
+      : data.bands.find(band => band.order === entry.load)?.name ?? 'なし';
+    return [{ date: entry.date, label }];
+  });
+}
+
+/** @param {Data} data @param {string} today */
+export function monthCalendar(data, today) {
+  const [year, month] = today.split('-').map(Number);
+  const first = today.slice(0, 7) + '-01';
+  const last = localDate(new Date(year, month, 0, 12));
+  const done = new Set(inRange(data.sessions, first, last)
+    .filter(session => session.sets.length).map(session => session.date));
+  const rest = new Set(inRange(data.skips, first, last)
+    .filter(skip => !done.has(skip.date)).map(skip => skip.date));
+  return {
+    year, month,
+    offset: (new Date(year, month - 1, 1, 12).getDay() + 6) % 7,
+    done: done.size,
+    rest: rest.size,
+    days: Array.from({ length: Number(last.slice(8)) }, (_, index) => {
+      const date = dateOffset(first, index);
+      return { date, mark: done.has(date) ? 'd' : rest.has(date) ? 'r' : '' };
+    })
+  };
+}

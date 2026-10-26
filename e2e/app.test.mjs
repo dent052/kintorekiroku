@@ -177,7 +177,7 @@ test('paper/slab principles hold on both phone sizes, modes, editors and open sh
     await leaveTraining(page);
     await tab(page, '記録').click();
     await principles(page);
-    await page.locator('.rec').first().click();
+    await page.locator('.xc').first().click();
     await principles(page);
     await page.getByRole('button', { name: '‹ 記録', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'records');
@@ -212,7 +212,6 @@ test('paper/slab principles hold on both phone sizes, modes, editors and open sh
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('today lines follow menuExercises and line, including custom and template selection', async () => {
   const data = fixture();
   const { page, errors, close } = await open({ data });
@@ -425,7 +424,7 @@ test('only training responds to horizontal swipes', async () => {
     }
   }
   await tab(page, '記録').click();
-  await page.locator('.rec').first().click();
+  await page.locator('.xc').first().click();
   const name = await page.textContent('.exname');
   for (const dx of [-100, 100]) {
     await swipe(page, dx);
@@ -448,7 +447,6 @@ test('only training responds to horizontal swipes', async () => {
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('training home preserves exercise, set, input and rest for resume', async () => {
   const { page, errors, close } = await open({ data: fixture() });
   await page.clock.install();
@@ -511,7 +509,7 @@ test('back first closes a sheet on home, records and settings', async () => {
   assert.equal(await page.getAttribute('.app', 'data-mode'), 'today');
   await tab(page, '記録').click();
   await page.locator('.seg').getByRole('button', { name: '日ごと', exact: true }).click();
-  await pill(page, '＋ 過去の日を記録').click();
+  await pill(page, '＋ 過去の日').click();
   await page.evaluate(() => window.history.back());
   await page.waitForFunction(() => document.querySelectorAll('dialog[open]').length === 0);
   assert.equal(await page.getAttribute('.app', 'data-mode'), 'records');
@@ -528,7 +526,6 @@ test('back first closes a sheet on home, records and settings', async () => {
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('home quick actions open their sheets and light start uses one set per exercise', async () => {
   const data = fixture();
   const { page, errors, close } = await open({ data });
@@ -1114,28 +1111,29 @@ test('records list, actual daily chart, stats, load colors and twelve-week heat 
   await tab(page, '記録').click();
   assert.equal(await page.textContent('.h1'), '記録');
   const recorded = new Set(data.sessions.flatMap(session => session.sets.map(set => set.exerciseId)));
-  assert.deepEqual(await page.locator('.rec').evaluateAll(rows => rows.map(row => row.dataset.exerciseId)),
+  assert.deepEqual(await page.locator('.xc').evaluateAll(rows => rows.map(row => row.dataset.exerciseId)),
     [...data.exercises.filter(ex => recorded.has(ex.id)).map(ex => ex.id), 'body']);
   const today = localDate(new Date());
   for (const ex of data.exercises.filter(ex => recorded.has(ex.id))) {
-    const row = page.locator('.rec[data-exercise-id="' + ex.id + '"]');
+    const row = page.locator('.xc[data-exercise-id="' + ex.id + '"]');
     const latest = [...data.sessions].filter(session =>
       session.sets.some(set => set.exerciseId === ex.id))
       .sort((a, b) => b.date.localeCompare(a.date))[0];
     const first = latest.sets.find(set => set.exerciseId === ex.id);
     const target = line(data, ex.id, today);
-    assert.equal(await row.locator('.num').evaluate(node => node.firstChild.textContent), String(value(ex, first)));
-    assert.deepEqual(await row.locator('.num small').allTextContents(),
-      target.value === undefined ? [] : ['ライン ' + target.value]);
-    const text = await row.locator('b small').textContent();
-    assert.ok(text.includes('突破 ' + clearCount(data, ex.id) + '回 ・ 前回 '));
+    assert.equal(await row.locator('.xs > div').nth(1).locator('.num').textContent(),
+      String(value(ex, first)));
+    assert.equal(await row.locator('.ln2 .num').textContent(), String(target.value ?? '—'));
+    const text = await row.locator('.xp').textContent();
+    const clears = clearCount(data, ex.id);
+    assert.equal(text.includes('突破 ' + clears + '回'), clears > 0);
     assert.ok(!text.includes('累計'));
     const sets = data.sessions.at(-1).sets.filter(set => set.exerciseId === ex.id);
     const expected = ex.type === 'band'
       ? '黒 ' + sets.map(set => set.reps).join('・')
       : sets.map(set => ex.type === 'time' ? set.sec : set.reps).join(' ・ ') +
         (ex.type === 'time' ? '秒' : '');
-    assert.ok(text.endsWith(expected));
+    assert.ok(text.startsWith('前回 ' + expected + ' ・ '));
   }
   assert.equal(await page.locator('.heat i').count(), 12);
   assert.deepEqual(await page.locator('.heat i').evaluateAll(cells =>
@@ -1143,7 +1141,7 @@ test('records list, actual daily chart, stats, load colors and twelve-week heat 
   assert.equal(await page.locator('.press').evaluate(dock => dock.getBoundingClientRect().height), 0);
 
   for (const id of ['e1', 'e2', 'e3']) {
-    await page.locator('.rec[data-exercise-id="' + id + '"]').click();
+    await page.locator('.xc[data-exercise-id="' + id + '"]').click();
     const ex = data.exercises.find(ex => ex.id === id);
     const points = setHistory(data, id);
     const amounts = points.flatMap(point => [point.value, ...point.others]);
@@ -1221,7 +1219,6 @@ test('records list, actual daily chart, stats, load colors and twelve-week heat 
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('body item shows daily points, seven-day average and four-week difference', async () => {
   const data = fixture();
   const { page, errors, close } = await open({ data });
@@ -1231,12 +1228,13 @@ test('body item shows daily points, seven-day average and four-week difference',
   previous.setDate(previous.getDate() - 28);
   const average = bodyAvg7(data.body, today, 'kg');
   const delta = average - bodyAvg7(data.body, localDate(previous), 'kg');
-  const row = page.locator('.rec[data-exercise-id=body]');
-  assert.equal(await row.locator('.num').textContent(), data.body.at(-1).kg.toFixed(1));
-  assert.equal(await row.locator('small').textContent(), '7日平均 ' + average.toFixed(1) + 'kg');
-  assert.match(await row.locator('.mini path').getAttribute('d'), /L/);
-  assert.equal((await row.locator('.mini path').getAttribute('d')).match(/L/g).length,
-    Math.min(8, data.body.length) - 1);
+  const row = page.locator('.xc[data-exercise-id=body]');
+  assert.deepEqual(await row.locator('.xs .num').allTextContents(),
+    [data.body.at(-1).kg.toFixed(1), average.toFixed(1)]);
+  assert.deepEqual(await row.locator('.xs > div > small').allTextContents(), ['最新', '7日平均']);
+  assert.equal(await row.locator('.pi').count(), 0);
+  assert.equal((await row.locator('.spark polyline').getAttribute('points')).split(' ').length,
+    Math.min(12, data.body.length));
   await row.click();
   assert.deepEqual(await page.locator('.stat .k').allTextContents(),
     ['最新', '7日平均', '4週間前との差']);
@@ -1253,7 +1251,6 @@ test('body item shows daily points, seven-day average and four-week difference',
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('one actual first set is drawn as a point and has no miniature line', async () => {
   const data = fixture();
   data.sessions = [data.sessions[0]];
@@ -1261,7 +1258,10 @@ test('one actual first set is drawn as a point and has no miniature line', async
   const { page, errors, close } = await open({ data });
   assert.equal(await page.locator('.ln[data-exercise-id=e1] .mini path').count(), 0);
   await tab(page, '記録').click();
-  await page.locator('.rec[data-exercise-id=e1]').click();
+  const card = page.locator('.xc[data-exercise-id=e1]');
+  assert.equal(await card.locator('.few').textContent(), '記録 1回 ・ 4回から線で伸びを描く');
+  assert.equal(await card.locator('.spark').count(), 0);
+  await card.click();
   assert.equal(await page.locator('.chart circle.first').count(), 1);
   assert.equal(await page.locator('.chart circle.other').count(), 2);
   assert.equal(await page.locator('.chart path').count(), 0);
@@ -1270,7 +1270,6 @@ test('one actual first set is drawn as a point and has no miniature line', async
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('records empty state keeps its explanation while unread posts belong to the coach tab', async () => {
   const data = fixture();
   data.sessions = [];
@@ -1306,7 +1305,7 @@ test('day sheets edit sets and notes, delete and undo sets, and confirm session 
   await page.locator('.seg').getByRole('button', { name: '日ごと', exact: true }).click();
   for (const size of [{ width: 390, height: 844 }, { width: 360, height: 640 }]) {
     await page.setViewportSize(size);
-    await page.locator('.day[data-date="' + date + '"]').click();
+    await page.locator('.dc[data-date="' + date + '"]').click();
     const token = await page.evaluate(() => window.history.state.sheet);
     await principles(page);
     await sheet(page).locator('.row').first().click();
@@ -1320,7 +1319,7 @@ test('day sheets edit sets and notes, delete and undo sets, and confirm session 
     await sheet(page).getByLabel('メモ', { exact: true }).fill('今日は軽い');
     await closeSheet(page);
   }
-  await page.locator('.day[data-date="' + date + '"]').click();
+  await page.locator('.dc[data-date="' + date + '"]').click();
   assert.equal(await sheet(page).getByLabel('メモ', { exact: true }).inputValue(), '今日は軽い');
   const before = (await stored(page)).sessions.find(s => s.date === date).sets;
   await sheet(page).locator('.row').first().click();
@@ -1342,7 +1341,6 @@ test('day sheets edit sets and notes, delete and undo sets, and confirm session 
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('coach timeline shows the same posts in time order and marks them read', async () => {
   const posts = [
     { id: 'older-reply', at: '2098-01-01', kind: 'reply', text: '返事', quote: 'メモ' },
@@ -1491,7 +1489,7 @@ test('records day rows edit in the same sheet, restore positions and expire inli
   const { page, errors, close } = await open({ data });
   await page.clock.install();
   await tab(page, '記録').click();
-  await page.locator('.rec[data-exercise-id=e1]').click();
+  await page.locator('.xc[data-exercise-id=e1]').click();
   await page.locator('.hist .r[data-date="' + date + '"]').click();
   const token = await page.evaluate(() => window.history.state.sheet);
   assert.equal(await sheet(page).locator('.row').count(), 3);
@@ -1530,7 +1528,6 @@ test('records day rows edit in the same sheet, restore positions and expire inli
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('deleting the only set removes the empty session and undo restores its position', async () => {
   const data = fixture();
   const date = data.sessions.at(-1).date;
@@ -1538,7 +1535,7 @@ test('deleting the only set removes the empty session and undo restores its posi
   const original = structuredClone(data.sessions);
   const { page, errors, close } = await open({ data });
   await tab(page, '記録').click();
-  await page.locator('.rec[data-exercise-id=e1]').click();
+  await page.locator('.xc[data-exercise-id=e1]').click();
   await page.locator('.hist .r[data-date="' + date + '"]').click();
   await sheet(page).locator('.row').click();
   await sheet(page).getByRole('button', { name: 'このセットを消す', exact: true }).click();
@@ -1551,7 +1548,6 @@ test('deleting the only set removes the empty session and undo restores its posi
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('band and weight edits save loads and history groups values by load', async () => {
   const data = fixture();
   const date = data.sessions.at(-1).date;
@@ -1569,7 +1565,7 @@ test('band and weight edits save loads and history groups values by load', async
   assert.equal((await stored(page)).sessions.at(-1).sets[0].bandId, 'r');
   await leaveTraining(page);
   await tab(page, '記録').click();
-  await page.locator('.rec[data-exercise-id=e2]').click();
+  await page.locator('.xc[data-exercise-id=e2]').click();
   await page.locator('.hist .r[data-date="' + date + '"]').click();
   await sheet(page).locator('.row').first().click();
   await sheet(page).getByRole('button', { name: '赤', exact: true }).click();
@@ -1603,7 +1599,6 @@ test('band and weight edits save loads and history groups values by load', async
   assert.deepEqual(weight.errors, []);
   await weight.close();
 });
-
 test('up suggests the next band without changing the load and compares completed values factually', async () => {
   for (const diff of [-1, 0, 1]) {
     const data = fixture();
@@ -1678,14 +1673,13 @@ test('changing the first-set load gives a new-load result and is excluded from b
     await press(page, 'ホームへ').click();
     await page.waitForFunction(() => document.querySelector('.app').dataset.mode === 'today');
     await tab(page, '記録').click();
-    await page.locator('.rec[data-exercise-id=e2]').click();
+    await page.locator('.xc[data-exercise-id=e2]').click();
     const today = localDate(new Date());
     assert.equal(await page.locator('.hist .r[data-date="' + today + '"] .v b').count(), 0);
     assert.deepEqual(errors, []);
     await close();
   }
 });
-
 test('a short first-set verdict shows the next-day line instead of a carry-forward message', async () => {
   const data = fixture();
   const { page, errors, close } = await open({ data });
@@ -1830,7 +1824,7 @@ test('failed set edits and deletions keep the current sheet and saved record unt
       await page.locator('.sets .done').click();
     } else {
       await tab(page, '記録').click();
-      await page.locator('.rec[data-exercise-id=e1]').click();
+      await page.locator('.xc[data-exercise-id=e1]').click();
       await page.locator('.hist .r').first().click();
       await sheet(page).locator('.row').first().click();
     }
@@ -1866,7 +1860,6 @@ test('failed set edits and deletions keep the current sheet and saved record unt
     await close();
   }
 });
-
 test('direct counters select all, clamp on Enter, commit on blur and cancel on Escape', async () => {
   const { page, errors, close } = await open({ data: fixture() });
   await press(page, '始める').click();
@@ -1960,15 +1953,20 @@ test('by-day records include training, light, rest and body-only dates and remem
   await page.locator('.seg').getByRole('button', { name: '日ごと', exact: true }).click();
   const expected = [...new Set([...data.sessions.map(s => s.date),
     ...data.skips.map(s => s.date), ...data.body.map(b => b.date)])].sort().reverse();
-  assert.deepEqual(await page.locator('.day').evaluateAll(rows => rows.map(row => row.dataset.date)), expected);
-  const latest = page.locator('.day[data-date="' + data.sessions.at(-1).date + '"]');
-  assert.match(await latest.textContent(), /3種目・軽め.*腕立て伏せ.*バンドロウ 黒.*プランク.*秒/s);
-  const restRow = page.locator('.day[data-date="' + data.skips[0].date + '"]');
-  assert.equal(await restRow.locator('.d small').textContent(), '3種目・休み');
-  assert.equal(await restRow.locator('p').last().evaluate(node =>
-    node.innerText.split('\n').at(-1)), '休み 風邪');
-  const bodyRow = page.locator('.day[data-date="' + bodyOnly.date + '"]');
-  assert.equal(await bodyRow.locator('p').last().textContent(), '体重 67.8kg');
+  assert.deepEqual(await page.locator('.dc, .rest').evaluateAll(rows => rows.map(row => row.dataset.date)), expected);
+  const latest = page.locator('.dc[data-date="' + data.sessions.at(-1).date + '"]');
+  assert.equal(await latest.locator('.top').textContent(), '3種目 ・ 6セット ・ 軽め');
+  assert.deepEqual(await latest.locator('li > span:first-child').allTextContents(),
+    ['腕立て伏せ', 'バンドロウ', 'プランク']);
+  assert.equal(await latest.locator('li .v small').textContent(), '黒');
+  assert.match(await latest.locator('li .v').last().textContent(), /秒$/);
+  const restRow = page.locator('.dc[data-date="' + data.skips[0].date + '"]');
+  assert.equal(await restRow.locator('.top').textContent(), '3種目 ・ 6セット ・ 休み');
+  await restRow.click();
+  assert.ok((await sheet(page).textContent()).includes('休み（風邪）'));
+  await closeSheet(page);
+  const bodyRow = page.locator('.rest[data-date="' + bodyOnly.date + '"]');
+  assert.ok((await bodyRow.textContent()).endsWith('体重 67.8kg'));
   assert.equal((await stored(page)).body.find(entry => entry.date === bodyOnly.date).kg, 67.83);
   await bodyRow.click();
   assert.ok((await sheet(page).textContent()).includes('体重 67.8kg'));
@@ -1978,21 +1976,20 @@ test('by-day records include training, light, rest and body-only dates and remem
   await page.reload();
   await tab(page, '記録').click();
   assert.equal(await page.locator('.seg .on').textContent(), '日ごと');
-  assert.equal(await page.locator('.day').count(), expected.length);
+  assert.equal(await page.locator('.dc, .rest').count(), expected.length);
   await page.locator('.seg').getByRole('button', { name: '種目ごと', exact: true }).click();
   assert.equal(await page.locator('.heat i').count(), 12);
-  assert.ok(await page.locator('.rec').count());
+  assert.ok(await page.locator('.xc').count());
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('past-day entry creates no empty session and adds, edits and repeats sets on that date', async () => {
   const data = fixture();
   data.sessions = [];
   const { page, errors, close } = await open({ data });
   await tab(page, '記録').click();
   await page.locator('.seg').getByRole('button', { name: '日ごと', exact: true }).click();
-  await pill(page, '＋ 過去の日を記録').click();
+  await pill(page, '＋ 過去の日').click();
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const date = localDate(yesterday);
@@ -2022,19 +2019,18 @@ test('past-day entry creates no empty session and adds, edits and repeats sets o
   await sheet(page).getByRole('button', { name: '保存', exact: true }).click();
   assert.deepEqual((await stored(page)).sessions[0].sets.map(set => set.reps), [23, 17]);
   await closeSheet(page);
-  assert.match(await page.locator('.day[data-date="' + date + '"]').textContent(), /23 ・ 17/);
+  assert.equal(await page.locator('.dc[data-date="' + date + '"] li .v').textContent(), '23・17');
   await principles(page);
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('failed past-day additions keep the picker open and create no session', async () => {
   const data = fixture();
   data.sessions = [];
   const { page, errors, close } = await open({ data });
   await tab(page, '記録').click();
   await page.locator('.seg').getByRole('button', { name: '日ごと', exact: true }).click();
-  await pill(page, '＋ 過去の日を記録').click();
+  await pill(page, '＋ 過去の日').click();
   await sheet(page).getByRole('button', { name: '決定', exact: true }).click();
   await sheet(page).getByRole('button', { name: '＋ 種目を足す', exact: true }).click();
   await page.evaluate(() => {
@@ -2055,7 +2051,6 @@ test('failed past-day additions keep the picker open and create no session', asy
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('body rows fill the paper, edit kg while retaining waist, delete without confirmation and undo', async () => {
   const data = fixture();
   const original = structuredClone(data.body);
@@ -2063,7 +2058,7 @@ test('body rows fill the paper, edit kg while retaining waist, delete without co
   const { page, errors, close } = await open({ data });
   await page.setViewportSize({ width: 360, height: 760 });
   await tab(page, '記録').click();
-  await page.locator('.rec[data-exercise-id=body]').click();
+  await page.locator('.xc[data-exercise-id=body]').click();
   assert.deepEqual(await page.locator('.bl').evaluateAll(rows => rows.map(row => row.dataset.date)),
     data.body.map(entry => entry.date).sort().reverse());
   const bounds = await page.locator('.hist').evaluate(list => {
@@ -2103,7 +2098,6 @@ test('body rows fill the paper, edit kg while retaining waist, delete without co
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('summary shows each exercise and its actual previous sets, PR badges and first-time copy', async () => {
   const data = fixture();
   const { page, errors, close } = await open({ data,
@@ -2590,7 +2584,7 @@ test('part badges and training figures highlight each part with the matching fro
   }
   await tab(page, '記録').click();
   for (const ex of data.exercises) {
-    await checkFigure(page.locator('.rec[data-exercise-id="' + ex.id + '"] > .pi svg'), ex.part);
+    await checkFigure(page.locator('.xc[data-exercise-id="' + ex.id + '"] .xh > .pi svg'), ex.part);
   }
   await principles(page);
   await home(page);
@@ -2611,7 +2605,6 @@ test('part badges and training figures highlight each part with the matching fro
   assert.deepEqual(errors, []);
   await close();
 });
-
 test('weekly part legend counts recorded sets, sorts ties and keeps whole body last only when positive', async () => {
   const now = new Date('2026-10-23T12:00:00Z');
   const parts = ['胸', '背中', '脚', '肩', '腕', '体幹', '全身'];
@@ -2635,13 +2628,13 @@ test('weekly part legend counts recorded sets, sorts ties and keeps whole body l
     await page.clock.setFixedTime(now);
     await page.reload();
     await tab(page, '記録').click();
-    assert.equal(await page.locator('.seg + .bm-card > .k').textContent(), '今週の部位（セット数）');
+    assert.equal(await page.locator('.seg + .bm2 > .k').textContent(), '今週の部位（セット数）');
     const expected = Object.fromEntries(parts.map(part => [part, 0]));
     for (const session of data.sessions.filter(session =>
       session.date >= '2026-10-19' && session.date <= '2026-10-25')) {
       for (const set of session.sets) expected[data.exercises.find(ex => ex.id === set.exerciseId).part]++;
     }
-    const legend = await page.locator('.legend > span').evaluateAll(nodes => nodes.map(node => ({
+    const legend = await page.locator('.bm2 .lg > span').evaluateAll(nodes => nodes.map(node => ({
       part: node.firstChild.textContent, count: Number(node.querySelector('b').textContent),
       low: node.classList.contains('low'), color: getComputedStyle(node).color
     })));
@@ -2652,24 +2645,26 @@ test('weekly part legend counts recorded sets, sorts ties and keeps whole body l
       assert.equal(row.low, expected[row.part] === 0);
       if (row.low) assert.equal(row.color, 'rgb(208, 60, 34)');
     }
-    for (const region of await page.locator('.bodymap [data-part]').evaluateAll(nodes =>
+    for (const region of await page.locator('.bm2 .figs [data-part]').evaluateAll(nodes =>
       nodes.map(node => ({ part: node.dataset.part, fill: node.getAttribute('fill') })))) {
       const count = expected[region.part];
       assert.equal(region.fill, count >= 10 ? '#1C2B4B' : count >= 6 ? '#4A5C82' :
         count >= 1 ? '#8FA0BF' : '#DDE2EA');
     }
-    assert.deepEqual(await page.locator('.bodymap svg').evaluateAll(nodes =>
+    assert.deepEqual(await page.locator('.bm2 .figs svg').evaluateAll(nodes =>
       nodes.map(node => [node.dataset.view, node.getAttribute('aria-hidden')])),
       [['front', 'true'], ['back', 'true']]);
+    assert.deepEqual(await page.locator('.bm2 .figs svg').evaluateAll(nodes =>
+      nodes.map(node => [node.getBoundingClientRect().width, node.getBoundingClientRect().height])),
+      [[38, 60], [38, 60]]);
     await principles(page);
     await page.locator('.seg').getByRole('button', { name: '日ごと', exact: true }).click();
-    assert.equal(await page.locator('.bm-card').count(), 0);
+    assert.equal(await page.locator('.bm2').count(), 0);
     assert.deepEqual((await stored(page)).sessions, data.sessions);
     assert.deepEqual(errors, []);
     await close();
   }
 });
-
 test('summary stamps only cleared first sets and maps only parts recorded today', async () => {
   const data = fixture();
   data.exercises.push({ id: 'legs', name: '脚の種目', type: 'reps', part: '脚', archived: false });
@@ -2775,6 +2770,249 @@ test('empty coach and records show decorative line art without a weekly map', as
       await page.setViewportSize(size);
       await principles(page);
     }
+  }
+  assert.deepEqual(await stored(page), data);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('recordDelta compares the latest first set with the nearest earlier day at the same load', async () => {
+  const { recordDelta } = await import('../logic.js');
+  const entries = [
+    { date: '2026-10-20', value: 10, load: 5 },
+    { date: '2026-10-21', value: 15, load: 5 },
+    { date: '2026-10-22', value: 100, load: 6 },
+    { date: '2026-10-23', value: 14, load: 5 }
+  ];
+  const before = structuredClone(entries);
+  assert.equal(recordDelta(entries), -1);
+  assert.equal(recordDelta([...entries, { date: '2026-10-24', value: 16, load: 5 }]), 2);
+  assert.equal(recordDelta([...entries, { date: '2026-10-24', value: 14, load: 5 }]), 0);
+  assert.equal(recordDelta([]), null);
+  assert.equal(recordDelta(entries.slice(0, 1)), null);
+  assert.equal(recordDelta(entries.slice(1, 3)), null);
+  assert.equal(recordDelta([{ value: 0, load: 0 }, { value: 5, load: 0 }]), 5);
+  assert.deepEqual(entries, before);
+});
+
+test('loadUpPoints compares adjacent recorded days including light and mixed-load days', async () => {
+  const { loadUpPoints } = await import('../logic.js');
+  for (const type of ['weight', 'band', 'reps', 'time']) {
+    const data = fixture();
+    data.exercises = [{ ...data.exercises[0], type, nextId: null }];
+    data.bands = [{ id: 'a', name: 'Light', order: 1 }, { id: 'b', name: 'Heavy', order: 2 }];
+    const loads = [1, 1, 2, 1, 2];
+    data.sessions = loads.map((amount, index) => ({
+      id: 's' + index, date: '2026-10-' + (20 + index), light: index === 2, note: '',
+      sets: [
+        { exerciseId: 'e1', reps: 10 + index, sec: 30 + index,
+          kg: amount / 10, bandId: amount === 1 ? 'a' : 'b' },
+        { exerciseId: 'e1', reps: 99, sec: 99, kg: 500, bandId: 'b' }
+      ]
+    }));
+    const before = structuredClone(data);
+    assert.deepEqual(loadUpPoints(data, 'e1'), type === 'weight' || type === 'band' ? [
+      { date: '2026-10-22', label: type === 'weight' ? '+0.1kg' : 'Heavy' },
+      { date: '2026-10-24', label: type === 'weight' ? '+0.1kg' : 'Heavy' }
+    ] : []);
+    assert.deepEqual(data, before);
+    data.sessions = [];
+    assert.deepEqual(loadUpPoints(data, 'e1'), []);
+  }
+});
+
+test('monthCalendar counts distinct set days and rest-only days with Monday alignment', async () => {
+  const { monthCalendar } = await import('../logic.js');
+  const data = fixture();
+  const set = { exerciseId: 'e1', reps: 0 };
+  data.sessions = [
+    { date: '2026-10-01', light: false, sets: [set] },
+    { date: '2026-10-01', light: true, sets: [set] },
+    { date: '2026-10-26', light: true, sets: [set] },
+    { date: '2026-10-27', light: false, sets: [] },
+    { date: '2026-09-30', light: false, sets: [set] },
+    { date: '2026-11-01', light: false, sets: [set] }
+  ];
+  data.skips = [
+    { date: '2026-10-01', reason: '疲れ' },
+    { date: '2026-10-22', reason: '予定' },
+    { date: '2026-10-22', reason: '予定' },
+    { date: '2026-10-27', reason: 'その他' },
+    { date: '2026-09-30', reason: '予定' }
+  ];
+  data.body = [{ date: '2026-10-23', kg: 68, waist: null }];
+  const before = structuredClone(data);
+  const month = monthCalendar(data, '2026-10-26');
+  assert.deepEqual([month.year, month.month, month.offset, month.done, month.rest],
+    [2026, 10, 3, 2, 2]);
+  assert.equal(month.days.length, 31);
+  assert.deepEqual(month.days.filter(day => day.mark), [
+    { date: '2026-10-01', mark: 'd' },
+    { date: '2026-10-22', mark: 'r' },
+    { date: '2026-10-26', mark: 'd' },
+    { date: '2026-10-27', mark: 'r' }
+  ]);
+  assert.deepEqual(data, before);
+  assert.equal(monthCalendar(data, '2028-02-29').days.length, 29);
+  const january = monthCalendar(data, '2027-01-01');
+  assert.deepEqual([january.offset, january.done, january.rest], [4, 0, 0]);
+  assert.equal(january.days[0].date, '2027-01-01');
+  assert.equal(january.days.at(-1).date, '2027-01-31');
+  assert.equal(monthCalendar(data, '2026-06-01').offset, 0);
+});
+
+test('exercise cards show actual loads, first sets, lines, deltas and load-up markers for all types', async () => {
+  const now = new Date('2026-10-26T12:00:00Z');
+  const data = fixture(now);
+  data.exercises = [
+    { id: 'w', name: '重りの種目', type: 'weight', part: '胸', archived: false },
+    { id: 'b', name: 'バンドの種目', type: 'band', part: '背中', archived: false },
+    { id: 'r', name: '自重の種目', type: 'reps', part: '脚', archived: false },
+    { id: 't', name: '時間の種目', type: 'time', part: '体幹', archived: false }
+  ];
+  data.bands = [{ id: 'light', name: 'Light', order: 1 }, { id: 'heavy', name: 'Heavy', order: 2 }];
+  data.body = [];
+  data.skips = [];
+  data.sessions = Array.from({ length: 14 }, (_, index) => ({
+    id: 's' + index, date: '2026-10-' + (13 + index), light: index === 13, note: '',
+    sets: data.exercises.flatMap(ex => [
+      { exerciseId: ex.id, reps: index === 13 ? 13 : index === 12 ? 11 : 10,
+        sec: index === 13 ? 29 : 30, kg: index >= 2 ? 15 : 10,
+        bandId: index >= 2 ? 'heavy' : 'light' },
+      { exerciseId: ex.id, reps: 99, sec: 99, kg: 100, bandId: 'heavy' }
+    ])
+  }));
+  const { page, errors, close } = await open({ data });
+  await page.clock.install({ time: now });
+  await page.clock.setFixedTime(now);
+  await page.reload();
+  await tab(page, '記録').click();
+  for (const ex of data.exercises) {
+    const card = page.locator('.xc[data-exercise-id="' + ex.id + '"]');
+    assert.equal(await card.locator('.xh b').textContent(), ex.name);
+    assert.deepEqual(await card.locator('.xs > div > small').allTextContents(),
+      ['負荷', '1セット目', '次のライン']);
+    assert.equal(await card.locator('.xs > div').first().locator('p').textContent(),
+      ex.type === 'weight' ? '15kg' : ex.type === 'band' ? 'Heavy' : '自重');
+    assert.equal(await card.locator('.xs > div').nth(1).locator('p').textContent(),
+      ex.type === 'time' ? '29秒' : '13回');
+    assert.equal(await card.locator('.ln2 .num').textContent(),
+      String(line(data, ex.id, '2026-10-26').value ?? '—'));
+    assert.equal(await card.locator('.xp em').textContent(), ex.type === 'time' ? '−1秒' : '+2回');
+    assert.ok((await card.locator('.xp').textContent()).includes(' ・ 今日'));
+    const values = setHistory(data, ex.id).slice(-12).map(entry => entry.value);
+    const points = (await card.locator('.spark polyline').getAttribute('points'))
+      .split(' ').map(point => point.split(',').map(Number));
+    assert.equal(points.length, 12);
+    assert.ok(points[0][1] > points.at(-1)[1] || ex.type === 'time');
+    for (let i = 1; i < points.length; i++) {
+      if (values[i] === values[i - 1]) assert.equal(points[i][1], points[i - 1][1]);
+      if (values[i] > values[i - 1]) assert.ok(points[i][1] < points[i - 1][1]);
+      if (values[i] < values[i - 1]) assert.ok(points[i][1] > points[i - 1][1]);
+    }
+    assert.deepEqual(await card.locator('.spark .pt').evaluate(node =>
+      [Number(node.getAttribute('cx')), Number(node.getAttribute('cy'))]), points.at(-1));
+    assert.deepEqual(await card.locator('.spark text').allTextContents(),
+      ex.type === 'weight' ? ['+5kg'] : ex.type === 'band' ? ['Heavy'] : []);
+    assert.equal(await card.locator('.spark line.up').count(),
+      ex.type === 'weight' || ex.type === 'band' ? 1 : 0);
+  }
+  for (const size of [{ width: 390, height: 844 }, { width: 360, height: 640 }]) {
+    await page.setViewportSize(size);
+    await principles(page);
+    assert.equal(await page.locator('.see').evaluate(node => node.scrollWidth > node.clientWidth), false);
+  }
+  assert.deepEqual(await stored(page), data);
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+test('sparse exercise and body cards show counts without lines and omit absent deltas', async () => {
+  const now = new Date('2026-10-26T12:00:00Z');
+  for (const count of [1, 2, 3]) {
+    const data = fixture(now);
+    data.sessions = Array.from({ length: count }, (_, index) => ({
+      id: 's' + index, date: '2026-10-' + (24 + index), light: false, note: '',
+      sets: [{ exerciseId: 'e1', reps: 0 }]
+    }));
+    data.body = data.sessions.map(session => ({ date: session.date, kg: 68, waist: null }));
+    data.skips = [];
+    const { page, errors, close } = await open({ data });
+    await page.clock.install({ time: now });
+    await page.clock.setFixedTime(now);
+    await page.reload();
+    await tab(page, '記録').click();
+    assert.deepEqual(await page.locator('.xc .few').allTextContents(),
+      Array(2).fill('記録 ' + count + '回 ・ 4回から線で伸びを描く'));
+    assert.equal(await page.locator('.xc .spark, .xc .xp em').count(), 0);
+    const body = page.locator('.xc[data-exercise-id=body]');
+    assert.equal(await body.locator('.xh .pi').count(), 0);
+    assert.deepEqual(await body.locator('.xs > div').evaluateAll(nodes =>
+      nodes.map(node => node.getBoundingClientRect().width)).then(widths =>
+        widths.map(width => Math.round(width))), [158, 158]);
+    await principles(page);
+    assert.deepEqual(errors, []);
+    await close();
+  }
+});
+
+test('day calendar and cards preserve counts, values, month groups, memos and sheet navigation', async () => {
+  const now = new Date('2026-10-26T12:00:00Z');
+  const data = fixture(now);
+  data.exercises[0].type = 'weight';
+  data.sessions = [
+    { id: 'old', date: '2026-09-30', light: false, note: '',
+      sets: [{ exerciseId: 'e1', reps: 8, kg: 10 }] },
+    { id: 'today', date: '2026-10-26', light: true, note: '最初の行\n次の行', sets: [
+      { exerciseId: 'e1', reps: 13, kg: 15 }, { exerciseId: 'e1', reps: 10, kg: 15 },
+      { exerciseId: 'e1', reps: 7, kg: 10 }, { exerciseId: 'e2', reps: 12, bandId: 'k' },
+      { exerciseId: 'e3', sec: 30 }
+    ] }
+  ];
+  data.skips = [{ date: '2026-10-26', reason: '疲れ' }, { date: '2026-10-22', reason: '予定' }];
+  data.body = [{ date: '2026-10-23', kg: 68.2, waist: null }];
+  const { page, errors, close } = await open({ data });
+  await page.clock.install({ time: now });
+  await page.clock.setFixedTime(now);
+  await page.reload();
+  await tab(page, '記録').click();
+  await page.locator('.seg').getByRole('button', { name: '日ごと', exact: true }).click();
+  assert.equal(await page.locator('.rhead .pill.add').textContent(), '＋ 過去の日');
+  assert.equal(await page.locator('.see > .quick').count(), 0);
+  assert.equal(await page.locator('.cal .mh b').textContent(), '2026年10月');
+  assert.equal(await page.locator('.cal .mh span').textContent(), 'やった日 1 ・ 休み 1');
+  assert.deepEqual(await page.locator('.cal .w').allTextContents(), [...'月火水木金土日']);
+  assert.equal(await page.locator('.cal button, .cal a, .cal [tabindex]').count(), 0);
+  assert.equal(await page.locator('.cal [data-date]').count(), 31);
+  assert.equal(await page.locator('.cal .g > i').nth(10).getAttribute('data-date'), '2026-10-01');
+  assert.equal(await page.locator('.cal [data-date="2026-10-26"]').getAttribute('class'), 'd t');
+  assert.equal(await page.locator('.cal [data-date="2026-10-22"]').getAttribute('class'), 'r');
+  assert.equal(await page.locator('.cal [data-date="2026-10-23"]').getAttribute('class'), '');
+  assert.deepEqual(await page.locator('.mo').allTextContents(), ['10月', '9月']);
+  const today = page.locator('.dc[data-date="2026-10-26"]');
+  assert.equal(await today.locator('.dd .num').textContent(), '26');
+  assert.equal(await today.locator('.dd small').textContent(), '月');
+  assert.equal(await today.locator('.top').textContent(), '3種目 ・ 5セット ・ 軽め ・ 休み');
+  assert.deepEqual(await today.locator('li .v').allTextContents(), ['15kg13・10 ・ 10kg7', '黒12', '30秒']);
+  assert.deepEqual(await today.locator('li .v small').allTextContents(), ['15kg', '10kg', '黒']);
+  assert.equal(await today.locator('.memo').textContent(), '最初の行');
+  await today.click();
+  assert.equal(await sheet(page).getByLabel('メモ', { exact: true }).inputValue(), '最初の行\n次の行');
+  await closeSheet(page);
+  const rest = page.locator('.rest[data-date="2026-10-22"]');
+  assert.equal(await rest.textContent(), '22木 ・ 休み（予定）');
+  await rest.click();
+  assert.ok((await sheet(page).textContent()).includes('休み（予定）'));
+  await closeSheet(page);
+  const body = page.locator('.rest[data-date="2026-10-23"]');
+  assert.equal(await body.textContent(), '23金 ・ 体重 68.2kg');
+  await body.click();
+  assert.ok((await sheet(page).textContent()).includes('体重 68.2kg'));
+  await closeSheet(page);
+  for (const size of [{ width: 390, height: 844 }, { width: 360, height: 640 }]) {
+    await page.setViewportSize(size);
+    await principles(page);
+    assert.equal(await page.locator('.see').evaluate(node => node.scrollWidth > node.clientWidth), false);
   }
   assert.deepEqual(await stored(page), data);
   assert.deepEqual(errors, []);

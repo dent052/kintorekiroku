@@ -5,7 +5,8 @@ import {
   prKind, isStageUp, sessionEvents, totals,
   weekStart, weekStats, calendar, totalDays, feed, mergeFeed, bodyAvg7, consultText,
   parseImport, toBase64Utf8, parsePosts, lineHistory, clearCount, weekHeat, menuExercises,
-  firstSetResult, setHistory, personalBest, unreadPosts, coachTimeline, coachTimeLabel, coachWaitingNote
+  firstSetResult, setHistory, personalBest, unreadPosts, coachTimeline, coachTimeLabel, coachWaitingNote,
+  recordDelta, loadUpPoints, monthCalendar
 } from './logic.js';
 
 const ex = (o) => ({ id: 'e1', name: '腕立て', type: 'reps', part: '胸', min: 8, max: 15, nextId: null, archived: false, ...o });
@@ -1254,4 +1255,145 @@ test('parseImport accepts old data and normalizes only present non-array message
   const messages = [{ id: 'm', at: '2026-10-21T12:00:00Z', text: '相談' }];
   assert.deepEqual(parseImport(JSON.stringify(data({ messages }))).messages, messages);
   assert.deepEqual(parseImport(JSON.stringify(data({ messages: [] }))).messages, []);
+});
+
+test('recordDelta returns null without an earlier entry at the latest load', () => {
+  assert.equal(recordDelta([]), null);
+  assert.equal(recordDelta([{ load: 5, value: 12 }]), null);
+  assert.equal(recordDelta([
+    { load: 5, value: 12 }, { load: 6, value: 8 }
+  ]), null);
+});
+
+test('recordDelta compares the latest value with the nearest previous same-load value', () => {
+  const entries = [
+    { load: 5, value: 20 },
+    { load: 5, value: 10 },
+    { load: 6, value: 30 },
+    { load: 5, value: 12 }
+  ];
+  const before = structuredClone(entries);
+  assert.equal(recordDelta(entries), 2);
+  assert.deepEqual(entries, before);
+  assert.equal(recordDelta([
+    { load: 0, value: 30 }, { load: 0, value: 25 }
+  ]), -5);
+  assert.equal(recordDelta([
+    { load: 5, value: 0 }, { load: 5, value: 0 }
+  ]), 0);
+});
+
+test('loadUpPoints labels decimal weight increases from the preceding recorded day only', () => {
+  const d = data({ exercises: [ex({ type: 'weight' })], sessions: [
+    ses('2026-10-06', [set({ kg: 6.5, reps: 8 })]),
+    ses('2026-10-02', [set({ kg: 5.5, reps: 10 })]),
+    ses('2026-10-01', [set({ kg: 5, reps: 12 }), set({ kg: 20, reps: 5 })]),
+    ses('2026-10-05', [set({ kg: 5.5, reps: 9 })], { light: true }),
+    ses('2026-10-03', [set({ kg: 5.5, reps: 11 })]),
+    ses('2026-10-04', [set({ kg: 5, reps: 12 })])
+  ] });
+  const before = structuredClone(d);
+  assert.deepEqual(loadUpPoints(d, 'e1'), [
+    { date: '2026-10-02', label: '+0.5kg' },
+    { date: '2026-10-05', label: '+0.5kg' },
+    { date: '2026-10-06', label: '+1kg' }
+  ]);
+  assert.deepEqual(d, before);
+  assert.deepEqual(loadUpPoints(data({ exercises: [ex({ type: 'weight' })], sessions: [
+    ses('2026-10-01', [set({ kg: 0.1, reps: 10 })]),
+    ses('2026-10-02', [set({ kg: 0.3, reps: 10 })])
+  ] }), 'e1'), [{ date: '2026-10-02', label: '+0.2kg' }]);
+});
+
+test('loadUpPoints uses the increased band name and omits unchanged or decreased loads', () => {
+  const d = data({ exercises: [ex({ type: 'band' })], bands: [...bands].reverse(), sessions: [
+    ses('2026-10-01', [set({ bandId: 'y', reps: 12 })]),
+    ses('2026-10-02', [set({ bandId: 'k', reps: 8 })]),
+    ses('2026-10-03', [set({ bandId: 'k', reps: 9 })]),
+    ses('2026-10-04', [set({ bandId: 'y', reps: 15 })]),
+    ses('2026-10-05', [set({ bandId: 'r', reps: 10 })])
+  ] });
+  assert.deepEqual(loadUpPoints(d, 'e1'), [
+    { date: '2026-10-02', label: '黒' },
+    { date: '2026-10-05', label: '赤' }
+  ]);
+});
+
+test('loadUpPoints returns no markers for empty, single-day, reps or time history', () => {
+  assert.deepEqual(loadUpPoints(data(), 'e1'), []);
+  for (const type of ['weight', 'band', 'reps', 'time']) {
+    const d = data({ exercises: [ex({ type })], bands, sessions: [
+      ses('2026-10-01', [set({ kg: 5, bandId: 'y', reps: 10, sec: 30 })])
+    ] });
+    assert.deepEqual(loadUpPoints(d, 'e1'), []);
+    if (type === 'reps' || type === 'time') {
+      d.sessions.push(ses('2026-10-02', [
+        set({ kg: 10, bandId: 'k', reps: 15, sec: 40 })
+      ]));
+      assert.deepEqual(loadUpPoints(d, 'e1'), []);
+    }
+  }
+});
+
+test('monthCalendar offsets the first day from Monday through Sunday', () => {
+  for (const [date, offset] of [
+    ['2026-06-15', 0], ['2026-09-15', 1], ['2026-04-15', 2],
+    ['2026-10-15', 3], ['2026-05-15', 4], ['2026-08-15', 5],
+    ['2026-02-15', 6]
+  ]) {
+    const result = monthCalendar(data(), date);
+    assert.equal(result.offset, offset, date);
+    assert.equal(result.year, 2026);
+    assert.equal(result.month, Number(date.slice(5, 7)));
+    assert.equal(result.done, 0);
+    assert.equal(result.rest, 0);
+  }
+});
+
+test('monthCalendar counts distinct set days before rest and excludes other months and empty sessions', () => {
+  const d = data({ sessions: [
+    ses('2026-10-01', [set({ reps: 10 })], { light: true }),
+    ses('2026-10-01', [set({ reps: 8 })], { id: 'second' }),
+    ses('2026-10-31', [set({ reps: 12 })]),
+    ses('2026-10-02', []),
+    ses('2026-10-03', []),
+    ses('2026-09-30', [set({ reps: 10 })]),
+    ses('2026-11-01', [set({ reps: 10 })])
+  ], skips: [
+    { date: '2026-10-01', reason: '疲れ' },
+    { date: '2026-10-02', reason: '予定' },
+    { date: '2026-10-02', reason: '疲れ' },
+    { date: '2026-09-30', reason: '予定' },
+    { date: '2026-11-01', reason: '予定' }
+  ], body: [{ date: '2026-10-04', kg: 60, waist: null }] });
+  const before = structuredClone(d);
+  const result = monthCalendar(d, '2026-10-26');
+  assert.equal(result.done, 2);
+  assert.equal(result.rest, 1);
+  assert.deepEqual(result.days.filter(day => day.mark), [
+    { date: '2026-10-01', mark: 'd' },
+    { date: '2026-10-02', mark: 'r' },
+    { date: '2026-10-31', mark: 'd' }
+  ]);
+  assert.deepEqual(d, before);
+});
+
+test('monthCalendar includes today through the last day of 31, 30 and 28-day months and leap February', () => {
+  for (const [date, length] of [
+    ['2026-10-31', 31], ['2026-04-30', 30],
+    ['2026-02-28', 28], ['2028-02-29', 29]
+  ]) {
+    const d = data({ sessions: [ses(date, [set({ reps: 10 })])] });
+    const result = monthCalendar(d, date);
+    assert.equal(result.days.length, length, date);
+    assert.equal(result.year, Number(date.slice(0, 4)));
+    assert.equal(result.month, Number(date.slice(5, 7)));
+    assert.deepEqual(result.days.map(day => day.date),
+      Array.from({ length }, (_, i) =>
+        date.slice(0, 8) + String(i + 1).padStart(2, '0')));
+    assert.deepEqual(result.days.at(-1), { date, mark: 'd' });
+    assert.equal(result.days.filter(day => day.date === date).length, 1);
+    assert.equal(result.done, 1);
+    assert.equal(result.rest, 0);
+  }
 });

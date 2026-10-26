@@ -27,3 +27,8 @@ for body in re.findall(r'=== NEWTEST ===\n(.*?)\n=== END NEWTEST ===', out, re.S
     e2e = e2e.rstrip('\n') + '\n\n' + body.strip() + '\n'
     print('new test')
 open('e2e/app.test.mjs', 'w').write(e2e)
+logic = open('logic.test.js').read()
+for body in re.findall(r'=== LOGICTEST ===\n(.*?)\n=== END LOGICTEST ===', out, re.S):
+    logic = logic.rstrip('\n') + '\n\n' + body.strip() + '\n'
+    print('new logic test')
+open('logic.test.js', 'w').write(logic)
