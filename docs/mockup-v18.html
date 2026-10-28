@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow">
+<title>画面イメージ v18 突破の決め画面</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,800;1,900&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--num:'Barlow Condensed',sans-serif;--ja:'Zen Kaku Gothic New',system-ui,sans-serif;
+  --paper:#F6F7F9;--ai:#1C2B4B;--ink:#0F1A30;--shu:#D03C22;--mute:#5E6B82;--hair:#DDE2EA}
+*{box-sizing:border-box;margin:0}
+body{background:#C9CED6;color:var(--ai);font:16px/1.6 var(--ja);padding:24px 16px}
+.intro{max-width:1100px;margin:0 auto 18px}.intro h1{font:900 28px var(--ja)}.intro p{color:#222;max-width:46em}
+.wall{display:flex;flex-wrap:wrap;gap:22px;justify-content:center}
+figure{width:340px;max-width:100%}figcaption{font-size:13px;color:#111;margin:0 4px 8px;line-height:1.6}
+figcaption b{font-size:16px;display:block}
+.phone{position:relative;border-radius:30px;height:600px;overflow:hidden;background:var(--paper);padding:26px 22px;display:flex;flex-direction:column}
+.num{font-family:var(--num);font-weight:700;line-height:.88}
+.exname{font:900 30px/1.15 var(--ja);margin-top:14px}
+.prev{font:600 18px var(--num);color:var(--mute);margin-top:4px}
+.big{font-size:120px;color:var(--shu);margin-top:22px}
+.restbar{display:flex;align-items:baseline;gap:12px;margin-top:10px;font-size:12px;font-weight:700;color:var(--mute)}
+.restbar .num{font-size:40px;color:var(--ai)}
+.track{height:6px;border-radius:3px;background:var(--hair);margin-top:8px}.track i{display:block;width:92%;height:100%;border-radius:3px;background:var(--ai)}
+.sets{margin-top:auto}
+.sets .r{display:grid;grid-template-columns:56px 1fr 1fr;align-items:center;padding:0 8px;min-height:44px;border-bottom:1px solid var(--hair);font:600 24px var(--num)}
+.sets .no{font:700 13px var(--ja);color:var(--mute)}.sets .pv{color:var(--mute)}.sets .e{color:var(--hair)}
+.again{margin-top:10px;width:100%;min-height:44px;border:0;border-radius:14px;background:var(--ai);color:#fff;font:700 15px var(--ja)}
+.again:focus-visible{outline:3px solid var(--shu);outline-offset:2px}
+
+/* shared: the moment takes the whole screen, then cuts back to the paper. Cuts, not fades. */
+.fx{position:absolute;inset:0;z-index:5;pointer-events:none;overflow:hidden;animation:off 1ms 1450ms forwards}
+.screen{animation:shake 180ms steps(1) 200ms}
+@keyframes shake{0%{transform:translate(6px,-4px)}25%{transform:translate(-5px,3px)}50%{transform:translate(3px,4px)}75%{transform:translate(-2px,-2px)}100%{transform:none}}
+@keyframes off{to{visibility:hidden}}
+
+/* 1 K.O. — blackout, hit-stop, the word lands, cut */
+.ko{background:var(--ink);animation:off 1ms 1350ms forwards}
+.ko .flash{position:absolute;inset:0;background:#fff;opacity:0;animation:flash 90ms steps(1) 200ms}
+.ko .w{position:absolute;left:-12px;right:-12px;top:170px;text-align:center;font:900 138px/1 var(--ja);color:#fff;letter-spacing:-.04em;
+  text-shadow:8px 8px 0 var(--shu);transform:rotate(-6deg) scale(2.6);opacity:0;animation:land 120ms cubic-bezier(.7,0,1,1) 80ms forwards}
+.ko .n{position:absolute;right:20px;top:330px;font:italic 900 72px/1 var(--num);color:var(--shu);opacity:0;animation:pop 1ms 420ms forwards}
+.ko .n small{font:700 14px var(--ja);color:#fff;margin-left:6px;font-style:normal}
+@keyframes flash{0%{opacity:.9}100%{opacity:0}}
+@keyframes land{to{transform:rotate(-6deg) scale(1);opacity:1}}
+@keyframes pop{to{opacity:1}}
+
+/* 2 斜め — a vermilion slab slices the screen, giant white type bleeds off both edges */
+.sl .slab{position:absolute;left:-40%;right:-40%;top:140px;height:230px;background:var(--shu);transform:rotate(-12deg) translateX(110%);
+  animation:slice 110ms cubic-bezier(.8,0,1,1) 60ms forwards,away 120ms cubic-bezier(.6,0,1,1) 1250ms forwards}
+.sl .slab::before{content:'';position:absolute;left:0;right:0;top:-14px;height:8px;background:var(--ai)}
+.sl .slab::after{content:'';position:absolute;left:0;right:0;bottom:-22px;height:8px;background:var(--ai)}
+.sl .w{position:absolute;left:-30px;top:190px;font:900 150px/1 var(--ja);color:#fff;letter-spacing:-.06em;white-space:nowrap;transform:rotate(-12deg) translateX(-120%);
+  animation:in 140ms cubic-bezier(.2,0,0,1) 170ms forwards,away2 120ms cubic-bezier(.6,0,1,1) 1220ms forwards}
+.sl .n{position:absolute;left:24px;top:360px;font:italic 900 96px/1 var(--num);color:var(--ai);-webkit-text-stroke:0;transform:rotate(-12deg);opacity:0;
+  text-shadow:5px 5px 0 #fff;animation:pop 1ms 330ms forwards,off 1ms 1220ms forwards}
+.sl .n small{font:900 16px var(--ja);font-style:normal;margin-left:4px}
+@keyframes slice{to{transform:rotate(-12deg) translateX(0)}}
+@keyframes in{to{transform:rotate(-12deg) translateX(0)}}
+@keyframes away{to{transform:rotate(-12deg) translateX(-130%)}}
+@keyframes away2{to{transform:rotate(-12deg) translateX(130%)}}
+
+/* 3 カットイン — three bars shoot across in turn, the middle one carries the number */
+.ci .bar{position:absolute;left:-30%;right:-30%;transform:rotate(-8deg) translateX(-120%)}
+.ci .b1{top:150px;height:26px;background:var(--ai);animation:shoot 100ms ease-in 40ms forwards,away2b 100ms ease-in 1250ms forwards}
+.ci .b2{top:186px;height:150px;background:var(--ink);animation:shoot 100ms ease-in 110ms forwards,away2b 100ms ease-in 1280ms forwards;display:flex;align-items:center;padding-left:34%}
+.ci .b3{top:346px;height:40px;background:var(--shu);animation:shoot 100ms ease-in 180ms forwards,away2b 100ms ease-in 1310ms forwards;display:flex;align-items:center;padding-left:40%;font:900 22px var(--ja);color:#fff;letter-spacing:.3em}
+.ci .b2 .n{font:italic 900 150px/1 var(--num);color:#fff;opacity:0;animation:pop 1ms 330ms forwards}
+.ci .b2 b{font:900 46px/1 var(--ja);color:var(--shu);margin-left:14px;opacity:0;animation:pop 1ms 420ms forwards}
+@keyframes shoot{to{transform:rotate(-8deg) translateX(0)}}
+@keyframes away2b{to{transform:rotate(-8deg) translateX(130%)}}
+
+@media (prefers-reduced-motion:reduce){.fx{display:none}.screen{animation:none}}
+</style></head><body>
+<div class="intro"><h1>突破の決め画面 ─ 候補 v18</h1><p>ゲームの決め画面の方向。共通の作り：動きはぬるっと動かさず「カット」で切り替える／当たった瞬間に一瞬止めて画面を揺らす（振動もここ）／斜めの構図／文字は画面からはみ出すほど大きく／色は藍・朱・白だけ、ぼかしやグラデーションなし。約1.3秒で切れて、朱の 18 が残った休憩画面に戻る。</p></div>
+<div class="wall">
+
+<figure><figcaption><b>1 K.O.</b>画面が藍に暗転、白い閃光、巨大な「突破」が叩きつけられて揺れる。格ゲーの K.O. と同じ組み立て。</figcaption>
+<div class="phone screen"><h1 class="exname">腕立て伏せ</h1><p class="prev">ライン 17 ・ 次のライン 18</p><span class="num big">18</span>
+<div class="restbar"><span>休憩</span><span class="num">1:28</span></div><div class="track"><i></i></div>
+<div class="sets"><div class="r"><span class="no">1</span><span class="pv">16</span><span style="color:var(--shu)">18</span></div><div class="r"><span class="no">2</span><span class="pv">14</span><span class="e">—</span></div><div class="r"><span class="no">3</span><span class="pv">12</span><span class="e">—</span></div></div>
+<div class="fx ko"><div class="flash"></div><div class="w">突破</div><div class="n">18<small>ライン17</small></div></div></div>
+<button class="again">もう一度</button></figure>
+
+<figure><figcaption><b>2 斜め</b>朱の板が画面を斜めに切り裂き、白い「突破」が端からはみ出して入る。ペルソナ5 の決め画面の組み立て。</figcaption>
+<div class="phone screen"><h1 class="exname">腕立て伏せ</h1><p class="prev">ライン 17 ・ 次のライン 18</p><span class="num big">18</span>
+<div class="restbar"><span>休憩</span><span class="num">1:28</span></div><div class="track"><i></i></div>
+<div class="sets"><div class="r"><span class="no">1</span><span class="pv">16</span><span style="color:var(--shu)">18</span></div><div class="r"><span class="no">2</span><span class="pv">14</span><span class="e">—</span></div><div class="r"><span class="no">3</span><span class="pv">12</span><span class="e">—</span></div></div>
+<div class="fx sl"><div class="slab"></div><div class="w">突破</div><div class="n">18<small>回</small></div></div></div>
+<button class="again">もう一度</button></figure>
+
+<figure><figcaption><b>3 カットイン</b>藍・黒・朱の帯が順に走り込み、真ん中の帯に 18。必殺技のカットインの組み立て。</figcaption>
+<div class="phone screen"><h1 class="exname">腕立て伏せ</h1><p class="prev">ライン 17 ・ 次のライン 18</p><span class="num big">18</span>
+<div class="restbar"><span>休憩</span><span class="num">1:28</span></div><div class="track"><i></i></div>
+<div class="sets"><div class="r"><span class="no">1</span><span class="pv">16</span><span style="color:var(--shu)">18</span></div><div class="r"><span class="no">2</span><span class="pv">14</span><span class="e">—</span></div><div class="r"><span class="no">3</span><span class="pv">12</span><span class="e">—</span></div></div>
+<div class="fx ci"><div class="bar b1"></div><div class="bar b2"><span class="n">18</span><b>突破</b></div><div class="bar b3">ライン17を超えた</div></div></div>
+<button class="again">もう一度</button></figure>
+
+</div>
+<script>
+// replay: clone the phone so every animation restarts
+for (const b of document.querySelectorAll('.again')) b.onclick = () => {
+  const p = b.previousElementSibling; p.replaceWith(p.cloneNode(true));
+};
+</script>
+</body></html>
