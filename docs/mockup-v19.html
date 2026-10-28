@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow">
+<title>画面イメージ v19 突破の決め画面</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,900&family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Dela+Gothic+One&family=Zen+Old+Mincho:wght@900&display=swap" rel="stylesheet">
+<style>
+:root{--num:'Barlow Condensed',sans-serif;--ja:'Zen Kaku Gothic New',system-ui,sans-serif;
+  --paper:#F6F7F9;--ai:#1C2B4B;--ink:#0F1A30;--shu:#D03C22;--mute:#5E6B82;--hair:#DDE2EA}
+*{box-sizing:border-box;margin:0}
+body{background:#C9CED6;color:var(--ai);font:16px/1.6 var(--ja);padding:24px 16px}
+.intro{max-width:760px;margin:0 auto 18px}.intro h1{font:900 28px var(--ja)}.intro p{color:#222}
+.wall{display:flex;flex-wrap:wrap;gap:22px;justify-content:center}
+figure{width:390px;max-width:100%}figcaption{font-size:13px;color:#111;margin:0 4px 8px;line-height:1.6}
+figcaption b{font-size:16px;display:block}
+.phone{position:relative;border-radius:34px;height:844px;overflow:hidden;background:var(--paper);padding:30px 22px;display:flex;flex-direction:column}
+.num{font-family:var(--num);font-weight:700;line-height:.88}
+.exname{font:900 32px/1.15 var(--ja);margin-top:14px}
+.prev{font:600 18px var(--num);color:var(--mute);margin-top:4px}
+.big{font-size:130px;color:var(--shu);margin-top:26px}
+.restbar{display:flex;align-items:baseline;gap:12px;margin-top:12px;font-size:12px;font-weight:700;color:var(--mute)}
+.restbar .num{font-size:44px;color:var(--ai)}
+.track{height:6px;border-radius:3px;background:var(--hair);margin-top:8px}.track i{display:block;width:92%;height:100%;border-radius:3px;background:var(--ai)}
+.sets{margin-top:auto}
+.sets .r{display:grid;grid-template-columns:56px 1fr 1fr;align-items:center;padding:0 8px;min-height:46px;border-bottom:1px solid var(--hair);font:600 24px var(--num)}
+.sets .no{font:700 13px var(--ja);color:var(--mute)}.sets .pv{color:var(--mute)}.sets .e{color:var(--hair)}
+.ctl{display:flex;gap:8px;margin-top:10px}
+.ctl button{flex:1;min-height:44px;border:0;border-radius:14px;background:var(--ai);color:#fff;font:700 15px var(--ja)}
+.ctl button.slow{background:#fff;color:var(--ai)}
+.ctl button:focus-visible{outline:3px solid var(--shu);outline-offset:2px}
+
+/* The moment: ~1.5s on top of the rest screen, then a hard cut back.
+   Built like a P5 finishing screen: stacked jagged polygons, cut-paper letters, halftone, 12fps jitter. */
+.screen{animation:shake 200ms steps(1) 120ms}
+@keyframes shake{0%{transform:translate(9px,-6px) rotate(.6deg)}20%{transform:translate(-8px,5px)}40%{transform:translate(6px,6px) rotate(-.4deg)}60%{transform:translate(-4px,-3px)}80%{transform:translate(2px,2px)}100%{transform:none}}
+.fx{position:absolute;inset:0;z-index:5;pointer-events:none;overflow:hidden;animation:cut 1ms 1560ms forwards}
+.fx > *{position:absolute}
+@keyframes cut{to{opacity:0}}
+@keyframes on{to{visibility:visible}}
+
+/* 0: two-frame negative flash (hit-stop) */
+.neg{inset:0;opacity:0;animation:neg 90ms steps(1) 30ms forwards}
+@keyframes neg{0%{opacity:1;background:var(--ink)}50%{opacity:1;background:#fff}100%{opacity:0}}
+
+/* 1: the ink slab slashes in on a diagonal, exits the other way */
+.slab{inset:0;background:var(--ink);
+  clip-path:polygon(0 0,0 0,0 86%,0 86%);
+  animation:slash 110ms steps(3,end) 120ms forwards,exit 140ms steps(3,end) 1400ms forwards}
+@keyframes slash{to{clip-path:polygon(0 0,100% 0,100% 72%,0 86%)}}
+@keyframes exit{from{clip-path:polygon(0 0,100% 0,100% 72%,0 86%)}to{clip-path:polygon(100% 0,100% 0,100% 72%,100% 72%)}}
+/* white shards ride the slab's edges */
+.shard{background:#fff;visibility:hidden;animation:on 1ms 200ms forwards}
+.s1{left:-10px;top:70px;width:260px;height:34px;clip-path:polygon(0 60%,100% 0,92% 30%,0 100%);transform:rotate(-1deg)}
+.s2{right:-20px;top:600px;width:300px;height:40px;clip-path:polygon(8% 70%,100% 0,100% 40%,0 100%)}
+.s3{right:30px;top:140px;width:70px;height:70px;clip-path:polygon(50% 0,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0 50%,38% 38%)}
+
+/* 2: vermilion starburst with halftone, jittering at 12fps after it lands */
+.burst{left:-60px;top:150px;width:520px;height:520px;background:var(--shu);
+  clip-path:polygon(50% 0,57% 30%,78% 6%,68% 36%,98% 24%,74% 46%,100% 58%,72% 60%,90% 86%,62% 70%,56% 100%,48% 72%,22% 96%,34% 66%,0 74%,28% 54%,2% 36%,32% 40%,18% 8%,42% 30%);
+  transform:scale(0) rotate(-30deg);animation:burst 120ms steps(3,end) 170ms forwards,jit 330ms steps(1) 300ms infinite}
+.burst::after{content:'';position:absolute;inset:0;background:radial-gradient(circle,rgba(15,26,48,.38) 2.2px,transparent 2.6px) 0 0/10px 10px;
+  -webkit-mask:linear-gradient(160deg,transparent 35%,#000 80%);mask:linear-gradient(160deg,transparent 35%,#000 80%)}
+.burst.ink{left:-30px;top:190px;width:470px;height:470px;background:#fff;transform:scale(0) rotate(10deg);animation:burst2 120ms steps(3,end) 150ms forwards,jit2 330ms steps(1) 300ms infinite}
+.burst.ink::after{display:none}
+@keyframes burst{to{transform:scale(1) rotate(-8deg)}}
+@keyframes burst2{to{transform:scale(1) rotate(14deg)}}
+@keyframes jit{0%{transform:scale(1) rotate(-8deg)}50%{transform:scale(1.02) rotate(-6deg)}}
+@keyframes jit2{0%{transform:scale(1) rotate(14deg)}50%{transform:scale(1.015) rotate(12deg)}}
+
+/* 3: cut-paper letters, one per beat, each its own box, face and tilt */
+.word{left:14px;top:250px;width:330px;height:220px}
+.word span{position:absolute;display:flex;align-items:center;justify-content:center;visibility:hidden;line-height:1}
+.l1{left:0;top:6px;width:150px;height:160px;background:var(--ink);color:#fff;font:400 136px 'Dela Gothic One';transform:rotate(-9deg);
+  box-shadow:10px 10px 0 #fff,10px 10px 0 4px var(--ink);animation:stamp 90ms steps(2,end) 300ms forwards}
+.l2{left:168px;top:34px;width:150px;height:170px;background:#fff;color:var(--ink);font:900 146px 'Zen Old Mincho';transform:rotate(7deg);
+  border:6px solid var(--ink);box-shadow:-10px 10px 0 var(--shu);animation:stamp 90ms steps(2,end) 420ms forwards}
+.l3{left:306px;top:-20px;width:56px;height:150px;background:var(--shu);color:#fff;font:400 96px 'Dela Gothic One';transform:rotate(14deg) skewY(-6deg);
+  border:5px solid var(--ink);animation:stamp 90ms steps(2,end) 520ms forwards}
+@keyframes stamp{0%{visibility:visible;scale:1.7}100%{visibility:visible;scale:1}}
+.word{animation:jit3 330ms steps(1) 600ms infinite}
+@keyframes jit3{50%{transform:translate(2px,-2px)}}
+
+/* 4: the number, outlined and offset, slides in on the low diagonal */
+.n{left:18px;top:500px;font:italic 900 150px/1 var(--num);color:#fff;-webkit-text-stroke:7px var(--ink);paint-order:stroke fill;
+  text-shadow:10px 10px 0 var(--ink);transform:rotate(-9deg) translateX(-110%);animation:slide 100ms steps(2,end) 640ms forwards}
+.tag{left:176px;top:604px;background:#fff;color:var(--ink);font:900 20px/1 var(--ja);padding:10px 14px 9px;border:4px solid var(--ink);
+  clip-path:polygon(0 8%,100% 0,96% 100%,3% 92%);transform:rotate(-9deg) translateX(140%);animation:slide 100ms steps(2,end) 740ms forwards}
+.tag b{color:var(--shu)}
+@keyframes slide{to{transform:rotate(-9deg) translateX(0)}}
+
+@media (prefers-reduced-motion:reduce){.fx{display:none}.screen{animation:none}}
+</style></head><body>
+<div class="intro"><h1>突破の決め画面 v19</h1><p>v18「斜め」を土台に、ペルソナ5の決め画面の作りを全部入れた案。藍(黒)・朱・白の3色。約1.5秒。「スロー」は4分の1の速さで再生（細部の確認用）。</p></div>
+<div class="wall">
+
+<figure><figcaption><b>流れ</b>①暗転と白の2コマ＋画面が揺れる（振動）②藍の板が斜めに切り込む ③白と朱のギザギザが重なって開き、網点が乗る ④「突」「破」「！」が1文字ずつ、別々の紙を貼るように叩きつけられる ⑤太い縁取りの 18 と「ライン17を超えた」の札が下から滑り込む ⑥板が反対へ抜けて休憩画面にカット。決まった後もコマ落としで小刻みに震え続ける。</figcaption>
+<div class="phone screen"><h1 class="exname">腕立て伏せ</h1><p class="prev">ライン 17 ・ 次のライン 18</p><span class="num big">18</span>
+<div class="restbar"><span>休憩</span><span class="num">1:28</span></div><div class="track"><i></i></div>
+<div class="sets"><div class="r"><span class="no">1</span><span class="pv">16</span><span style="color:var(--shu)">18</span></div><div class="r"><span class="no">2</span><span class="pv">14</span><span class="e">—</span></div><div class="r"><span class="no">3</span><span class="pv">12</span><span class="e">—</span></div></div>
+<div class="fx" aria-hidden="true">
+  <div class="slab"></div>
+  <div class="burst ink"></div><div class="burst"></div>
+  <div class="shard s1"></div><div class="shard s2"></div><div class="shard s3"></div>
+  <div class="word"><span class="l1">突</span><span class="l2">破</span><span class="l3">！</span></div>
+  <div class="n">18</div><div class="tag">ライン<b>17</b>を超えた</div>
+  <div class="neg"></div>
+</div></div>
+<div class="ctl"><button class="again">もう一度</button><button class="slow">スロー</button></div></figure>
+
+</div>
+<script>
+// replay: clone the phone so every animation restarts; slow plays the same at 1/4 speed
+function replay(btn, rate) {
+  const p = btn.closest('figure').querySelector('.phone');
+  const fresh = p.cloneNode(true); p.replaceWith(fresh);
+  fresh.getAnimations({ subtree: true }).forEach(a => a.playbackRate = rate);
+}
+document.querySelector('.again').onclick = e => replay(e.target, 1);
+document.querySelector('.slow').onclick = e => replay(e.target, .25);
+</script>
+</body></html>
