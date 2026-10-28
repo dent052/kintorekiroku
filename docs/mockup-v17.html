@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow">
+<title>画面イメージ v17 突破の印</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Zen+Antique&display=swap" rel="stylesheet">
+<style>
+:root{--num:'Barlow Condensed',sans-serif;--ja:'Zen Kaku Gothic New',system-ui,sans-serif;
+  --paper:#F6F7F9;--ai:#1C2B4B;--shu:#D03C22;--mute:#5E6B82;--hair:#DDE2EA}
+*{box-sizing:border-box;margin:0}
+body{background:#C9CED6;color:var(--ai);font:16px/1.6 var(--ja);padding:24px 16px}
+.intro{max-width:1100px;margin:0 auto 18px}.intro h1{font:900 28px var(--ja)}.intro p{color:#222;max-width:46em}
+.wall{display:flex;flex-wrap:wrap;gap:22px;justify-content:center}
+figure{width:340px;max-width:100%}figcaption{font-size:13px;color:#111;margin:0 4px 8px;line-height:1.6}
+figcaption b{font-size:16px;display:block}
+.phone{position:relative;border-radius:30px;height:560px;overflow:hidden;background:var(--paper);padding:26px 22px;display:flex;flex-direction:column}
+.num{font-family:var(--num);font-weight:700;line-height:.88}
+.exname{font:900 30px/1.15 var(--ja);margin-top:14px}
+.prev{font:600 18px var(--num);color:var(--mute);margin-top:4px;position:relative;display:inline-block}
+.mark{position:relative;height:150px;margin-top:14px}
+.big{position:absolute;left:8px;top:14px;font-size:120px;color:var(--ai)}
+.restbar{display:flex;align-items:baseline;gap:12px;margin-top:6px;font-size:12px;font-weight:700;color:var(--mute)}
+.restbar .num{font-size:40px;color:var(--ai)}
+.track{height:6px;border-radius:3px;background:var(--hair);margin-top:8px}.track i{display:block;width:92%;height:100%;border-radius:3px;background:var(--ai)}
+.sets{margin-top:auto}
+.sets .hd,.sets .r{display:grid;grid-template-columns:56px 1fr 1fr;align-items:center;padding:0 8px}
+.sets .hd{font-size:11px;font-weight:700;color:var(--mute);border-bottom:1px solid var(--hair);padding-bottom:4px}
+.sets .r{min-height:44px;border-bottom:1px solid var(--hair);font:600 24px var(--num)}
+.sets .no{font:700 13px var(--ja);color:var(--mute)}.sets .pv{color:var(--mute)}.sets .e{color:var(--hair)}
+.again{margin-top:10px;width:100%;min-height:44px;border:0;border-radius:14px;background:var(--ai);color:#fff;font:700 15px var(--ja)}
+.again:focus-visible{outline:3px solid var(--shu);outline-offset:2px}
+
+/* 1 赤丸: a teacher's red-pen circle, drawn at pen speed */
+.maru{position:absolute;left:-14px;top:-6px;width:190px;height:150px;overflow:visible}
+.maru path{fill:none;stroke:var(--shu);stroke-width:7;stroke-linecap:round;stroke-dasharray:640;stroke-dashoffset:640;
+  animation:draw 420ms cubic-bezier(.45,.05,.4,1) 250ms forwards;filter:url(#rough)}
+.note{position:absolute;left:200px;top:46px;font:700 15px/1.4 var(--ja);color:var(--shu);opacity:0;animation:show 1ms 700ms forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes show{to{opacity:1}}
+
+/* 2 判子: pressed from above. No bounce: it lands, inks, lifts */
+.hanko{position:absolute;left:170px;top:8px;width:104px;height:104px;transform:rotate(-6deg)}
+.hanko .ink{position:absolute;inset:0;border:5px solid var(--shu);border-radius:8px;color:var(--shu);font:400 40px/1 'Zen Antique',serif;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;filter:url(#kasure);opacity:0;animation:show 1ms 330ms forwards}
+/* only the stamp's shadow is seen: it tightens as the stamp comes down, ink appears at contact */
+.hanko .body{position:absolute;inset:0;border-radius:10px;background:rgba(28,43,75,.5);filter:blur(14px);
+  animation:press 520ms cubic-bezier(.55,0,.35,1) 40ms both}
+.hanko .ink{animation:show 1ms 330ms forwards,settle 260ms ease-out 330ms both}
+@keyframes press{0%{opacity:0;transform:scale(1.6) translate(10px,16px)}60%{opacity:1;transform:scale(1);filter:blur(3px)}61%{opacity:0}100%{opacity:0}}
+@keyframes settle{from{transform:scale(1.03)}to{transform:none}}
+
+/* 3 書き換え: the line itself gets corrected, like a paper log */
+.fix{font-size:22px}
+.fix s{text-decoration:none;position:relative}
+.fix s::before,.fix s::after{content:'';position:absolute;left:-3px;right:-3px;height:2px;background:var(--shu);transform:scaleX(0);transform-origin:left;animation:strike 160ms ease-in forwards}
+.fix s::before{top:42%;animation-delay:300ms}.fix s::after{top:62%;animation-delay:440ms}
+.fix ins{margin-left:8px;display:inline-block;text-decoration:none;font:700 30px var(--num);color:var(--shu);opacity:0;transform:translateY(4px);animation:write 220ms ease-out 640ms forwards}
+.fix ins small{font:700 12px var(--ja);margin-left:4px}
+.C .big{color:var(--shu)}
+@keyframes strike{to{transform:scaleX(1)}}
+@keyframes write{to{opacity:1;transform:none}}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms!important;animation-delay:0s!important}.hanko .body{display:none}}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="rough"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="3"/><feDisplacementMap in="SourceGraphic" scale="3"/></filter>
+  <filter id="kasure"><feTurbulence type="fractalNoise" baseFrequency="1.4" numOctaves="2" seed="8" result="n"/>
+    <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.6 1.75" result="m"/>
+    <feComposite in="SourceGraphic" in2="m" operator="in"/></filter>
+</svg>
+<div class="intro"><h1>突破の印 ─ 候補 v17</h1><p>朱の帯をやめて、紙そのものに印を残す案。光・輪・弾みは使わない。紙の記録帳に人が書き込む動きだけ。振動は印が紙に触れた瞬間に1回。</p></div>
+<div class="wall">
+
+<figure class="A"><figcaption><b>1 赤丸</b>先生の赤ペンのように、18 を朱の丸でぐるっと囲む。ペンの速さで一筆、少しはみ出して閉じる。</figcaption>
+<div class="phone"><h1 class="exname">腕立て伏せ</h1><p class="prev">ライン 17</p>
+<div class="mark"><span class="num big">18</span>
+<svg class="maru" viewBox="0 0 190 150"><path d="M128 14 C72 -4 4 18 4 74 C4 128 74 150 126 136 C174 122 186 72 166 38 C152 14 124 4 92 10"/></svg>
+<p class="note">突破<br><span style="color:var(--mute);font-weight:500;font-size:13px">次のライン 18</span></p></div>
+<div class="restbar"><span>休憩</span><span class="num">1:28</span></div><div class="track"><i></i></div>
+<div class="sets"><div class="hd"><span>セット</span><span>前回</span><span>今日</span></div>
+<div class="r"><span class="no">1</span><span class="pv">16</span><span style="color:var(--shu)">18</span></div>
+<div class="r"><span class="no">2</span><span class="pv">14</span><span class="e">—</span></div>
+<div class="r"><span class="no">3</span><span class="pv">12</span><span class="e">—</span></div></div></div>
+<button class="again">もう一度</button></figure>
+
+<figure class="B"><figcaption><b>2 判子</b>上から押して、離す。紙に残るのはかすれた朱の印だけ。まとめ画面の判子と同じ印が、ここで生まれる。</figcaption>
+<div class="phone"><h1 class="exname">腕立て伏せ</h1><p class="prev">ライン 17 ・ 次のライン 18</p>
+<div class="mark"><span class="num big">18</span>
+<div class="hanko"><div class="ink"><span>突</span><span>破</span></div><div class="body"></div></div></div>
+<div class="restbar"><span>休憩</span><span class="num">1:28</span></div><div class="track"><i></i></div>
+<div class="sets"><div class="hd"><span>セット</span><span>前回</span><span>今日</span></div>
+<div class="r"><span class="no">1</span><span class="pv">16</span><span style="color:var(--shu)">18</span></div>
+<div class="r"><span class="no">2</span><span class="pv">14</span><span class="e">—</span></div>
+<div class="r"><span class="no">3</span><span class="pv">12</span><span class="e">—</span></div></div></div>
+<button class="again">もう一度</button></figure>
+
+<figure class="C"><figcaption><b>3 書き換え</b>ラインの 17 に朱の二重線、上に新しい 18 を書き足す。紙の記録帳を直すのと同じ。何が変わったかがそのまま見える。</figcaption>
+<div class="phone"><h1 class="exname">腕立て伏せ</h1><p class="prev fix">ライン <s>17</s><ins>18<small>突破</small></ins></p>
+<div class="mark"><span class="num big">18</span></div>
+<div class="restbar"><span>休憩</span><span class="num">1:28</span></div><div class="track"><i></i></div>
+<div class="sets"><div class="hd"><span>セット</span><span>前回</span><span>今日</span></div>
+<div class="r"><span class="no">1</span><span class="pv">16</span><span style="color:var(--shu)">18</span></div>
+<div class="r"><span class="no">2</span><span class="pv">14</span><span class="e">—</span></div>
+<div class="r"><span class="no">3</span><span class="pv">12</span><span class="e">—</span></div></div></div>
+<button class="again">もう一度</button></figure>
+
+</div>
+<script>
+// replay: clone the phone so every animation restarts
+for (const b of document.querySelectorAll('.again')) b.onclick = () => {
+  const p = b.previousElementSibling; p.replaceWith(p.cloneNode(true));
+};
+</script>
+</body></html>
