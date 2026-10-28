@@ -96,11 +96,6 @@ button, a, input, select, textarea { touch-action:manipulation; }
 .seg { display:grid; grid-template-columns:1fr 1fr; background:#E9ECF1; border-radius:12px; padding:3px; margin-top:10px; }
 .seg button { min-height:40px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; color:var(--mute); border-radius:10px; }
 .seg button.on { background:#fff; color:var(--ai); box-shadow:0 0 0 1px var(--hair); }
-.day { display:grid; grid-template-columns:1fr 14px; gap:8px; align-items:center; padding:10px 0; border-bottom:1px solid var(--hair); text-align:left; }
-.day .d { font-weight:900; font-size:15px; }
-.day .d small { font-weight:700; font-size:12px; color:var(--mute); margin-left:8px; }
-.day p { font-size:13px; color:var(--mute); line-height:1.6; }
-.day p b { color:var(--ai); font:600 17px var(--num); letter-spacing:.02em; }
 .sumrow { padding:10px 0; border-bottom:1px solid var(--hair); }
 .sumrow .n { font-weight:900; font-size:16px; display:flex; justify-content:space-between; }
 .sumrow .n em { font-style:normal; font-size:12px; font-weight:700; color:var(--shu); }
@@ -110,11 +105,6 @@ button, a, input, select, textarea { touch-action:manipulation; }
 .bl .d { font-weight:700; color:var(--mute); font-size:13px; }
 .bl .num { font-size:28px; }
 .h1 { font:900 28px/1.2 var(--ja); }
-.rec { display:grid; grid-template-columns:1fr 64px 54px 14px; gap:10px; align-items:center; padding:12px 0; border-bottom:1px solid var(--hair); text-align:left; }
-.rec b { font:700 16px var(--ja); }
-.rec b small { display:block; font-size:12px; color:var(--mute); font-weight:500; }
-.rec .num { font-size:36px; text-align:right; }
-.rec .num small { font:700 11px var(--ja); color:var(--mute); display:block; text-align:right; }
 .chev { color:var(--mute); font-weight:700; align-self:center; font-size:18px; }
 .sec { margin-top:18px; }
 .empty { margin:auto 0; text-align:center; padding:0 10px; }
@@ -276,18 +266,12 @@ dialog.sheet { position:fixed; inset:auto 0 0; margin:0 auto; width:100%; max-wi
 .pi{width:34px;height:34px;border-radius:50%;background:#E9ECF1;display:flex;align-items:center;justify-content:center;flex:none}
 .pi svg{width:20px;height:31px}
 .ln.tap.icon{grid-template-columns:34px 1fr 64px 64px 14px}
-.rec.icon{grid-template-columns:34px 1fr 64px 54px 14px}
 .mark{width:40px;height:40px;border-radius:50%;overflow:hidden;display:block}
 .mark svg{width:100%;height:100%;display:block}
 .card .mark{width:32px;height:32px}
 .bodymap{display:flex;gap:8px;align-items:flex-end;justify-content:center;margin-top:8px}
 .bodymap svg{width:96px;height:150px}
 .bm-card{border:1px solid var(--hair);background:#fff;border-radius:16px;padding:10px 12px 12px;margin-top:12px}
-.bm-card .row2{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center}
-.legend{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700}
-.legend span{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--hair);padding:2px 0}
-.legend span b{font:600 18px var(--num)}
-.legend span.low{color:var(--shu)}
 .exhead{display:flex;justify-content:space-between;align-items:flex-start;margin-top:18px}
 .exhead .exname{margin-top:0}
 .exhead svg{width:64px;height:100px;flex:none}
@@ -298,6 +282,55 @@ dialog.sheet { position:fixed; inset:auto 0 0; margin:0 auto; width:100%; max-wi
 .tag2{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--mute);margin-top:6px}
 .tag2 .pi{width:24px;height:24px}
 .tag2 .pi svg{width:15px;height:23px}
+
+.see.list{background:var(--paper)}
+.rhead{display:flex;justify-content:space-between;align-items:center}
+.bm2{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;background:#fff;border:1px solid var(--hair);border-radius:16px;padding:10px 12px;margin-top:12px}
+.bm2 .figs{display:flex;gap:2px}.bm2 .figs svg{width:38px;height:60px}
+.bm2 .lg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px 10px;font-size:12px;font-weight:700}
+.bm2 .lg span{display:flex;justify-content:space-between;border-bottom:1px solid var(--hair)}
+.bm2 .lg b{font:600 16px var(--num)}.bm2 .lg .low{color:var(--shu)}
+.bm2 .k{grid-column:1/-1;margin-bottom:-6px}
+.xc{background:#fff;border:1px solid var(--hair);border-radius:16px;padding:12px 14px 10px;margin-top:10px}
+.xh{display:grid;grid-template-columns:34px 1fr 14px;gap:10px;align-items:center}
+.xh b{font:900 16px/1.3 var(--ja);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.xs{display:grid;grid-template-columns:1.1fr 1fr .8fr;margin-top:8px}
+.xs > div{padding-left:10px;border-left:1px solid var(--hair)}.xs > div:first-child{padding-left:0;border-left:0}
+.xs small{display:block;font-size:11px;font-weight:700;color:var(--mute)}
+.xs p{display:flex;align-items:baseline;gap:3px;margin-top:2px}
+.xs p .num{font-size:38px;font-variant-numeric:tabular-nums}.xs p small{display:inline;font-size:13px;color:var(--ai)}
+.xs p .jp{font:900 24px/1.3 var(--ja)}
+.xs .ln2 .num{color:var(--shu)}
+.spark{width:100%;height:44px;margin-top:6px;display:block}
+.spark .grid{stroke:var(--hair);stroke-width:1}.spark .ln3{fill:none;stroke:var(--ai);stroke-width:2.5;vector-effect:non-scaling-stroke}
+.spark .up{stroke:var(--mute-ai);stroke-width:1;stroke-dasharray:3 3;vector-effect:non-scaling-stroke}.spark text{font:700 11px var(--num);fill:var(--mute)}
+.spark .pt{fill:var(--shu)}
+.few{font-size:12px;color:var(--mute);margin-top:6px;padding:8px 10px;background:#F1F3F6;border-radius:10px}
+.xp{font-size:12px;color:var(--mute);margin-top:6px}
+.xp em{font-style:normal;font-weight:700;margin-left:6px;padding:1px 7px;border-radius:9px;background:#E9ECF1;color:var(--ai)}
+.cal{background:#fff;border:1px solid var(--hair);border-radius:16px;padding:10px 12px 12px;margin-top:12px}
+.cal .mh{display:flex;justify-content:space-between;align-items:baseline}.cal .mh b{font:900 16px var(--ja)}.cal .mh span{font-size:12px;color:var(--mute);font-weight:700}
+.cal .g{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:8px;text-align:center}
+.cal .g i{font:600 15px/30px var(--num);font-style:normal;border-radius:8px;color:var(--mute)}
+.cal .g .w{font:700 11px var(--ja);line-height:18px}
+.cal .g .d{background:var(--ai);color:#fff}.cal .g .r{color:var(--mute);background:repeating-linear-gradient(135deg,#E9ECF1 0 4px,#fff 4px 8px)}
+.cal .g .t{box-shadow:inset 0 0 0 2px var(--shu);color:var(--ai)}.cal .g .d.t{color:#fff;box-shadow:inset 0 0 0 2px var(--shu),inset 0 0 0 4px #fff}
+.dc{display:grid;grid-template-columns:52px 1fr;gap:12px;background:#fff;border:1px solid var(--hair);border-radius:16px;padding:12px 14px;margin-top:10px}
+.dc .dd{text-align:center;border-right:1px solid var(--hair);padding-right:10px}
+.dc .dd .num{font-size:34px;display:block}.dc .dd small{font-size:12px;font-weight:700;color:var(--mute)}
+.dc ul{list-style:none;padding:0;display:flex;flex-direction:column;gap:5px}
+.dc li{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:baseline;font-size:13px;font-weight:700}
+.dc li span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dc li .v{font:600 17px var(--num);letter-spacing:.02em;font-variant-numeric:tabular-nums}.dc li .v small{font:700 11px var(--ja);color:var(--mute);margin-right:4px}
+.dc .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:12px;color:var(--mute);font-weight:700}
+.dc .memo{font-size:12px;color:var(--mute);border-left:3px solid var(--hair);padding-left:8px;margin-top:6px}
+.rest{display:flex;gap:12px;align-items:center;padding:8px 14px;margin-top:10px;font-size:13px;color:var(--mute);font-weight:700}
+.rest .num{font-size:20px;color:var(--mute-ai);width:52px;text-align:center}
+.pill.add{min-height:36px;font-size:13px}
+.mo{font:900 13px var(--ja);color:var(--mute);margin-top:16px}
+.xc,.dc,.rest{flex:none;width:100%;text-align:left}
+.xh b,.dc > div,.dc li > span:first-child{min-width:0}
+.rest .num{flex:none}
 /* BREAK!: a slab slices across, the lettering lands on it, the screen shakes, then it cuts away (~1.4s) */
 .shoutfx { position:fixed; inset:0; z-index:50; pointer-events:none; overflow:hidden; animation:sfx-off 1ms 1450ms forwards; }
 .shoutfx .slab { position:absolute; left:-40%; right:-40%; top:24%; height:34%; background:var(--ai); transform:rotate(-12deg) translateX(110%);

@@ -493,6 +493,103 @@ export function consultText(data, today) {
   return sections.join('\n\n');
 }
 
+const exerciseTypes = ['reps', 'band', 'time', 'weight'];
+const exerciseParts = ['胸', '背中', '脚', '肩', '腕', '体幹', '全身'];
+const skipReasons = ['風邪', '疲れ', '予定', 'その他'];
+
+const isObject = x => x !== null && typeof x === 'object' && !Array.isArray(x);
+const isText = x => typeof x === 'string';
+const isNumber = x => typeof x === 'number' && Number.isFinite(x);
+const isDate = x => isText(x) && /^\d{4}-\d{2}-\d{2}$/.test(x);
+
+/** 不正な要素は除き、重複 id は先勝ちにする。 */
+function cleanList(list, normalize, unique = true) {
+  const seen = new Set();
+  return list.flatMap(entry => {
+    const result = isObject(entry) ? normalize(entry) : null;
+    if (!result || (unique && seen.has(result.id))) return [];
+    seen.add(result.id);
+    return [result];
+  });
+}
+
+function cleanSet(entry, types) {
+  const type = types.get(entry.exerciseId);
+  if (!type) return null;
+  const orNull = x => isNumber(x) ? x : null;
+  const result = {
+    ...entry,
+    reps: orNull(entry.reps), sec: orNull(entry.sec), kg: orNull(entry.kg),
+    bandId: isText(entry.bandId) ? entry.bandId : null
+  };
+  return isNumber(type === 'time' ? result.sec : result.reps) ? result : null;
+}
+
+/** アプリが例外なく描画できる構造にそろえる。直せない要素は除く。 */
+function normalizeData(result) {
+  const exercises = cleanList(result.exercises, entry =>
+    isText(entry.id) && isText(entry.name)
+      ? {
+          ...entry,
+          type: exerciseTypes.includes(entry.type) ? entry.type : 'reps',
+          part: exerciseParts.includes(entry.part) ? entry.part : '全身',
+          nextId: isText(entry.nextId) ? entry.nextId : null,
+          archived: entry.archived === true
+        }
+      : null);
+  const types = new Map(exercises.map(ex => [ex.id, ex.type]));
+  const normalized = {
+    ...result,
+    exercises,
+    bands: cleanList(result.bands, entry =>
+      isText(entry.id) && isText(entry.name) && isNumber(entry.order)
+        ? { ...entry, note: isText(entry.note) ? entry.note : '' } : null),
+    templates: cleanList(result.templates, entry =>
+      isText(entry.id) && isText(entry.name)
+        ? {
+            ...entry,
+            exerciseIds: Array.isArray(entry.exerciseIds)
+              ? entry.exerciseIds.filter(id => types.has(id)) : [],
+            sets: Number.isInteger(entry.sets) && entry.sets > 0 ? entry.sets : 3
+          }
+        : null),
+    sessions: cleanList(result.sessions, entry =>
+      isText(entry.id) && isDate(entry.date)
+        ? {
+            ...entry,
+            light: entry.light === true,
+            note: isText(entry.note) ? entry.note : '',
+            sets: (Array.isArray(entry.sets) ? entry.sets : []).flatMap(item => {
+              const cleaned = isObject(item) ? cleanSet(item, types) : null;
+              return cleaned ? [cleaned] : [];
+            })
+          }
+        : null),
+    skips: cleanList(result.skips, entry =>
+      isDate(entry.date)
+        ? { ...entry, reason: skipReasons.includes(entry.reason) ? entry.reason : 'その他' }
+        : null, false),
+    body: cleanList(result.body, entry =>
+      isDate(entry.date) && isNumber(entry.kg)
+        ? { ...entry, waist: isNumber(entry.waist) ? entry.waist : null } : null, false),
+    settings: {
+      ...result.settings,
+      restSec: isNumber(result.settings.restSec) && result.settings.restSec > 0
+        ? result.settings.restSec : 90
+    }
+  };
+  for (const session of normalized.sessions) {
+    if ('toCoach' in session && typeof session.toCoach !== 'boolean') delete session.toCoach;
+  }
+  if ('messages' in result) {
+    normalized.messages = Array.isArray(result.messages)
+      ? cleanList(result.messages, entry =>
+        isText(entry.id) && isText(entry.at) && isText(entry.text) ? entry : null)
+      : [];
+  }
+  return normalized;
+}
+
 /** @param {string} text @returns {Data} */
 export function parseImport(text) {
   try {
@@ -508,8 +605,7 @@ export function parseImport(text) {
     ) {
       throw new Error();
     }
-    if ('messages' in result && !Array.isArray(result.messages)) result.messages = [];
-    return result;
+    return normalizeData(result);
   } catch {
     throw new Error('読み込めないファイルです');
   }
@@ -597,16 +693,86 @@ export function weekHeat(data, today) {
 /** @param {Data} data @param {string} today */
 export function menuExercises(data, menu, today) {
   let ids;
+  let reproduce = false;
   if (menu?.kind === 'custom') {
     ids = menu.exerciseIds;
   } else if (menu?.kind === 'template') {
     ids = data.templates.find(template => template.id === menu.templateId)?.exerciseIds;
   }
   if (ids === undefined) {
+    reproduce = true;
     const [session] = data.sessions
       .filter(session => session.light === false && session.date < today)
       .sort((a, b) => b.date.localeCompare(a.date));
     ids = [...new Set(session?.sets.map(set => set.exerciseId) ?? [])];
   }
-  return ids.filter(id => data.exercises.some(ex => ex.id === id));
+  // 「前回と同じ」は前回の内容の再現なので archived も含める。テンプレート・カスタムは除く。
+  return ids.filter(id => data.exercises.some(ex => ex.id === id && (reproduce || !ex.archived)));
+}
+
+export function recordDelta(entries) {
+  const latest = entries.at(-1);
+  if (!latest) return null;
+  const previous = entries.slice(0, -1).reverse().find(entry => entry.load === latest.load);
+  return previous ? latest.value - previous.value : null;
+}
+
+/** @param {Data} data */
+export function loadUpPoints(data, exerciseId) {
+  const ex = data.exercises.find(ex => ex.id === exerciseId);
+  const entries = setHistory(data, exerciseId);
+  return entries.flatMap((entry, index) => {
+    if (!index || entry.load <= entries[index - 1].load) return [];
+    const label = ex.type === 'weight'
+      ? '+' + Number((entry.load - entries[index - 1].load).toFixed(10)) + 'kg'
+      : data.bands.find(band => band.order === entry.load)?.name ?? 'なし';
+    return [{ date: entry.date, label }];
+  });
+}
+
+/** @param {Data} data @param {string} today */
+export function monthCalendar(data, today) {
+  const [year, month] = today.split('-').map(Number);
+  const first = today.slice(0, 7) + '-01';
+  const last = localDate(new Date(year, month, 0, 12));
+  const done = new Set(inRange(data.sessions, first, last)
+    .filter(session => session.sets.length).map(session => session.date));
+  const rest = new Set(inRange(data.skips, first, last)
+    .filter(skip => !done.has(skip.date)).map(skip => skip.date));
+  return {
+    year, month,
+    offset: (new Date(year, month - 1, 1, 12).getDay() + 6) % 7,
+    done: done.size,
+    rest: rest.size,
+    days: Array.from({ length: Number(last.slice(8)) }, (_, index) => {
+      const date = dateOffset(first, index);
+      return { date, mark: done.has(date) ? 'd' : rest.has(date) ? 'r' : '' };
+    })
+  };
+}
+
+/**
+ * バンドの order は強度の値で、過去記録の負荷の意味そのもの。
+ * 並べ替えは配列の並びだけを変え、削除でも他のバンドの order は振り直さない。
+ * @param {Band[]} bands
+ */
+export function moveBand(bands, index, offset) {
+  const target = index + offset;
+  if (target < 0 || target >= bands.length) return bands;
+  const moved = [...bands];
+  [moved[index], moved[target]] = [moved[target], moved[index]];
+  return moved;
+}
+
+/** @param {Band[]} bands */
+export function removeBand(bands, bandId) {
+  return bands.filter(band => band.id !== bandId);
+}
+
+/** いまのセット以降の未実施セットへ、いまのセットの負荷を引き継ぐ。実施済みは触らない。 */
+export function carryLoad(ex, sets, cursor) {
+  for (const next of sets.slice(cursor + 1)) {
+    if (ex.type === 'weight') next.kg = sets[cursor].kg;
+    if (ex.type === 'band') next.bandId = sets[cursor].bandId;
+  }
 }
