@@ -2258,6 +2258,13 @@ test('instant PR requires more than the same-load maximum and takes priority ove
     assert.equal(await page.locator('.verdict.pr').count(), best ? 1 : 0);
     assert.equal(await page.locator('.verdict b').textContent(),
       best ? '自己ベスト' : bandId === 'k' ? '新しい負荷' : '突破');
+    assert.equal(await page.locator('.shoutfx').count(), bandId === 'k' ? 0 : 1);
+    if (bandId === 'r') {
+      assert.equal(await page.locator('.shoutfx').textContent(), best ? 'BEST!' : 'BREAK!');
+      assert.equal(await page.locator('.shoutfx.pr').count(), best ? 1 : 0);
+      await page.clock.runFor(1600);
+      assert.equal(await page.locator('.shoutfx').count(), 0);
+    }
     if (best) {
       assert.equal(await page.locator('.verdict .num').textContent(), '19');
       assert.equal(await page.locator('.verdict small').textContent(), 'これまで 18回 ・ ライン突破');
