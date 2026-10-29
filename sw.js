@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kintore-v5';
+const CACHE_NAME = 'kintore-v6';
 const APP_FILES = [
   './',
   './index.html',

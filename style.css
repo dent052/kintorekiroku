@@ -331,3 +331,37 @@ dialog.sheet { position:fixed; inset:auto 0 0; margin:0 auto; width:100%; max-wi
 .xc,.dc,.rest{flex:none;width:100%;text-align:left}
 .xh b,.dc > div,.dc li > span:first-child{min-width:0}
 .rest .num{flex:none}
+/* BREAK!: a slab slices across, the lettering lands on it, the screen shakes, then it cuts away (~1.4s) */
+.shoutfx { position:fixed; inset:0; z-index:50; pointer-events:none; overflow:hidden; animation:sfx-off 1ms 1450ms forwards; }
+.shoutfx .slab { position:absolute; left:-40%; right:-40%; top:24%; height:34%; background:var(--ai); transform:rotate(-12deg) translateX(110%);
+  animation:sfx-in 110ms cubic-bezier(.8,0,1,1) 60ms forwards, sfx-away 120ms cubic-bezier(.6,0,1,1) 1250ms forwards; }
+.shoutfx .slab::before, .shoutfx .slab::after { content:''; position:absolute; left:0; right:0; height:8px; background:var(--shu); }
+.shoutfx .slab::before { top:-14px; }
+.shoutfx .slab::after { bottom:-22px; }
+.shoutfx .word { position:absolute; left:0; right:0; top:24%; height:34%; display:flex; align-items:center; justify-content:center; opacity:0;
+  animation:sfx-hit 70ms steps(2,end) 170ms forwards, sfx-gone 1ms 1250ms forwards; }
+/* lettering, not set type: each letter its own size, tilt and height; extrusion, ink outline and white keyline */
+.shoutfx .word > div { transform:translateX(-14px) rotate(-9deg); white-space:nowrap; line-height:1; font:italic 900 100px var(--num);
+  filter:drop-shadow(5px 0 0 #fff) drop-shadow(-5px 0 0 #fff) drop-shadow(0 5px 0 #fff) drop-shadow(0 -5px 0 #fff)
+    drop-shadow(2px 0 0 var(--ai)) drop-shadow(-2px 0 0 var(--ai)) drop-shadow(0 2px 0 var(--ai)) drop-shadow(0 -2px 0 var(--ai)); }
+.shoutfx span { display:inline-block; color:var(--shu); -webkit-text-stroke:3px var(--ai); paint-order:stroke fill;
+  text-shadow:1px 1px 0 #8E2614,2px 2px 0 #8E2614,3px 3px 0 #8E2614,4px 4px 0 #8E2614,5px 5px 0 #8E2614,6px 6px 0 #8E2614,7px 7px 0 #8E2614,8px 8px 0 #8E2614,9px 9px 0 var(--ai),10px 10px 0 var(--ai); }
+.shoutfx span + span { margin-left:-.07em; }
+.shoutfx .c1 { font-size:1.3em; transform:rotate(-8deg) translateY(.06em); }
+.shoutfx .c2 { font-size:.92em; transform:rotate(-3deg) translateY(-.02em); }
+.shoutfx .c3 { font-size:.9em; transform:rotate(3deg) translateY(-.08em); }
+.shoutfx .c4 { font-size:1em; transform:rotate(-5deg) translateY(-.12em); }
+.shoutfx .c5 { font-size:1.12em; transform:rotate(2deg) translateY(-.2em); }
+.shoutfx .c6 { font-size:1.4em; transform:rotate(14deg) translateY(-.22em); margin-left:-.02em; }
+/* personal best: same moves, vermilion slab, white letters */
+.shoutfx.pr .slab { background:var(--shu); }
+.shoutfx.pr .slab::before, .shoutfx.pr .slab::after { background:var(--ai); }
+.shoutfx.pr span { color:#fff; text-shadow:1px 1px 0 #9AA6BD,2px 2px 0 #9AA6BD,3px 3px 0 #9AA6BD,4px 4px 0 #9AA6BD,5px 5px 0 #9AA6BD,6px 6px 0 #9AA6BD,7px 7px 0 #9AA6BD,8px 8px 0 #9AA6BD,9px 9px 0 var(--ai),10px 10px 0 var(--ai); }
+.app.shake { animation:sfx-shake 180ms steps(1) 200ms; }
+@keyframes sfx-in { to { transform:rotate(-12deg) translateX(0); } }
+@keyframes sfx-away { from { transform:rotate(-12deg) translateX(0); } to { transform:rotate(-12deg) translateX(-130%); } }
+@keyframes sfx-hit { 0% { opacity:1; transform:scale(1.2); } 100% { opacity:1; transform:none; } }
+@keyframes sfx-gone { to { opacity:0; } }
+@keyframes sfx-off { to { visibility:hidden; } }
+@keyframes sfx-shake { 0% { transform:translate(6px,-4px); } 25% { transform:translate(-5px,3px); } 50% { transform:translate(3px,4px); } 75% { transform:translate(-2px,-2px); } 100% { transform:none; } }
+@media (prefers-reduced-motion:reduce) { .shoutfx { display:none; } }

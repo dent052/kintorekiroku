@@ -1342,6 +1342,38 @@ function editSet(session, set, index, context) {
   draw();
 }
 
+let shoutTimer;
+
+function shout(word, pr) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  clearTimeout(shoutTimer);
+  document.querySelector('.shoutfx')?.remove();
+  const app = document.querySelector('.app');
+  app.classList.remove('shake');
+  const fx = element('div', '', 'shoutfx' + (pr ? ' pr' : ''));
+  fx.setAttribute('aria-hidden', 'true');
+  const box = element('div', '', 'word');
+  const letters = element('div');
+  [...word].forEach((letter, index) => letters.append(element('span', letter,
+    letter === '!' ? 'c6' : 'c' + Math.min(index + 1, 5))));
+  box.append(letters);
+  fx.append(element('div', '', 'slab'), box);
+  document.body.append(fx);
+  // size the lettering to the screen whatever font actually loaded (offsetWidth ignores the rotate)
+  const fit = () => {
+    letters.style.fontSize = '100px';
+    letters.style.fontSize = Math.min(118, 100 * (innerWidth - 70) / letters.offsetWidth) + 'px';
+  };
+  fit();
+  document.fonts?.load('italic 900 100px "Barlow Condensed"').then(fit, () => {});
+  void app.offsetWidth;
+  app.classList.add('shake');
+  shoutTimer = setTimeout(() => {
+    fx.remove();
+    app.classList.remove('shake');
+  }, 1500);
+}
+
 function completeSet() {
   const entry = currentEntry();
   if (entry.cursor >= entry.goal) return;
@@ -1401,6 +1433,8 @@ function completeSet() {
   rest = { end: Date.now() + duration, duration, verdict, verdictUntil: Date.now() + 2500 };
   render();
   restInterval = setInterval(updateRest, 250);
+  if (maximum !== null) shout('BEST!', true);
+  else if (result?.kind === 'clear') shout('BREAK!', false);
 }
 
 function updateRest() {

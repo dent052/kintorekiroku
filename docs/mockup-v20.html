@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow">
+<title>画面イメージ v20 突破の決め画面</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--num:'Barlow Condensed',sans-serif;--ja:'Zen Kaku Gothic New',system-ui,sans-serif;
+  --paper:#F6F7F9;--ai:#1C2B4B;--shu:#D03C22;--shu-on-ai:#FF6A4D;--mute:#5E6B82;--mute-ai:#8FA0BF;--hair:#DDE2EA}
+*{box-sizing:border-box;margin:0}
+body{background:#C9CED6;color:var(--ai);font:16px/1.6 var(--ja);padding:24px 16px}
+.intro{max-width:800px;margin:0 auto 18px}.intro h1{font:900 28px var(--ja)}.intro p{color:#222}
+.wall{display:flex;flex-wrap:wrap;gap:22px;justify-content:center}
+figure{width:390px;max-width:100%}figcaption{font-size:13px;color:#111;margin:0 4px 8px;line-height:1.6}
+figcaption b{font-size:16px;display:block}
+.phone{position:relative;border-radius:34px;height:844px;overflow:hidden;background:var(--paper);padding:30px 22px;display:flex;flex-direction:column}
+.num{font-family:var(--num);font-weight:700;line-height:.88}
+.exname{font:900 32px/1.15 var(--ja);margin-top:14px}
+.prev{font:600 18px var(--num);color:var(--mute);margin-top:4px}
+.big{font-size:130px;color:var(--shu);margin-top:26px}
+.restbar{display:flex;align-items:baseline;gap:12px;margin-top:12px;font-size:12px;font-weight:700;color:var(--mute)}
+.restbar .num{font-size:44px;color:var(--ai)}
+.track{height:6px;border-radius:3px;background:var(--hair);margin-top:8px}.track i{display:block;width:92%;height:100%;border-radius:3px;background:var(--ai)}
+.sets{margin-top:auto}
+.sets .r{display:grid;grid-template-columns:56px 1fr 1fr;align-items:center;padding:0 8px;min-height:46px;border-bottom:1px solid var(--hair);font:600 24px var(--num)}
+.sets .no{font:700 13px var(--ja);color:var(--mute)}.sets .pv{color:var(--mute)}.sets .e{color:var(--hair)}
+.ctl{display:flex;gap:8px;margin-top:10px}
+.ctl button{flex:1;min-height:44px;border:0;border-radius:14px;background:var(--ai);color:#fff;font:700 15px var(--ja)}
+.ctl button.slow{background:#fff;color:var(--ai)}
+.ctl button:focus-visible{outline:3px solid var(--shu);outline-offset:2px}
+
+/* The moment, ~1.3s, built only from the app's own parts:
+   the indigo slab rises over the paper, the line (dashed, as on the record chart) is drawn,
+   the number breaks it, the word cuts in. Every move is a cut (steps), not a glide. */
+.fx{position:absolute;inset:0;z-index:5;pointer-events:none;overflow:hidden;animation:done 1ms 1300ms forwards}
+@keyframes done{to{opacity:0}}
+.slab{position:absolute;inset:0;background:var(--ai);clip-path:polygon(0 100%,100% 100%,100% 100%,0 100%);
+  animation:rise 100ms steps(3,end) forwards,sink 100ms steps(3,end) 1180ms forwards}
+@keyframes rise{to{clip-path:polygon(0 4%,100% 0,100% 100%,0 100%)}}
+@keyframes sink{from{clip-path:polygon(0 4%,100% 0,100% 100%,0 100%)}to{clip-path:polygon(0 100%,100% 92%,100% 100%,0 100%)}}
+
+.stage{position:absolute;left:-40px;right:-40px;top:250px;height:360px;transform:rotate(-12deg);animation:out 1ms 1180ms forwards}
+@keyframes out{to{opacity:0}}
+.stage > *{position:absolute;opacity:0}
+/* the line: two halves, so it can break where the number goes through */
+.line{top:206px;height:0;border-top:4px dashed var(--mute-ai);animation:show 1ms 110ms forwards,snap 1ms 250ms forwards}
+.line.l{left:0;width:52%}.line.r{left:52%;right:0}
+.line.l{--x:-26px}.line.r{--x:26px}
+@keyframes snap{to{opacity:1;border-top-style:solid;border-top-color:var(--shu-on-ai);transform:translate(var(--x),0)}}
+.label{left:44px;top:176px;font:600 20px var(--num);color:var(--mute-ai);animation:show 1ms 110ms forwards,dim 1ms 250ms forwards}
+.label b{font-weight:700}
+@keyframes dim{to{opacity:.55;text-decoration:line-through}}
+.n{left:150px;top:40px;font:700 230px/.88 var(--num);color:#fff;letter-spacing:-.02em;transform:translateY(240px);
+  animation:punch 80ms steps(2,end) 170ms forwards}
+@keyframes punch{to{opacity:1;transform:none}}
+.w{left:30px;top:252px;font:900 150px/1 var(--ja);color:var(--shu-on-ai);white-space:nowrap;transform:translateX(160px);
+  animation:cutin 70ms steps(2,end) 320ms forwards}
+@keyframes cutin{to{opacity:1;transform:none}}
+.sub{left:300px;top:222px;font:700 17px var(--ja);color:#fff;animation:show 1ms 430ms forwards}
+.sub .num{font-size:24px;margin-left:4px}
+@keyframes show{to{opacity:1}}
+
+/* impact: shake lands with the number breaking the line (vibrate here in the app) */
+.screen{animation:shake 160ms steps(1) 250ms}
+@keyframes shake{0%{transform:translate(0,10px)}25%{transform:translate(-6px,-6px)}50%{transform:translate(5px,4px)}75%{transform:translate(-2px,-2px)}100%{transform:none}}
+
+/* personal best: same moves, colours swapped — the vermilion slab, white line, indigo word */
+.pr .slab{background:var(--shu)}
+.pr .line{border-top-color:rgba(255,255,255,.6)}
+.pr .label{color:#fff}
+@keyframes snap-pr{to{opacity:1;border-top-style:solid;border-top-color:var(--ai);transform:translate(var(--x),0)}}
+.pr .line{animation:show 1ms 110ms forwards,snap-pr 1ms 250ms forwards}
+.pr .w{color:var(--ai);font-size:82px;top:256px;left:30px}
+
+@media (prefers-reduced-motion:reduce){.fx{display:none}.screen{animation:none}}
+</style></head><body>
+<div class="intro"><h1>突破の決め画面 v20</h1><p>v18「斜め」を土台に、このアプリの部品だけで組み直した案。下の藍の板がせり上がって紙を覆う → 記録のグラフと同じ点線のライン → 18 が下から突き抜けて、ラインが朱に変わって割れる（ここで揺れと振動）→「突破」が右から切り込む → 板が沈んで休憩画面へ。約1.3秒。「スロー」は4分の1の速さ。</p></div>
+<div class="wall">
+
+<figure><figcaption><b>突破</b>藍の板、朱の文字。</figcaption>
+<div class="phone screen"><h1 class="exname">腕立て伏せ</h1><p class="prev">ライン 17 ・ 次のライン 18</p><span class="num big">18</span>
+<div class="restbar"><span>休憩</span><span class="num">1:28</span></div><div class="track"><i></i></div>
+<div class="sets"><div class="r"><span class="no">1</span><span class="pv">16</span><span style="color:var(--shu)">18</span></div><div class="r"><span class="no">2</span><span class="pv">14</span><span class="e">—</span></div><div class="r"><span class="no">3</span><span class="pv">12</span><span class="e">—</span></div></div>
+<div class="fx" aria-hidden="true"><div class="slab"></div><div class="stage">
+  <div class="line l"></div><div class="line r"></div><div class="label">ライン <b>17</b></div>
+  <div class="n">18</div><div class="w">突破</div><div class="sub">次のライン<span class="num">18</span></div>
+</div></div></div>
+<div class="ctl"><button class="again">もう一度</button><button class="slow">スロー</button></div></figure>
+
+<figure class="pr"><figcaption><b>自己ベスト</b>同じ動きで色を入れ替え。朱の板、藍の文字。</figcaption>
+<div class="phone screen"><h1 class="exname">腕立て伏せ</h1><p class="prev">ライン 17 ・ 次のライン 18</p><span class="num big">21</span>
+<div class="restbar"><span>休憩</span><span class="num">1:28</span></div><div class="track"><i></i></div>
+<div class="sets"><div class="r"><span class="no">1</span><span class="pv">16</span><span style="color:var(--shu)">21</span></div><div class="r"><span class="no">2</span><span class="pv">14</span><span class="e">—</span></div><div class="r"><span class="no">3</span><span class="pv">12</span><span class="e">—</span></div></div>
+<div class="fx" aria-hidden="true"><div class="slab"></div><div class="stage">
+  <div class="line l"></div><div class="line r"></div><div class="label">これまで <b>20</b></div>
+  <div class="n">21</div><div class="w">自己ベスト</div><div class="sub">ライン突破</div>
+</div></div></div>
+<div class="ctl"><button class="again">もう一度</button><button class="slow">スロー</button></div></figure>
+
+</div>
+<script>
+// replay: clone the phone so every animation restarts; slow plays the same at 1/4 speed
+for (const fig of document.querySelectorAll('figure')) {
+  const replay = rate => {
+    const p = fig.querySelector('.phone'), fresh = p.cloneNode(true);
+    p.replaceWith(fresh);
+    fresh.getAnimations({ subtree: true }).forEach(a => a.playbackRate = rate);
+  };
+  fig.querySelector('.again').onclick = () => replay(1);
+  fig.querySelector('.slow').onclick = () => replay(.25);
+}
+</script>
+</body></html>
