@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kintore-v4';
+const CACHE_NAME = 'kintore-v5';
 const APP_FILES = [
   './',
   './index.html',
@@ -44,16 +44,20 @@ self.addEventListener('fetch', event => {
 
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
-    // App files: network first so a new deploy reaches the phone; cache only when offline. Fonts never change: cache first.
+    // App files: answer from the cache at once (waiting on the network made every open slow) and refresh it
+    // in the background, so a deploy shows from the open after next. Fonts never change: cache first.
     if (url.origin === self.location.origin) {
-      try {
-        // no-cache: always revalidate with the server, so the browser's 10-minute HTTP cache never hides a deploy.
-        const response = await fetch(request, { cache: 'no-cache' });
-        if (response.ok) event.waitUntil(cache.put(request, response.clone()));
+      // no-cache: revalidate with the server, so the browser's 10-minute HTTP cache never hides a deploy.
+      const fresh = fetch(request, { cache: 'no-cache' }).then(async response => {
+        if (response.ok) await cache.put(request, response.clone());
         return response;
-      } catch {
-        return (await cache.match(request)) ?? Response.error();
+      });
+      const cached = await cache.match(request);
+      if (cached) {
+        event.waitUntil(fresh.catch(() => {}));
+        return cached;
       }
+      return fresh.catch(() => Response.error());
     }
     const cached = await cache.match(request);
     if (cached) return cached;
