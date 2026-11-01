@@ -106,7 +106,7 @@ async function leaveTraining(page) {
 async function principles(page) {
   assert.deepEqual(await page.$$eval('button, a[href], select, input, textarea, [role=slider]', elements =>
     elements.filter(element => !element.closest('.press, dialog.sheet, .slab, .tabs, #toast button') &&
-      !element.closest('.see .ln, .see .rec, .see .ex, .see .pill, .see .back, .see .sets .r.done, .see .hist .r, .see .seg, .see .day, .see .bl, .see .big input, .see .tr-top .prog, .see .tr-top .end, .see .card, .see .tw .src, .see .xc, .see .dc, .see .rest'))
+      !element.closest('.see .ln, .see .rec, .see .ex, .see .pill, .see .back, .see .sets .r.done, .see .hist .r, .see .seg, .see .day, .see .bl, .see .big input, .see .tr-top .prog, .see .tr-top .end, .see .card, .see .tw .src, .see .xc, .see .dc, .see .rest, .see .cal .mv'))
       .map(element => element.outerHTML)), []);
   const size = await page.evaluate(() => {
     const tabs = document.querySelector('.tabs');
@@ -3014,7 +3014,15 @@ test('day calendar and cards preserve counts, values, month groups, memos and sh
   assert.equal(await page.locator('.cal .mh b').textContent(), '2026年10月');
   assert.equal(await page.locator('.cal .mh span').textContent(), 'やった日 1 ・ 休み 1');
   assert.deepEqual(await page.locator('.cal .w').allTextContents(), [...'月火水木金土日']);
-  assert.equal(await page.locator('.cal button, .cal a, .cal [tabindex]').count(), 0);
+  assert.equal(await page.locator('.cal button, .cal a, .cal [tabindex]').count(), 2);
+  assert.equal(await page.getByRole('button', { name: '次の月' }).isDisabled(), true);
+  await page.getByRole('button', { name: '前の月' }).click();
+  assert.equal(await page.locator('.cal .mh b').textContent(), '2026年9月');
+  assert.equal(await page.locator('.cal .mh span').textContent(), 'やった日 1 ・ 休み 0');
+  assert.equal(await page.locator('.cal [data-date="2026-09-30"]').getAttribute('class'), 'd');
+  assert.equal(await page.getByRole('button', { name: '前の月' }).isDisabled(), true);
+  await page.getByRole('button', { name: '次の月' }).click();
+  assert.equal(await page.locator('.cal .mh b').textContent(), '2026年10月');
   assert.equal(await page.locator('.cal [data-date]').count(), 31);
   assert.equal(await page.locator('.cal .g > i').nth(10).getAttribute('data-date'), '2026-10-01');
   assert.equal(await page.locator('.cal [data-date="2026-10-26"]').getAttribute('class'), 'd t');

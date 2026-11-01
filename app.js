@@ -21,6 +21,7 @@ let pendingTab = null;
 let menu;
 let toastTimeout;
 let recordsView = 'exercise';
+let calendarMonth = null; // 'YYYY-MM' shown in the records calendar; null = this month
 try {
   if (JSON.parse(localStorage.getItem('kintore:recordsView')) === 'day') recordsView = 'day';
 } catch {}
@@ -2911,11 +2912,28 @@ function recordSpark(entries, ups = []) {
 }
 
 function renderRecordDays(today) {
-  const month = monthCalendar(state, today);
+  const dates = [...new Set([
+    ...state.sessions.filter(session => session.sets.length).map(session => session.date),
+    ...state.skips.map(skip => skip.date), ...state.body.map(entry => entry.date)
+  ])].sort((a, b) => b.localeCompare(a));
+  const latest = today.slice(0, 7);
+  const oldest = [dates.at(-1)?.slice(0, 7) ?? latest, latest].sort()[0];
+  const shown = calendarMonth && calendarMonth >= oldest && calendarMonth <= latest ? calendarMonth : latest;
+  const month = monthCalendar(state, shown + '-01');
   const calendar = element('div', '', 'cal');
   const heading = element('div', '', 'mh');
-  heading.append(element('b', month.year + '年' + month.month + '月'),
-    element('span', 'やった日 ' + month.done + ' ・ 休み ' + month.rest));
+  const step = offset => {
+    const button = action(offset < 0 ? '‹' : '›', () => {
+      calendarMonth = localDate(new Date(month.year, month.month - 1 + offset, 1, 12)).slice(0, 7);
+      render();
+    }, 'mv');
+    button.setAttribute('aria-label', offset < 0 ? '前の月' : '次の月');
+    button.disabled = offset < 0 ? shown <= oldest : shown >= latest;
+    return button;
+  };
+  const title = element('div', '', 'mt');
+  title.append(step(-1), element('b', month.year + '年' + month.month + '月'), step(1));
+  heading.append(title, element('span', 'やった日 ' + month.done + ' ・ 休み ' + month.rest));
   const grid = element('div', '', 'g');
   for (const weekday of '月火水木金土日') grid.append(element('i', weekday, 'w'));
   for (let i = 0; i < month.offset; i++) grid.append(element('i'));
@@ -2929,10 +2947,6 @@ function renderRecordDays(today) {
   calendar.append(heading, grid);
   view.append(calendar);
 
-  const dates = [...new Set([
-    ...state.sessions.filter(session => session.sets.length).map(session => session.date),
-    ...state.skips.map(skip => skip.date), ...state.body.map(entry => entry.date)
-  ])].sort((a, b) => b.localeCompare(a));
   let previousMonth;
   for (const date of dates) {
     if (date.slice(0, 7) !== previousMonth) {
