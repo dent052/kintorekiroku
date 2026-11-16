@@ -104,6 +104,8 @@ async function leaveTraining(page) {
 }
 
 async function principles(page) {
+  // the BREAK!/BEST! shout shakes .app for a moment; measure the resting layout
+  await page.waitForFunction(() => !document.querySelector('.app.shake'));
   assert.deepEqual(await page.$$eval('button, a[href], select, input, textarea, [role=slider]', elements =>
     elements.filter(element => !element.closest('.press, dialog.sheet, .slab, .tabs, #toast button') &&
       !element.closest('.see .ln, .see .rec, .see .ex, .see .pill, .see .back, .see .sets .r.done, .see .hist .r, .see .seg, .see .day, .see .bl, .see .big input, .see .tr-top .prog, .see .tr-top .end, .see .card, .see .tw .src, .see .xc, .see .dc, .see .rest, .see .cal .mv'))
