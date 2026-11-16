@@ -392,7 +392,7 @@ export function mergeFeed(own, posts, seen) {
       b.at.localeCompare(a.at));
 }
 
-const coachKinds = ['reply', 'weekly', 'finding', 'reading'];
+const coachKinds = ['reply', 'nudge', 'weekly', 'finding', 'reading'];
 
 function coachTimestamp(at) {
   return Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(at) ? at + 'T00:00:00' : at);
@@ -630,7 +630,7 @@ export function parsePosts(text) {
     return [];
   }
   if (!Array.isArray(posts)) return [];
-  const kinds = ['reply', 'weekly', 'finding', 'reading'];
+  const kinds = ['reply', 'nudge', 'weekly', 'finding', 'reading'];
   return posts
     .filter(post => typeof post?.id === 'string' && typeof post.text === 'string' &&
       typeof post.at === 'string' && kinds.includes(post.kind))

@@ -1468,3 +1468,9 @@ test('carryLoad copies the changed load to later sets only', () => {
   carryLoad(ex(), sets, 0);
   assert.deepEqual(sets.map(s => s.kg), [5, 7, 7]);
 });
+
+test('nudge posts are kept and counted as unread coach posts', () => {
+  const nudge = { id: '2026-11-12-nudge', at: '2026-11-12T17:40:00+09:00', kind: 'nudge', text: '今夜のメニュー' };
+  assert.deepEqual(parsePosts(JSON.stringify([nudge])), [nudge]);
+  assert.deepEqual(unreadPosts([nudge], []), [nudge]);
+});

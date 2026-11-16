@@ -553,7 +553,7 @@ function markSeen(items) {
   }
 }
 
-const coachLabels = { reply: '返信', weekly: '週のまとめ', finding: '発見', reading: '読み物' };
+const coachLabels = { reply: '返信', nudge: '今夜のメニュー', weekly: '週のまとめ', finding: '発見', reading: '読み物' };
 
 function renderCoach() {
   const now = new Date();
