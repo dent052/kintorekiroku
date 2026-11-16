@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow">
+<title>見直し案 v27</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--num:'Barlow Condensed',sans-serif;--ja:'Zen Kaku Gothic New',system-ui,sans-serif;--paper:#F6F7F9;--ai:#1C2B4B;--ai2:#26375C;--shu:#D03C22;--shu-ai:#FF6A4D;--mute:#5E6B82;--mute-ai:#8FA0BF;--hair:#DDE2EA}
+*{box-sizing:border-box;margin:0}
+body{background:#E4E8EF;color:var(--ai);font:15px/1.7 var(--ja);padding:20px 14px 60px}
+section{width:760px;margin:0 auto 28px;background:#fff;border-radius:22px;padding:18px 18px 20px}
+h2{font:900 22px/1.35 var(--ja)}
+h2 small{display:block;font:700 13px/1.5 var(--ja);color:var(--mute);margin-top:2px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}
+.tag{font:700 12px var(--ja);color:#fff;background:var(--mute);display:inline-block;border-radius:6px;padding:2px 8px;margin-bottom:6px}
+.tag.new{background:var(--shu)}
+.ph{width:360px;height:760px;border-radius:26px;overflow:hidden;background:var(--paper);position:relative;display:flex;flex-direction:column;box-shadow:0 0 0 1px var(--hair)}
+.ph.img{background-size:360px 760px}
+.see{flex:1;min-height:0;padding:26px 22px 16px;display:flex;flex-direction:column;overflow:hidden}
+.press{flex:none;background:var(--ai);color:#fff;padding:18px 20px 12px;border-radius:26px 26px 0 0;display:flex;flex-direction:column;gap:12px}
+.num{font-family:var(--num);font-weight:700;line-height:.88;letter-spacing:-.01em}
+.k{font-size:12px;font-weight:700;color:var(--mute)}
+.go{background:var(--shu);color:#fff;border-radius:22px;height:64px;font:900 20px var(--ja);display:grid;place-items:center}
+/* training */
+.top{display:flex;justify-content:space-between;align-items:center}
+.prog{display:flex;align-items:center;gap:10px;font:700 12px var(--num);color:var(--mute);letter-spacing:.08em}
+.prog i{width:22px;height:4px;border-radius:2px;background:var(--ai);display:block}
+.end{border:1.5px solid var(--ai);border-radius:20px;padding:6px 14px;font:700 13px var(--ja)}
+.exname{font:900 34px/1.15 var(--ja);margin-top:18px;white-space:nowrap}
+.sub{display:flex;align-items:center;gap:6px;font:700 13px var(--ja);color:var(--mute);margin-top:4px}
+.pi{width:24px;height:24px;border-radius:50%;background:#E9ECF1;display:grid;place-items:center}
+.pi svg{width:12px;height:18px}
+.slot{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;border-radius:20px;padding:14px 18px;margin-top:16px;min-height:92px}
+.slot .num{font-size:72px}
+.slot b{font:900 24px/1.1 var(--ja);display:block}
+.slot small{font:700 12px/1.4 var(--ja);display:block;margin-top:4px}
+.slot.goal{background:#fff;box-shadow:inset 0 0 0 1.5px var(--hair)}
+.slot.goal .num{color:var(--shu)}.slot.goal small{color:var(--mute)}
+.slot.miss{background:#fff;box-shadow:inset 0 0 0 2px var(--ai)}
+.slot.miss small{color:var(--mute)}
+.slot.clear{background:var(--shu);color:#fff}
+.timer{text-align:right}
+.timer .num{font-size:34px;display:block}
+.timer span{font:700 11px var(--ja);color:var(--mute)}
+.bar{height:4px;border-radius:2px;background:var(--hair);margin-top:8px;overflow:hidden}.bar i{display:block;height:100%;width:92%;background:var(--ai)}
+table{width:100%;border-collapse:collapse;margin-top:14px}
+th{font:700 11px var(--ja);color:var(--mute);text-align:left;padding:0 0 6px 8px}
+td{padding:9px 8px;border-top:1px solid var(--hair);font:700 24px var(--num)}
+td:first-child{font-size:13px;width:56px}
+td.prev{color:var(--mute);width:108px}
+td.dash{color:var(--hair)}
+tr.on td{border:0}
+tr.on{outline:2px solid var(--ai);border-radius:10px;background:#fff}
+td.ok{text-align:right}
+td.ok i{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--ai);color:#fff;font:700 12px var(--ja);font-style:normal}
+.counter{display:grid;grid-template-columns:84px 1fr 84px;align-items:center;text-align:center}
+.counter button{height:84px;border-radius:20px;background:var(--ai2);color:#fff;border:0;font:700 40px var(--num)}
+.counter .num{font-size:92px}.counter .num small{font:700 14px var(--ja);color:var(--mute-ai)}
+.restrow{display:flex;justify-content:space-around;font:700 14px var(--ja)}
+.restrow span{border-bottom:1px solid var(--mute-ai);padding:0 12px 8px}
+.nav3{display:flex;justify-content:space-between;font:700 13px var(--ja);color:var(--mute-ai);padding:4px 2px}
+.nav3 b{color:#fff}
+/* slot strip */
+.strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+.strip .slot{margin-top:4px;padding:12px 14px;gap:10px;min-height:84px}
+.strip .slot .num{font-size:56px}.strip .slot b{font-size:19px}
+.strip p{font:700 12px var(--ja);color:var(--mute)}
+/* summary */
+h1{font:900 30px/1.2 var(--ja)}
+.card{background:#fff;border:1px solid var(--hair);border-radius:18px;padding:14px 16px;margin-top:12px}
+.xh{display:flex;align-items:center;gap:8px;font:700 16px var(--ja)}
+.chip{font:700 11px var(--ja);border-radius:10px;padding:2px 9px;background:#E9ECF1;color:var(--ai)}
+.chip.s{background:var(--shu);color:#fff;margin-left:auto}
+.sets{display:flex;align-items:baseline;gap:10px;margin-top:10px}
+.sets .num{font-size:46px}.sets .num.hit{color:var(--shu)}
+.sets i{font-style:normal;color:var(--mute-ai);font:700 20px var(--num)}
+.cmp{display:flex;justify-content:space-between;font:700 12px var(--ja);color:var(--mute);margin-top:8px;padding-top:8px;border-top:1px solid var(--hair)}
+.cmp b{color:var(--ai)}.cmp .up{color:var(--shu)}
+.wk{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;text-align:center;margin-top:8px;font:700 11px var(--ja);color:var(--mute)}
+.wk i{display:block;height:26px;border-radius:7px;background:#E1E5EC;margin-top:4px}
+.wk .t i{background:var(--ai);box-shadow:0 0 0 2px var(--paper),0 0 0 4px var(--shu)}
+.body{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center}
+.body svg{width:38px;height:60px}
+.body p{font:700 13px/1.6 var(--ja)}.body p span{color:var(--mute);font-weight:500}
+/* coach */
+.tw{padding:14px 0;border-bottom:1px solid var(--hair)}
+.th{display:flex;align-items:center;gap:8px;font:700 14px var(--ja)}
+.av{width:26px;height:26px;border-radius:50%;background:#2E4A8C;display:grid;place-items:center;flex:none}
+.av svg{width:16px;height:16px}
+.th time{font:600 12px var(--num);color:var(--mute);letter-spacing:.02em}
+.th .dot{width:8px;height:8px;border-radius:50%;background:var(--shu);margin-left:-2px}
+.th .kind{margin-left:auto;font:700 11px var(--ja);color:var(--mute);border:1px solid var(--hair);border-radius:9px;padding:1px 8px;background:#fff}
+.tw p{font:500 15.5px/1.8 var(--ja);margin-top:8px}
+.tw p+p{margin-top:10px}
+.q{border-left:3px solid var(--hair);padding:2px 0 2px 10px;color:var(--mute);font:500 13px/1.6 var(--ja);margin-top:8px}
+.compose{flex-direction:row;align-items:center;gap:10px;padding:12px 16px}
+.compose div{flex:1;background:var(--ai2);border-radius:22px;padding:10px 16px;color:var(--mute-ai);font-size:14px}
+.compose b{background:var(--shu);opacity:.5;border-radius:22px;padding:10px 18px;font:900 15px var(--ja)}
+.tabs{display:grid;grid-template-columns:repeat(5,1fr);background:var(--ai);color:var(--mute-ai);font:700 11px var(--ja);text-align:center;padding:10px 4px 14px}
+.tabs b{color:#fff}
+/* part card */
+.bm{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;background:#fff;border:1px solid var(--hair);border-radius:16px;padding:10px 12px;margin-top:6px;width:316px}
+.bm .figs{display:flex;gap:2px}.bm .figs svg{width:38px;height:60px}
+.bm .lg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px 10px;font-size:12px;font-weight:700}
+.bm .lg span{display:flex;justify-content:space-between;border-bottom:1px solid var(--hair)}
+.bm .lg b{font:600 16px var(--num)}
+.bm .k{grid-column:1/-1;margin-bottom:-6px}
+.bm.old .lg span{color:var(--shu)}
+.bm.new .z{color:#A9B3C4}
+.crop{width:360px;height:236px;border-radius:14px;background:url(mockup-v27/03-records-ex.png) 0 -120px/360px 760px;box-shadow:0 0 0 1px var(--hair)}
+.note{font:500 13px/1.7 var(--ja);color:var(--mute);margin-top:12px}
+.note b{color:var(--ai)}
+</style></head><body>
+
+<svg width="0" height="0" style="position:absolute"><defs>
+<g id="fig"><circle cx="48" cy="14" r="10" fill="#DDE2EA"/><rect x="24" y="28" width="16" height="12" rx="6" fill="#B4BDCC"/><rect x="56" y="28" width="16" height="12" rx="6" fill="#B4BDCC"/><rect x="34" y="30" width="13" height="20" rx="5" fill="#B4BDCC"/><rect x="49" y="30" width="13" height="20" rx="5" fill="#B4BDCC"/><rect x="38" y="52" width="20" height="30" rx="5" fill="#B4BDCC"/><rect x="18" y="42" width="11" height="34" rx="5" fill="#B4BDCC"/><rect x="67" y="42" width="11" height="34" rx="5" fill="#B4BDCC"/><rect x="35" y="86" width="12" height="56" rx="6" fill="#D03C22"/><rect x="49" y="86" width="12" height="56" rx="6" fill="#D03C22"/></g>
+<g id="figz"><circle cx="48" cy="14" r="10" fill="#DDE2EA"/><rect x="24" y="28" width="16" height="12" rx="6" fill="#DDE2EA"/><rect x="56" y="28" width="16" height="12" rx="6" fill="#DDE2EA"/><rect x="34" y="30" width="13" height="20" rx="5" fill="#DDE2EA"/><rect x="49" y="30" width="13" height="20" rx="5" fill="#DDE2EA"/><rect x="38" y="52" width="20" height="30" rx="5" fill="#DDE2EA"/><rect x="18" y="42" width="11" height="34" rx="5" fill="#DDE2EA"/><rect x="67" y="42" width="11" height="34" rx="5" fill="#DDE2EA"/><rect x="35" y="86" width="12" height="56" rx="6" fill="#DDE2EA"/><rect x="49" y="86" width="12" height="56" rx="6" fill="#DDE2EA"/></g>
+<g id="figw"><circle cx="48" cy="14" r="10" fill="#DDE2EA"/><rect x="24" y="28" width="16" height="12" rx="6" fill="#8FA0BF"/><rect x="56" y="28" width="16" height="12" rx="6" fill="#8FA0BF"/><rect x="34" y="30" width="13" height="20" rx="5" fill="#DDE2EA"/><rect x="49" y="30" width="13" height="20" rx="5" fill="#DDE2EA"/><rect x="38" y="52" width="20" height="30" rx="5" fill="#DDE2EA"/><rect x="18" y="42" width="11" height="34" rx="5" fill="#DDE2EA"/><rect x="67" y="42" width="11" height="34" rx="5" fill="#DDE2EA"/><rect x="35" y="86" width="12" height="56" rx="6" fill="#8FA0BF"/><rect x="49" y="86" width="12" height="56" rx="6" fill="#8FA0BF"/></g>
+<g id="db"><path d="M7 12h10" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><rect x="4.5" y="7.5" width="3" height="9" rx="1.4" fill="#FF6A4D"/><rect x="16.5" y="7.5" width="3" height="9" rx="1.4" fill="#FF6A4D"/><rect x="2" y="9.5" width="2" height="5" rx="1" fill="#FF6A4D"/><rect x="20" y="9.5" width="2" height="5" rx="1" fill="#FF6A4D"/></g>
+</defs></svg>
+
+<!-- 1 training -->
+<section id="s1">
+<h2>① トレーニング画面：真ん中の空きを「今日のライン」に使う<small>いちばん長く見る画面。目標の数字が一番小さい字になっている</small></h2>
+<div class="pair">
+<div><span class="tag">いま</span><div class="ph img" style="background-image:url(mockup-v27/14-train.png)"></div></div>
+<div><span class="tag new">案</span>
+<div class="ph"><div class="see">
+  <div class="top"><div class="prog"><i></i>1 / 1 ▾</div><div class="end">終了</div></div>
+  <div class="exname">ヒップリフト</div>
+  <div class="sub"><span class="pi"><svg viewBox="0 0 96 150"><use href="#fig"/></svg></span>脚</div>
+  <div class="slot goal"><span class="num">14</span><div><b>今日のライン</b><small>前回 13 ・ 1セット目でここを超える</small></div></div>
+  <table><tr><th>セット</th><th>前回</th><th>今日</th><th></th></tr>
+  <tr class="on"><td>1</td><td class="prev">13</td><td>13</td><td></td></tr>
+  <tr><td>2</td><td class="prev">12</td><td class="dash">—</td><td></td></tr>
+  <tr><td>3</td><td class="prev">10</td><td class="dash">—</td><td></td></tr></table>
+</div><div class="press">
+  <div class="counter"><button>−</button><div class="num">13<small>回</small></div><button>+</button></div>
+  <div class="go">1セット目を完了</div>
+  <div class="nav3"><b>⌂ ホーム</b><span>◀ 前</span><span>メモ</span></div>
+</div></div></div>
+</div>
+<p class="note"><b>変えること：</b>種目名の下の空きに「今日のライン 14」を大きく出す。体の図は部位名の横の小さい印だけにする（種目名が必ず1行に入る）。</p>
+</section>
+
+<!-- 2 rest -->
+<section id="s2">
+<h2>② セット完了後：結果と休憩を1枚にまとめ、次のセットの行を隠さない<small>いまは結果の札と休憩時間で表が押し下げられ、これからやる行が紺の下に隠れる</small></h2>
+<div class="pair">
+<div><span class="tag">いま</span><div class="ph img" style="background-image:url(mockup-v27/15-rest.png)"></div></div>
+<div><span class="tag new">案</span>
+<div class="ph"><div class="see">
+  <div class="top"><div class="prog"><i></i>1 / 1 ・ 2セット目へ ▾</div><div class="end">終了</div></div>
+  <div class="exname">ヒップリフト</div>
+  <div class="sub"><span class="pi"><svg viewBox="0 0 96 150"><use href="#fig"/></svg></span>脚</div>
+  <div class="slot miss"><span class="num">13</span><div><b>あと1</b><small>次回もライン 14</small></div><div class="timer"><span>休憩</span><span class="num">0:58</span></div></div>
+  <div class="bar"><i></i></div>
+  <table><tr><th>セット</th><th>前回</th><th>今日</th><th></th></tr>
+  <tr><td>1</td><td class="prev">13</td><td>13</td><td class="ok"><i>✓</i></td></tr>
+  <tr class="on"><td>2</td><td class="prev">12</td><td>12</td><td></td></tr>
+  <tr><td>3</td><td class="prev">10</td><td class="dash">—</td><td></td></tr></table>
+</div><div class="press">
+  <div class="restrow"><span>＋15秒</span><span>休憩を終える</span></div>
+  <div class="counter"><button>−</button><div class="num">12<small>回</small></div><button>+</button></div>
+  <div class="go">2セット目を完了</div>
+  <div class="nav3"><b>⌂ ホーム</b><span>◀ 前</span><span>メモ</span></div>
+</div></div></div>
+</div>
+<p class="note"><b>同じ場所の札が、場面で3通りに変わる（朱で塗るのは突破したときだけ）：</b></p>
+<div class="strip">
+  <div><p>セット前</p><div class="slot goal"><span class="num">14</span><div><b>今日のライン</b><small>前回 13</small></div></div></div>
+  <div><p>届かなかった</p><div class="slot miss"><span class="num">13</span><div><b>あと1</b><small>次回もライン 14</small></div></div></div>
+  <div><p>突破した</p><div class="slot clear"><span class="num">14</span><div><b>突破</b><small>次のライン 15</small></div></div></div>
+</div>
+</section>
+
+<!-- 3 summary -->
+<section id="s3">
+<h2>③ 終わった画面：やった結果を見せる<small>いまは1セット目の数字が小さく1つ出るだけ。数字は見本（3セットやって突破した日の例）</small></h2>
+<div class="pair">
+<div><span class="tag">いま</span><div class="ph img" style="background-image:url(mockup-v27/16-summary.png)"></div></div>
+<div><span class="tag new">案</span>
+<div class="ph"><div class="see">
+  <span class="k">11月16日 月曜 ・ 通算 10日目</span>
+  <h1>今日の記録</h1>
+  <div class="card">
+    <div class="xh"><span class="pi"><svg viewBox="0 0 96 150"><use href="#fig"/></svg></span>ヒップリフト<span class="chip s">突破</span></div>
+    <div class="sets"><span class="num hit">14</span><i>・</i><span class="num">12</span><i>・</i><span class="num">11</span></div>
+    <div class="cmp"><span>前回 13 ・ 12 ・ 10</span><span>合計 <b>37回</b> <b class="up">＋2</b></span></div>
+    <div class="cmp" style="border:0;padding-top:0;margin-top:2px"><span>ライン 14 を超えた</span><span>次のライン <b class="up">15</b></span></div>
+  </div>
+  <div class="card">
+    <span class="k">今週</span>
+    <div class="wk"><span class="t">月<i></i></span><span>火<i></i></span><span>水<i></i></span><span>木<i></i></span><span>金<i></i></span><span>土<i></i></span><span>日<i></i></span></div>
+  </div>
+  <div class="card body"><svg viewBox="0 0 96 150"><use href="#fig"/></svg><p>今日きたえた部位<br>脚 3セット <span>・ 今週の脚 3セット</span></p></div>
+</div><div class="press"><div class="go">ホームへ</div></div></div></div>
+</div>
+<p class="note"><b>変えること：</b>全セットの数字を大きく並べ、前回との差・ラインを超えたか・次のラインを1枚に出す。今週のマスが今日の分だけ埋まるのを見せる。体の図は、他の画面と同じ朱に色をそろえる（いまはここだけ紺）。</p>
+</section>
+
+<!-- 4 coach -->
+<section id="s4">
+<h2>④ コーチ：本文を横幅いっぱいに。未読は朱の点で示す<small>いまはアイコンの列で幅の2割を失い、1行が約14文字。未読の薄い赤い帯は表示の乱れに見える</small></h2>
+<div class="pair">
+<div><span class="tag">いま</span><div class="ph img" style="background-image:url(mockup-v27/10-coach.png)"></div></div>
+<div><span class="tag new">案</span>
+<div class="ph"><div class="see" style="padding-bottom:0">
+  <h1>コーチ</h1>
+  <div class="tw" style="margin-top:6px">
+    <div class="th"><span class="av"><svg viewBox="0 0 24 24"><use href="#db"/></svg></span>コーチ<span class="dot"></span><time>昨日 22:25</time><span class="kind">発見</span></div>
+    <p>11月15日のヒップリフト、13・12・10回。前回の11月2日は12・8・11回だったから、2セット目が8回から12回まで一気に伸びてるね。1セット目だけじゃなく、後半のセットまで粘れるようになってきてる。</p>
+    <p>次は1セット目14回を狙おう。あと、ヒップリフトの日にサイドレイズ2kgを2セットだけ足せば、同じ10分ちょっとで肩も入るよ。</p>
+  </div>
+  <div class="tw">
+    <div class="th"><span class="av"><svg viewBox="0 0 24 24"><use href="#db"/></svg></span>コーチ<time>11月14日</time><span class="kind">週のまとめ</span></div>
+    <p>11月9日に、先週ゼロだった肩と背中がちゃんと入ったね。シーテッドバンドローイングは13・10・11回で、3セット目で持ち直してるのがいい。</p>
+    <p>来週は10分ずつの2回でいこう。1回目は膝付き腕立て伏せ2セット（1セット目14回）とサイドレイズ2kg 2セット…</p>
+  </div>
+</div>
+<div class="press compose"><div>コーチに書く…</div><b>送る</b></div>
+<div class="tabs"><span>ホーム</span><span>記録</span><b>コーチ</b><span>種目</span><span>設定</span></div>
+</div></div>
+</div>
+<p class="note"><b>変えること：</b>アイコンを名前の行に小さく入れて、本文を左端から書く（同じ画面に入る文章が約3割増える）。見出し「コーチ」と1件目の間をあける。種類（発見・週のまとめ）は目立たない札にして、朱は未読の点だけに使う。</p>
+</section>
+
+<!-- 5 parts -->
+<section id="s5">
+<h2>⑤ 記録の「今週の部位」：0 を赤くしない<small>月曜の朝は全部 0 が当たり前。赤い 0 が6つ並ぶと、責められているように見える</small></h2>
+<div class="pair">
+<div><span class="tag">いま</span><div class="crop"></div></div>
+<div><span class="tag new">案</span>
+  <div class="bm new"><p class="k">今週の部位（セット数）</p><div class="figs"><svg viewBox="0 0 96 150"><use href="#figz"/></svg><svg viewBox="0 0 96 150"><use href="#figz"/></svg></div>
+  <div class="lg"><span class="z">胸<b>0</b></span><span class="z">背中<b>0</b></span><span class="z">脚<b>0</b></span><span class="z">肩<b>0</b></span><span class="z">腕<b>0</b></span><span class="z">体幹<b>0</b></span></div></div>
+  <p class="note" style="margin-top:8px">週の途中（脚3・肩2をやったあと）：</p>
+  <div class="bm new"><p class="k">今週の部位（セット数）</p><div class="figs"><svg viewBox="0 0 96 150"><use href="#figw"/></svg><svg viewBox="0 0 96 150"><use href="#figw"/></svg></div>
+  <div class="lg"><span class="z">胸<b>0</b></span><span class="z">背中<b>0</b></span><span>脚<b>3</b></span><span>肩<b>2</b></span><span class="z">腕<b>0</b></span><span class="z">体幹<b>0</b></span></div></div>
+</div>
+</div>
+<p class="note"><b>変えること：</b>0 は薄い灰色、やった部位は紺（図の濃さは今と同じ決まり）。朱は「ライン・突破・一番大事なボタン・部位の印」だけに使う。</p>
+</section>
+</body></html>

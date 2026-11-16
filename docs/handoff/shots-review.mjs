@@ -1,0 +1,32 @@
+// Review shots: every screen plus sheets, with the real data and coach posts. Usage: node docs/handoff/shots-review.mjs <dir>
+import { chromium } from '/home/user/kintorekiroku/node_modules/playwright/index.mjs';
+import { readFileSync } from 'node:fs';
+const out = process.argv[2];
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const p = await (await b.newContext({ viewport: { width: 360, height: 760 }, deviceScaleFactor: 2, hasTouch: true })).newPage();
+const errs = []; p.on('pageerror', e => errs.push(e.message));
+await p.goto('http://localhost:8080/');
+await p.evaluate(([d, posts]) => { localStorage.clear(); localStorage.setItem('kintore:data', d); localStorage.setItem('kintore:posts', posts); },
+  [readFileSync('/home/user/kintorekiroku-data/data.json', 'utf8'), readFileSync('/home/user/kintorekiroku-data/posts.json', 'utf8')]);
+await p.reload(); await p.waitForTimeout(1200);
+let n = 0; const shot = async (name, full) => { await p.waitForTimeout(350); await p.screenshot({ path: `${out}/${String(++n).padStart(2, '0')}-${name}.png`, fullPage: !!full }); };
+const tryDo = async f => { try { await f(); } catch (e) { console.log('skip', e.message.split('\n')[0]); } };
+await shot('home');
+await tryDo(async () => { await p.click('.see .pill', { timeout: 2000 }); await shot('home-change'); await p.keyboard.press('Escape'); });
+await tryDo(async () => { await p.click('.press >> text=体重を記録', { timeout: 2000 }); await shot('body-sheet'); await p.keyboard.press('Escape'); });
+await p.click('.tabs >> text=記録'); await shot('records-ex');
+await p.evaluate(() => document.querySelector('.see').scrollTo(0, 500)); await shot('records-ex-2');
+await tryDo(async () => { await p.click('.see .xc >> nth=0', { timeout: 2000 }); await shot('detail'); await p.evaluate(() => document.querySelector('.see').scrollTo(0, 500)); await shot('detail-2'); await p.click('.see .back', { timeout: 2000 }); });
+await p.click('.seg >> text=日ごと'); await shot('records-day');
+await p.evaluate(() => document.querySelector('.see').scrollTo(0, 520)); await shot('records-day-2');
+await tryDo(async () => { await p.click('.see .dc >> nth=0', { timeout: 2000 }); await shot('day-sheet'); await p.keyboard.press('Escape'); });
+await p.click('.tabs >> text=コーチ'); await shot('coach');
+await p.evaluate(() => document.querySelector('.see').scrollTo(0, 0)); await shot('coach-top');
+await p.click('.tabs >> text=種目'); await shot('exercises');
+await tryDo(async () => { await p.click('.see .ln >> nth=0', { timeout: 2000 }); await shot('exercise-sheet'); await p.keyboard.press('Escape'); });
+await p.click('.tabs >> text=設定'); await shot('settings');
+await p.click('.tabs >> text=ホーム');
+await p.click('.press >> text=始める'); await shot('train');
+await p.click('.press .go'); await p.waitForTimeout(1700); await shot('rest');
+await p.click('.tr-top .end'); await p.waitForTimeout(300); await p.click('dialog[open] >> text=ここまでで終える').catch(() => {}); await shot('summary');
+console.log('errors', errs); await b.close();
