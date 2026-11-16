@@ -603,7 +603,7 @@ test('lineResult compares only numeric lines', () => {
 });
 
 test('lineText uses the specified pre-set strings', () => {
-  assert.equal(lineText({ kind: 'base' }, ex()), '初回。この1セットが基準になる');
+  assert.equal(lineText({ kind: 'base' }, ex()), '初回');
   assert.equal(lineText({ kind: 'line', value: 16 }, ex()), 'ライン 16');
   assert.equal(lineText({ kind: 'line', value: 45 }, ex({ type: 'time' })), 'ライン 45秒');
   assert.equal(lineText({ kind: 'up', next: '黒' }, ex()), '20回を超えた。次は黒で。');

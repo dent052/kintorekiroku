@@ -1033,8 +1033,7 @@ function renderTrainPaper() {
       small: target.next + 'を検討' };
   } else if (target.value !== undefined && !result) {
     card = { num: target.value, title: '今日のライン' + (unit && '（秒）'), kind: 'goal',
-      small: (previousSets[0] ? '前回 ' + value(ex, previousSets[0]) + unit + ' ・ ' : '') +
-        '1セット目でここを超える' };
+      small: previousSets[0] ? '前回 ' + value(ex, previousSets[0]) + unit : '' };
   } else if (target.value !== undefined) {
     card = result.kind === 'clear'
       ? { num: value(ex, done[0]), title: '突破', kind: 'clear',

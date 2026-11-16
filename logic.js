@@ -139,7 +139,7 @@ export function firstSetResult(data, exerciseId, date, set) {
 
 /** @param {Exercise} ex */
 export function lineText(l, ex) {
-  if (l.kind === 'base') return '初回。この1セットが基準になる';
+  if (l.kind === 'base') return '初回';
   if (l.kind === 'up') return `${ex.type === 'time' ? '60秒' : '20回'}を超えた。次は${l.next}で。`;
   if (l.kind === 'flat') return '3回、横ばい。負荷を変えるか、1日休むタイミング';
   if (l.kind === 'down') return '下がり続けている。今日は軽めでいい';
