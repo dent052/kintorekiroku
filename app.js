@@ -574,6 +574,9 @@ function renderCoach() {
       const row = element('article', '', 'tw' + (coach && unread.has(item.id) ? ' unread' : ''));
       const body = element('div');
       const who = element('p', coach ? 'コーチ' : '自分', 'who');
+      // アイコンは名前の行の左に置く（並び順は CSS の order）
+      who.append(coach ? coachAvatar() : element('span', '私', 'av me'));
+      if (coach && unread.has(item.id)) who.append(element('i', '', 'dot'));
       who.append(element('small', coachTimeLabel(item.at, now) +
         (item.kind === 'memo' ? ' ・ トレーニングのメモ' : '')));
       if (coach) who.append(element('span', coachLabels[item.kind], 'tag'));
@@ -593,7 +596,7 @@ function renderCoach() {
           }
         } catch {}
       }
-      row.append(coach ? coachAvatar() : element('span', '私', 'av me'), body);
+      row.append(body);
       list.append(row);
       if (!coach && waiting?.id === item.id) list.append(element('p', waiting.text, 'note'));
     }
@@ -706,19 +709,7 @@ function renderToday() {
 
   const news = element('div', '', 'feed');
   news.append(element('p', '今週', 'k'));
-  const week = element('div', '', 'week');
-  const [year, month, day] = weekStart(today).split('-').map(Number);
-  const days = new Set(state.sessions.filter(session => session.sets.length)
-    .map(session => session.date));
-  [...'月火水木金土日'].forEach((name, index) => {
-    const date = localDate(new Date(year, month - 1, day + index));
-    const cell = element('span', name);
-    const mark = element('i', '', [days.has(date) ? 'd' : '', date === today ? 't' : '']
-      .filter(Boolean).join(' '));
-    cell.append(mark);
-    week.append(cell);
-  });
-  news.append(week);
+  news.append(weekStrip(today));
   const { posts, seen } = coachFeed();
   const [newest] = coachTimeline(state, unreadPosts(posts, seen))
     .filter(item => Object.hasOwn(coachLabels, item.kind));
@@ -980,7 +971,7 @@ function dismissVerdict() {
     rest.verdict = null;
     saveTraining();
   }
-  view.querySelector('.verdict')?.remove();
+  if (currentMode === 'train' && view.querySelector('.slot.verdict')) renderTrainPaper();
 }
 
 function moveExercise(offset) {
@@ -1020,40 +1011,50 @@ function renderTrainPaper() {
   const target = line(state, ex.id, training.date);
   const result = done.length ? firstSetResult(state, ex.id, training.date, done[0]) : null;
   const head = element('div', '', 'exhead');
-  const name = element('div');
+  const title = element('h1', ex.name, 'exname');
   const tag = element('span', '', 'tag2');
   tag.append(partBadge(ex.part), document.createTextNode(ex.part));
-  name.append(element('h1', ex.name, 'exname'), tag);
-  head.append(name, bodyFigure(ex.part, ex.part === '背中' ? 'back' : 'front'));
+  head.append(title, tag);
   view.replaceChildren(trainingTop(Boolean(rest)), head);
-  if (rest) {
-    if (rest.verdict && Date.now() < rest.verdictUntil) {
-      const verdict = element('div', '', 'verdict' + (rest.verdict.pr ? ' pr' : ''));
-      const detail = element('div');
-      detail.append(element('b', rest.verdict.title));
-      if (rest.verdict.small) detail.append(element('small', rest.verdict.small));
-      verdict.append(element('span', String(rest.verdict.value), 'num'), detail);
-      view.append(verdict);
-    }
-    const bar = element('div', '', 'restbar');
-    const track = element('div', '', 'track');
-    track.append(element('div'));
-    bar.append(element('span', '休憩', 'k'), element('span', '', 'num'), track);
-    view.append(bar);
-  } else {
-    let text = lineText(target, ex);
-    if (result?.kind === 'newload') {
-      text = '新しい負荷';
-    } else if (target.kind === 'up') {
-      text = '前回' + (ex.type === 'time' ? '60秒' : '20回') + '以上' +
-        (done.length ? ' ・ ' : '。') + target.next + 'を検討';
-    } else if (target.value !== undefined) {
-      text = 'ライン ' + target.value + (ex.type === 'time' ? '秒' : '') + ' ・ ';
-      text += !result ? '1セット目' :
-        result.kind === 'clear' ? '突破' : 'あと' + result.diff;
-    }
-    view.append(element('p', text, 'prev'));
+  // 長い種目名は1行に収まるまで字を小さくする
+  for (let size = 32; size >= 22 && title.scrollWidth > title.clientWidth; size -= 2) {
+    title.style.fontSize = size + 'px';
   }
+  // 同じ場所の札：セット前は今日のライン、セット後は結果（朱で塗るのは突破だけ）
+  const unit = ex.type === 'time' ? '秒' : '';
+  let card = { title: lineText(target, ex), kind: 'goal' };
+  if (rest?.verdict && Date.now() < rest.verdictUntil) {
+    card = { num: rest.verdict.value, title: rest.verdict.title, small: rest.verdict.small,
+      kind: 'verdict' + (rest.verdict.pr ? ' pr' : rest.verdict.clear ? ' clear' : '') };
+  } else if (result?.kind === 'newload') {
+    card = { title: '新しい負荷', kind: 'goal' };
+  } else if (target.kind === 'up') {
+    card = { title: '前回' + (ex.type === 'time' ? '60秒' : '20回') + '以上', kind: 'goal',
+      small: target.next + 'を検討' };
+  } else if (target.value !== undefined && !result) {
+    card = { num: target.value, title: '今日のライン' + (unit && '（秒）'), kind: 'goal',
+      small: (previousSets[0] ? '前回 ' + value(ex, previousSets[0]) + unit + ' ・ ' : '') +
+        '1セット目でここを超える' };
+  } else if (target.value !== undefined) {
+    card = result.kind === 'clear'
+      ? { num: value(ex, done[0]), title: '突破', kind: 'clear',
+        small: 'ライン ' + target.value + unit }
+      : { num: value(ex, done[0]), title: 'あと' + result.diff, small: 'ライン ' + target.value + unit };
+  }
+  const slot = element('div', '', 'slot' + (card.kind ? ' ' + card.kind : ''));
+  if (card.num !== undefined) slot.append(element('span', String(card.num), 'num'));
+  const detail = element('div');
+  detail.append(element('b', card.title));
+  if (card.small) detail.append(element('small', card.small));
+  slot.append(detail);
+  if (rest) {
+    const timer = element('div', '', 'restbar');
+    timer.append(element('span', '休憩', 'k'), element('span', '', 'num'));
+    slot.append(timer);
+  }
+  const track = element('div', '', 'track' + (rest ? '' : ' off'));
+  track.append(element('div'));
+  view.append(slot, track);
   const table = element('div', '', 'sets');
   const header = element('div', '', 'hd');
   for (const text of ['セット', ex.type === 'time' ? '前回(秒)' : '前回',
@@ -1421,7 +1422,7 @@ function completeSet() {
       title = '新しい負荷';
       small = (loadText(ex, set) || ex.name) + 'の1本目';
     }
-    verdict = { value: value(ex, set), title, small };
+    verdict = { value: value(ex, set), title, small, clear: result.kind === 'clear' };
   }
   if (maximum !== null) {
     const detail = verdict ? ' ・ ' + (result.kind === 'clear' ? 'ライン突破' : verdict.title) : '';
@@ -1448,7 +1449,7 @@ function updateRest() {
   if (rest.verdict && Date.now() >= rest.verdictUntil) dismissVerdict();
   const bar = view.querySelector('.restbar');
   if (bar) {
-    bar.querySelector('.track > div').style.width = Math.max(0, Math.min(100,
+    view.querySelector('.track > div').style.width = Math.max(0, Math.min(100,
       (rest.end - Date.now()) / rest.duration * 100)) + '%';
     bar.querySelector('.num').textContent =
       Math.floor(remaining / 60) + ':' + String(remaining % 60).padStart(2, '0');
@@ -1571,41 +1572,98 @@ function finishWorkout() {
   go('summary');
 }
 
+function weekStrip(today) {
+  const week = element('div', '', 'week');
+  const [year, month, day] = weekStart(today).split('-').map(Number);
+  const days = new Set(state.sessions.filter(session => session.sets.length)
+    .map(session => session.date));
+  [...'月火水木金土日'].forEach((name, index) => {
+    const date = localDate(new Date(year, month - 1, day + index));
+    const cell = element('span', name);
+    const mark = element('i', '', [days.has(date) ? 'd' : '', date === today ? 't' : '']
+      .filter(Boolean).join(' '));
+    cell.append(mark);
+    week.append(cell);
+  });
+  return week;
+}
+
 function renderSummary() {
-  view.append(element('h1', '今日の記録', 'exname'));
   const session = trainingSession();
+  const day = new Date(training.date + 'T12:00:00');
+  view.append(element('p', (day.getMonth() + 1) + '月' + day.getDate() + '日 ' +
+    '日月火水木金土'[day.getDay()] + '曜 ・ 通算 ' + totalDays(state) + '日目', 'k'),
+    element('h1', '今日の記録', 'exname'));
   const ids = [...new Set(session?.sets.map(set => set.exerciseId) ?? [])];
   const bests = session ? session.sets.filter(set => prKind(state, set, session.id) === 'pr')
     .map(set => set.exerciseId) : [];
   const parts = {};
+  const next = new Date(day);
+  next.setDate(next.getDate() + 1);
   for (const id of ids) {
     const ex = state.exercises.find(item => item.id === id);
-    parts[ex.part] = 1;
-    const row = element('div', '', 'sumrow st');
+    const sets = session.sets.filter(set => set.exerciseId === id);
+    parts[ex.part] = (parts[ex.part] ?? 0) + sets.length;
+    const unit = ex.type === 'time' ? '秒' : '';
+    const target = line(state, id, training.date);
+    const result = firstSetResult(state, id, training.date, sets[0]);
+    const cleared = result.kind === 'clear';
+    const row = element('div', '', 'sumrow');
     row.dataset.exerciseId = id;
-    const name = element('p', ex.name, 'n');
+    const name = element('p', '', 'n');
+    name.append(partBadge(ex.part), element('span', ex.name));
     if (bests.includes(id)) name.append(element('em', '自己ベスト'));
-    const numbers = element('p', '', 't');
-    appendSetHistory(numbers, ex, session.sets.filter(set => set.exerciseId === id));
+    if (cleared) name.append(element('span', '突破', 'stamp'));
+    const numbers = element('p', '', 't' + (cleared ? ' hit' : ''));
+    appendSetHistory(numbers, ex, sets, true);
     const previous = [...state.sessions].filter(item => item.date < training.date &&
       item.sets.some(set => set.exerciseId === id))
       .sort((a, b) => b.date.localeCompare(a.date))[0];
+    const before = previous?.sets.filter(set => set.exerciseId === id) ?? [];
+    const compare = element('div', '', 'cmp');
     const last = element('p', previous ? '前回 ' : '初回', 'p');
-    if (previous) appendSetHistory(last, ex, previous.sets.filter(set => set.exerciseId === id));
-    const body = element('div');
-    body.append(name, numbers, last);
-    const first = session.sets.find(set => set.exerciseId === id);
-    const cleared = firstSetResult(state, id, training.date, first).kind === 'clear';
-    const stamp = element('span', '', cleared ? 'stamp' : '');
-    if (cleared) {
-      const text = element('span');
-      text.append(document.createTextNode('突'), element('br'), document.createTextNode('破'));
-      stamp.append(text);
+    if (previous) appendSetHistory(last, ex, before);
+    const sum = list => list.reduce((total, set) => total + value(ex, set), 0);
+    const total = element('p', '合計 ', 'tot');
+    total.append(element('b', sum(sets) + (unit || '回')));
+    // 差を出すのは、セット数と負荷が前回と同じときだけ（条件が違う合計は比べない）
+    const loads = new Set([...sets, ...before].map(set => loadText(ex, set)));
+    if (before.length === sets.length && loads.size === 1 && sum(sets) !== sum(before)) {
+      const diff = sum(sets) - sum(before);
+      total.append(document.createTextNode(' '),
+        element('b', (diff > 0 ? '＋' : '−') + Math.abs(diff), diff > 0 ? 'up' : ''));
     }
-    row.append(body, stamp);
+    compare.append(last, total);
+    row.append(name, numbers, compare);
+    if (target.value !== undefined && ['clear', 'short'].includes(result.kind)) {
+      const after = line(state, id, localDate(next));
+      const verdict = element('div', '', 'cmp ln2');
+      const coming = element('p', after.value === undefined ? lineText(after, ex) : '次のライン ', 'tot');
+      if (after.value !== undefined) coming.append(element('b', after.value + unit, 'up'));
+      verdict.append(element('p', 'ライン ' + target.value + unit +
+        (cleared ? ' を突破' : ' まで あと' + result.diff), 'lv'), coming);
+      row.append(verdict);
+    }
     view.append(row);
   }
-  view.append(bodyMapCard('today', parts));
+  const week = element('div', '', 'bm-card');
+  week.append(element('p', '今週', 'k'), weekStrip(training.date));
+  view.append(week);
+  const trained = Object.keys(parts);
+  if (trained.length) {
+    const weekly = weekStats(state, training.date).partSets;
+    const card = element('div', '', 'bm-card today');
+    const text = element('p');
+    text.append(element('span', '今日きたえた部位', 'k'),
+      element('b', trained.map(part => part + ' ' + parts[part]).join(' ・ ') + 'セット'),
+      element('small', trained.length === 1
+        ? '今週の' + trained[0] + ' ' + (weekly[trained[0]] ?? 0) + 'セット'
+        : '今週 ' + trained.map(part => part + ' ' + (weekly[part] ?? 0)).join(' ・ ') + 'セット'));
+    card.append(bodyFigure('today', 'front', parts));
+    if (parts['背中']) card.append(bodyFigure('today', 'back', parts));
+    card.append(text);
+    view.append(card);
+  }
   dock.append(action('ホームへ', returnHome, 'go'));
 }
 
@@ -2806,7 +2864,7 @@ function bodyFigure(kind, view = 'front', parts = {}) {
     const count = parts[part] ?? 0;
     if (kind === 'map') return count >= 10 ? '#1C2B4B' :
       count >= 6 ? '#4A5C82' : count >= 1 ? '#8FA0BF' : '#DDE2EA';
-    if (kind === 'today') return count || parts['全身'] ? '#1C2B4B' : '#DDE2EA';
+    if (kind === 'today') return count || parts['全身'] ? '#D03C22' : '#B4BDCC';
     return kind === '全身' || kind === part ? '#D03C22' : '#B4BDCC';
   };
   svg.innerHTML = `<circle cx="48" cy="14" r="10" fill="#DDE2EA"/>
@@ -2844,7 +2902,7 @@ function bodyMapCard(kind, parts) {
     if (parts['全身'] > 0) sorted.push('全身');
     for (const part of sorted) {
       const count = parts[part] ?? 0;
-      const item = element('span', part, count ? '' : 'low');
+      const item = element('span', part, count ? '' : 'z');
       item.append(element('b', String(count)));
       legend.append(item);
     }

@@ -768,7 +768,8 @@ test('counter starts at the actual previous value, steps, clamps and waits for c
   const minus = press(page, '腕立て伏せ 1回減らす');
   const plus = press(page, '腕立て伏せ 1回増やす');
   assert.equal(await number.textContent(), String(initial));
-  assert.equal(await page.textContent('.prev'), 'ライン ' + target + ' ・ 1セット目');
+  assert.equal(await page.textContent('.slot.goal > .num'), String(target));
+  assert.equal(await page.textContent('.slot.goal b'), '今日のライン');
   assert.equal(await page.textContent('.hint2'), '数字を押すと直接入力');
   assert.equal(await page.locator('.lineon, .counter .over, .sets .cur .over').count(), 0);
   await minus.click();
@@ -987,11 +988,11 @@ test('complete immediately saves, shows first-set verdict and rest bar, then sum
   assert.equal(session.date, localDate(new Date()));
   assert.equal(await page.locator('.verdict b').textContent(), '自己ベスト');
   assert.equal(await page.locator('.verdict small').textContent(), 'これまで ' + (target - 1) + '回 ・ ライン突破');
-  assert.equal(await page.locator('.verdict .num').textContent(), String(reps));
+  assert.equal(await page.locator('.verdict > .num').textContent(), String(reps));
   assert.equal(await page.locator('.restbar .num').textContent(), '1:30');
   assert.equal(await page.locator('.sets .r').count(), 3);
   assert.equal(await page.locator('.sets .done').count(), 1);
-  const progress = () => page.locator('.restbar .track > div').evaluate(el => parseFloat(el.style.width));
+  const progress = () => page.locator('.track > div').evaluate(el => parseFloat(el.style.width));
   const initialProgress = await progress();
   await page.clock.runFor(3000);
   assert.equal(await page.locator('.verdict').count(), 0);
@@ -1624,13 +1625,14 @@ test('up suggests the next band without changing the load and compares completed
     await press(page, '始める').click();
     assert.equal(await press(page, '赤').getAttribute('aria-pressed'), 'true');
     assert.equal(await page.locator('.counter .num').textContent(), '20');
-    assert.equal(await page.locator('.prev').textContent(), '前回20回以上。黒を検討');
+    assert.equal(await page.locator('.slot b').textContent(), '前回20回以上');
+    assert.equal(await page.locator('.slot small').textContent(), '黒を検討');
     assert.equal(await page.locator('.lineon, .counter .over, .sets .cur .over, .verdict').count(), 0);
     if (diff) await press(page, 'バンドロウ 1回' + (diff > 0 ? '増やす' : '減らす')).click();
     const before = clearCount(data, 'e2');
     await complete(page);
     assert.equal((await stored(page)).sessions.at(-1).sets[0].bandId, 'r');
-    assert.equal(await page.locator('.verdict .num').textContent(), String(20 + diff));
+    assert.equal(await page.locator('.verdict > .num').textContent(), String(20 + diff));
     assert.equal(await page.locator('.verdict b').textContent(),
       diff > 0 ? '自己ベスト' : diff < 0 ? '前回より −1' : '前回と同じ');
     assert.equal(await page.locator('.verdict small').textContent(),
@@ -1639,7 +1641,8 @@ test('up suggests the next band without changing the load and compares completed
     assert.equal(clearCount(saved, 'e2'), before);
     assert.equal(feed(saved, localDate(new Date())).some(item => item.kind === 'clear'), false);
     await press(page, '休憩を終える').click();
-    assert.equal(await page.locator('.prev').textContent(), '前回20回以上 ・ 黒を検討');
+    assert.equal(await page.locator('.slot b').textContent(), '前回20回以上');
+    assert.equal(await page.locator('.slot small').textContent(), '黒を検討');
     await leaveTraining(page);
     assert.match(await page.textContent('.see'), /バンドロウ/);
     assert.deepEqual(errors, []);
@@ -1676,7 +1679,7 @@ test('changing the first-set load gives a new-load result and is excluded from b
     assert.equal(clearCount(saved, 'e2'), previousCount);
     assert.equal(feed(saved, localDate(new Date())).some(item => item.kind === 'clear'), false);
     await press(page, '休憩を終える').click();
-    assert.equal(await page.locator('.prev').textContent(), '新しい負荷');
+    assert.equal(await page.locator('.slot b').textContent(), '新しい負荷');
     await finishTraining(page);
     assert.doesNotMatch(await page.textContent('.see'), /合計回数|前回より|ライン突破/);
     assert.equal(await page.locator('.sumrow').count(), 1);
@@ -2123,7 +2126,9 @@ test('summary shows each exercise and its actual previous sets, PR badges and fi
   await press(page, 'トレーニングを終える').click();
   const rows = page.locator('.sumrow');
   assert.equal(await rows.count(), 2);
-  assert.equal(await rows.nth(0).locator('.n').textContent(), '腕立て伏せ自己ベスト');
+  assert.equal(await rows.nth(0).locator('.n').textContent(), '腕立て伏せ自己ベスト突破');
+  assert.equal(await rows.nth(0).locator('.tot').first().textContent(), '合計 200回');
+  assert.equal(await rows.nth(0).locator('.lv').count(), 1);
   assert.equal(await rows.nth(0).locator('.t').textContent(), '200');
   const previous = data.sessions.at(-1).sets.filter(set => set.exerciseId === 'e1').map(set => set.reps).join(' ・ ');
   assert.equal(await rows.nth(0).locator('.p').textContent(), '前回 ' + previous);
@@ -2133,6 +2138,31 @@ test('summary shows each exercise and its actual previous sets, PR badges and fi
   await principles(page);
   assert.deepEqual(errors, []);
   await close();
+});
+
+test('summary compares totals only when the set count and the load match the previous session', async () => {
+  for (const count of [3, 1]) {
+    const data = fixture();
+    data.sessions = [{ id: 'old', date: '2026-01-05', light: false, note: '',
+      sets: [10, 8, 6].map(reps => ({ exerciseId: 'e1', reps })) }];
+    const { page, errors, close } = await open({ data,
+      extra: { 'kintore:menu': { kind: 'custom', exerciseIds: ['e1'] } } });
+    await press(page, '始める').click();
+    await page.locator('.counter .num').click();
+    await page.locator('.counter input').fill('11');
+    for (let index = 0; index < count; index++) {
+      await complete(page);
+      await press(page, '休憩を終える').click();
+    }
+    await finishTraining(page);
+    const row = page.locator('.sumrow');
+    assert.equal(await row.locator('.t').textContent(), count === 3 ? '11 ・ 8 ・ 6' : '11');
+    assert.equal(await row.locator('.tot').first().textContent(), count === 3 ? '合計 25回 ＋1' : '合計 11回');
+    assert.equal(await row.locator('.lv').textContent(), 'ライン 11 を突破');
+    assert.equal(await row.locator('.stamp').textContent(), '突破');
+    assert.deepEqual(errors, []);
+    await close();
+  }
 });
 
 test('top finish counts remaining work from every exercise and saves only completed sets', async () => {
@@ -2260,7 +2290,7 @@ test('instant PR requires more than the same-load maximum and takes priority ove
       assert.equal(await page.locator('.shoutfx').count(), 0);
     }
     if (best) {
-      assert.equal(await page.locator('.verdict .num').textContent(), '19');
+      assert.equal(await page.locator('.verdict > .num').textContent(), '19');
       assert.equal(await page.locator('.verdict small').textContent(), 'これまで 18回 ・ ライン突破');
       assert.deepEqual(await page.evaluate(() => window.vibrations), [[80, 60, 160]]);
     }
@@ -2297,7 +2327,7 @@ test('later sets can set a PR and must also beat completed sets from today', asy
   await press(page, '＋ もう1セット').click();
   await press(page, 'バンドロウ 1回増やす').click();
   await complete(page);
-  assert.equal(await page.locator('.verdict.pr .num').textContent(), '20');
+  assert.equal(await page.locator('.verdict.pr > .num').textContent(), '20');
   assert.equal(await page.locator('.verdict small').textContent(), 'これまで 19回');
   assert.deepEqual((await stored(page)).sessions.at(-1).sets.map(set => set.reps), [12, 19, 19, 20]);
   assert.deepEqual(errors, []);
@@ -2624,12 +2654,7 @@ test('part badges and training figures highlight each part with the matching fro
   for (const [index, ex] of data.exercises.entries()) {
     assert.equal(await page.locator('.tag2').textContent(), ex.part);
     await checkFigure(page.locator('.tag2 .pi svg'), ex.part);
-    const figure = page.locator('.exhead > svg');
-    await checkFigure(figure, ex.part);
-    assert.deepEqual(await figure.evaluate(node => {
-      const rect = node.getBoundingClientRect();
-      return [rect.width, rect.height];
-    }), [64, 100]);
+    assert.equal(await page.locator('.exhead svg').count(), 1);
     await principles(page);
     if (index < data.exercises.length - 1) await press(page, '次 ▶').click();
   }
@@ -2668,14 +2693,14 @@ test('weekly part legend counts recorded sets, sorts ties and keeps whole body l
     }
     const legend = await page.locator('.bm2 .lg > span').evaluateAll(nodes => nodes.map(node => ({
       part: node.firstChild.textContent, count: Number(node.querySelector('b').textContent),
-      low: node.classList.contains('low'), color: getComputedStyle(node).color
+      low: node.classList.contains('z'), color: getComputedStyle(node).color
     })));
     assert.deepEqual(legend.map(row => [row.part, row.count]),
       [['背中', 10], ['胸', 6], ['脚', 6], ['肩', 1], ['腕', 0], ['体幹', 0],
         ...(whole ? [['全身', whole]] : [])]);
     for (const row of legend) {
       assert.equal(row.low, expected[row.part] === 0);
-      if (row.low) assert.equal(row.color, 'rgb(208, 60, 34)');
+      if (row.low) assert.equal(row.color, 'rgb(143, 160, 191)');
     }
     for (const region of await page.locator('.bm2 .figs [data-part]').evaluateAll(nodes =>
       nodes.map(node => ({ part: node.dataset.part, fill: node.getAttribute('fill') })))) {
@@ -2729,9 +2754,8 @@ test('summary stamps only cleared first sets and maps only parts recorded today'
   const before = await stored(page);
   await finishTraining(page);
   assert.equal(await page.locator('.exname').textContent(), '今日の記録');
-  assert.equal(await page.locator('.sumrow.st').count(), 4);
+  assert.equal(await page.locator('.sumrow').count(), 4);
   assert.equal(await page.locator('.sumrow[data-exercise-id=e1] .stamp').textContent(), '突破');
-  assert.equal(await page.locator('.sumrow[data-exercise-id=e1] .stamp br').count(), 1);
   assert.equal(await page.locator('.sumrow .stamp').count(), 1);
   const today = before.sessions.at(-1);
   for (const id of ['e2', 'e3', 'e4']) {
@@ -2740,12 +2764,12 @@ test('summary stamps only cleared first sets and maps only parts recorded today'
     assert.equal(await page.locator('.sumrow[data-exercise-id="' + id + '"] .stamp').count(), 0);
   }
   assert.equal(await page.locator('.sumrow[data-exercise-id=legs]').count(), 0);
-  assert.equal(await page.locator('.bm-card .k').textContent(), '今日きたえた部位');
-  for (const region of await page.locator('.bodymap [data-part]').evaluateAll(nodes =>
+  assert.equal(await page.locator('.bm-card.today .k').textContent(), '今日きたえた部位');
+  for (const region of await page.locator('.bm-card.today [data-part]').evaluateAll(nodes =>
     nodes.map(node => ({ part: node.dataset.part, fill: node.getAttribute('fill') })))) {
-    assert.equal(region.fill, ['胸', '背中', '体幹'].includes(region.part) ? '#1C2B4B' : '#DDE2EA');
+    assert.equal(region.fill, ['胸', '背中', '体幹'].includes(region.part) ? '#D03C22' : '#B4BDCC');
   }
-  assert.deepEqual(await page.locator('.bodymap svg').evaluateAll(nodes =>
+  assert.deepEqual(await page.locator('.bm-card.today svg').evaluateAll(nodes =>
     nodes.map(node => [node.dataset.view, node.getAttribute('aria-hidden')])),
     [['front', 'true'], ['back', 'true']]);
   for (const size of [{ width: 390, height: 844 }, { width: 360, height: 640 }]) {
